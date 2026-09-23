@@ -29,7 +29,7 @@
         <dependency>
             <groupId>local</groupId>
             <artifactId>MythicMobs</artifactId>
-            <version>5.8.0-SNAPSHOT-tfmc-575aa30aee8e</version>
+            <version>5.13.1-SNAPSHOT-88530541-tfmc-6df72b5b331d</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
