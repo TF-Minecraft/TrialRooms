@@ -1,0 +1,21 @@
+# Magic TLibs artifact paths (copy a line into a live table to smoke).
+# Load order: TLibs, then Magic, then TrialRooms.
+# Path is one token (no spaces inside). Factory always builds amount 1; min-max here is stack size after create.
+# This file is not overwritten on existing servers (saveResource false). Copy plugins/TrialRooms/loot-tables.yml updates by hand.
+# artifact_test is unused until a room points at it.
+
+table1:
+  - v.rotten_flesh 2-6 1.0 bad
+  - v.iron_ingot   1-3 0.8 common
+  - v.gold_ingot   1-2 0.6 uncommon
+  - v.emerald      2-5 0.4 rare
+  - v.diamond      1-2 0.2 epic
+  - v.netherite_scrap 1-1 0.05 legendary
+
+# still valid: no tier means "common"
+table2:
+  - v.emerald 2-5 0.9
+
+artifact_test:
+  - magic.artifact 1-1 1.0 common
+  - magic.(primary=cerrith;rarity=rare) 1-1 0.5 rare
