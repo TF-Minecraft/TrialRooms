@@ -28,8 +28,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import io.lumine.mythic.bukkit.events.MythicDamageEvent;
 import io.lumine.mythic.core.skills.projectiles.Projectile;
-import me.Plugins.TLibs.TLibs;
-import me.Plugins.TLibs.Objects.API.SubAPI.ItemChecker;
+import net.tfminecraft.tlibs.TLibs;
+import net.tfminecraft.tlibs.objects.api.subapi.ItemChecker;
 import net.tfminecraft.trialrooms.TrialRooms;
 import net.tfminecraft.trialrooms.cache.Cache;
 import net.tfminecraft.trialrooms.environment.door.DoorBlock;

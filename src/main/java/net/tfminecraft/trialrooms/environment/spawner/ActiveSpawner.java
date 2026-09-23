@@ -22,7 +22,7 @@ import io.lumine.mythic.api.mobs.MythicMob;
 import io.lumine.mythic.bukkit.BukkitAdapter;
 import io.lumine.mythic.bukkit.MythicBukkit;
 import io.lumine.mythic.core.mobs.ActiveMob;
-import me.Plugins.TLibs.Objects.API.SubAPI.StringFormatter;
+import net.tfminecraft.tlibs.objects.api.subapi.StringFormatter;
 import net.tfminecraft.trialrooms.TrialRooms;
 import net.tfminecraft.trialrooms.cache.Cache;
 import net.tfminecraft.trialrooms.environment.chest.LootChest;
@@ -274,7 +274,7 @@ public class ActiveSpawner {
 
                 w.spawnParticle(Particle.CLOUD, target.getX(), target.getY() + 0.1, target.getZ(),
                         16, 0.25, 0.25, 0.25, 0.0);
-                w.spawnParticle(Particle.EXPLOSION_NORMAL, target.getX(), target.getY() + 0.1, target.getZ(),
+                w.spawnParticle(Particle.POOF, target.getX(), target.getY() + 0.1, target.getZ(),
                         16, 0.25, 0.25, 0.25, 0.0);
                 w.playSound(target, Sound.ITEM_FIRECHARGE_USE, 0.6f, 1.6f);
 
@@ -304,7 +304,7 @@ public class ActiveSpawner {
 
                 // Scale health: 10 HP per level
                 try {
-                    var attr = ent.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH);
+                    var attr = ent.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
                     if (attr != null) {
                         double max = Math.max(1.0, ent.getHealth() + Cache.healthPerLevel * this.level); // 10 hp per level
                         attr.setBaseValue(max);

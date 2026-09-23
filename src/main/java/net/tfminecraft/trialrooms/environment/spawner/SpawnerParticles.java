@@ -36,7 +36,7 @@ class SpawnerParticles {
         double xOffB = -xOffA;
         double zOffB = -zOffA;
 
-        Particle type = (spawner.getState() == ActiveSpawner.State.ACTIVE) ? Particle.FLAME : Particle.FIREWORKS_SPARK;
+        Particle type = (spawner.getState() == ActiveSpawner.State.ACTIVE) ? Particle.FLAME : Particle.FIREWORK;
 
         world.spawnParticle(type, cx + xOffA, loc.getY() + 0.2, cz + zOffA, 1, 0, 0, 0, 0);
         world.spawnParticle(type, cx + xOffB, loc.getY() + 0.8, cz + zOffB, 1, 0, 0, 0, 0);
@@ -57,7 +57,7 @@ class SpawnerParticles {
             double a = orbAngle + (i * (Math.PI * 2 / points));
             double x = c.getX() + Math.cos(a) * orbRadius;
             double z = c.getZ() + Math.sin(a) * orbRadius;
-            w.spawnParticle(Particle.CRIT_MAGIC, x, c.getY(), z, 1, 0, 0, 0, 0);
+            w.spawnParticle(Particle.ENCHANTED_HIT, x, c.getY(), z, 1, 0, 0, 0, 0);
         }
 
         orbAngle += orbSpeed;
@@ -77,7 +77,7 @@ class SpawnerParticles {
 
         double x = from.getX(), y = from.getY(), z = from.getZ();
         for (int i = 0; i <= steps; i++) {
-            from.getWorld().spawnParticle(Particle.SMOKE_NORMAL, x, y, z, 1, 0, 0, 0, 0);
+            from.getWorld().spawnParticle(Particle.SMOKE, x, y, z, 1, 0, 0, 0, 0);
             x += dx; y += dy; z += dz;
         }
     }

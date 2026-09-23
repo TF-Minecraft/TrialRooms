@@ -124,7 +124,7 @@ public final class LootChest {
         if (withFx) {
             World w = loc.getWorld();
             w.spawnParticle(Particle.CLOUD,        loc.clone().add(0.5, 0.8, 0.5), 18, 0.35, 0.25, 0.35, 0.0);
-            w.spawnParticle(Particle.SMOKE_NORMAL, loc.clone().add(0.5, 0.8, 0.5), 10, 0.25, 0.20, 0.25, 0.0);
+            w.spawnParticle(Particle.SMOKE, loc.clone().add(0.5, 0.8, 0.5), 10, 0.25, 0.20, 0.25, 0.0);
             w.playSound(loc, Sound.ENTITY_ENDERMAN_TELEPORT, 0.6f, 1.3f);
         }
     }

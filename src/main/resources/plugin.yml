@@ -1,12 +1,12 @@
 main: net.tfminecraft.trialrooms.TrialRooms
-api-version: 1.20
+api-version: '1.21.10'
 name: TrialRooms
-version: 1.0
+version: '${project.version}'
 author: Drefvelin
 
 depend: [MythicMobs, TLibs, DenarEconomy]
 
 commands:
   tr:
-    useage: /<command>
+    usage: /<command>
     description: TrialRooms Command
