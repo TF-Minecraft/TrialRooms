@@ -1,75 +1,93 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>net.tfminecraft</groupId>
     <artifactId>trialrooms</artifactId>
-    <version>0.2.3-BETA</version>
+    <version>main-SNAPSHOT</version>
+
+    <name>TrialRooms</name>
+    <url>https://github.com/TF-Minecraft/TrialRooms</url>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.proc>full</maven.compiler.proc>
+        <denareconomy.version>0.2.1</denareconomy.version>
+        <tlibs.version>2.0.1</tlibs.version>
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>local</groupId>
-            <artifactId>gson</artifactId>
-            <version>2.10.1</version>
-            <scope>system</scope>
-            <systemPath>D:/Dokumenter/My Plugins/Reference Libs/gson-2.10.1.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>local</groupId>
-            <artifactId>spigot-api</artifactId>
-            <version>1.20.2-R0.1-SNAPSHOT</version>
-            <scope>system</scope>
-            <systemPath>D:/Dokumenter/My Plugins/Reference Libs/spigot-api-1.20.2-R0.1-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>local</groupId>
-            <artifactId>DenarEconomy</artifactId>
-            <version>0.1.5</version>
-            <scope>system</scope>
-            <systemPath>D:/Dokumenter/My Plugins/TFMC/DenarEconomy/denareconomy-0.1.5.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>local</groupId>
-            <artifactId>TLibs</artifactId>
-            <version>1.0</version>
-            <scope>system</scope>
-            <systemPath>D:/Dokumenter/My Plugins/TFMC/TLibs/TLibs.jar</systemPath>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>1.21.10-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>MythicMobs</artifactId>
-            <version>5.8.0</version>
-            <scope>system</scope>
-            <systemPath>D:/Dokumenter/My Plugins/Reference Libs/MythicMobs-5.8.0-SNAPSHOT.jar</systemPath>
+            <version>5.8.0-SNAPSHOT-tfmc-575aa30aee8e</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>me.plugins</groupId>
+            <artifactId>tlibs</artifactId>
+            <version>${tlibs.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>net.tfminecraft</groupId>
+            <artifactId>denareconomy</artifactId>
+            <version>${denareconomy.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 
+    <repositories>
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+    </repositories>
+
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>plugin.yml</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>plugin.yml</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals><goal>run</goal></goals>
-                        <configuration>
-                            <target>
-                                <copy file="${project.build.directory}/${project.build.finalName}.jar"
-                                    tofile="D:\Dokumenter\My Plugins\TFMC\TrialRooms\${project.build.finalName}.jar"/>
-                            </target>
-                        </configuration>
-                    </execution>
-                </executions>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.1</version>
             </plugin>
         </plugins>
     </build>
-
 </project>

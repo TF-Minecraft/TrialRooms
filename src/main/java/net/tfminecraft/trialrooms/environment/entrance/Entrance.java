@@ -1,6 +1,6 @@
 package net.tfminecraft.trialrooms.environment.entrance;
 
-import me.Plugins.TLibs.TLibs;
+import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.trialrooms.TrialRooms;
 import net.tfminecraft.trialrooms.environment.spawner.Hologram;
 import net.tfminecraft.trialrooms.persist.Database;

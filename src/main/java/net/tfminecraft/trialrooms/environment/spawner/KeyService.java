@@ -25,8 +25,8 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
-import me.Plugins.TLibs.TLibs;
-import me.Plugins.TLibs.Objects.API.SubAPI.StringFormatter;
+import net.tfminecraft.tlibs.TLibs;
+import net.tfminecraft.tlibs.objects.api.subapi.StringFormatter;
 import net.tfminecraft.trialrooms.TrialRooms;
 import net.tfminecraft.trialrooms.cache.Cache;
 import net.tfminecraft.trialrooms.loader.TableLoader;
@@ -111,9 +111,9 @@ class KeyService {
                     double a = (Math.PI * 2 * i) / points;
                     double x = center.getX() + Math.cos(a) * radius;
                     double z = center.getZ() + Math.sin(a) * radius;
-                    w.spawnParticle(Particle.REDSTONE, x, center.getY(), z, 1, 0, 0, 0, 0, green);
+                    w.spawnParticle(Particle.DUST, x, center.getY(), z, 1, 0, 0, 0, 0, green);
                 }
-                w.spawnParticle(Particle.VILLAGER_HAPPY, center, 4, 0.4, 0.1, 0.4, 0.0);
+                w.spawnParticle(Particle.HAPPY_VILLAGER, center, 4, 0.4, 0.1, 0.4, 0.0);
 
                 if (ticks % 6 == 0) w.playSound(center, Sound.BLOCK_CHAIN_PLACE, 1.0f, 1.4f);
                 if (ticks == 34)     w.playSound(center, Sound.BLOCK_IRON_TRAPDOOR_OPEN, 1.0f, 0.8f);
@@ -210,7 +210,7 @@ class KeyService {
         World w = drop.getWorld();
 
         w.spawnParticle(Particle.CLOUD, drop, 28, 0.40, 0.40, 0.40, 0.0);
-        w.spawnParticle(Particle.SMOKE_LARGE, drop, 20, 0.30, 0.30, 0.30, 0.0);
+        w.spawnParticle(Particle.LARGE_SMOKE, drop, 20, 0.30, 0.30, 0.30, 0.0);
         w.playSound(drop, Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.15f);
         w.playSound(drop, Sound.ENTITY_PLAYER_LEVELUP, 0.7f, 1.6f);
 
@@ -315,7 +315,7 @@ class KeyService {
 
         String pretty = StringFormatter.formatHex(rarity.displayNameHex(label));
         meta.setDisplayName(pretty);
-        meta.addEnchant(Enchantment.LUCK, 1, true);
+        meta.addEnchant(Enchantment.LUCK_OF_THE_SEA, 1, true);
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
 
         // Use the provided tableId (spawner vs mob table)

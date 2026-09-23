@@ -2,7 +2,7 @@ package net.tfminecraft.trialrooms.environment.entrance;
 
 import org.bukkit.inventory.ItemStack;
 
-import me.Plugins.TLibs.TLibs;
+import net.tfminecraft.tlibs.TLibs;
 
 public class Conversion {
     private final String item;

@@ -1,8 +1,8 @@
 package net.tfminecraft.trialrooms.manager;
 
-import me.Plugins.TLibs.TLibs;
-import me.Plugins.TLibs.Objects.API.SubAPI.StringFormatter;
-import net.tfminecraft.DenarEconomy.DenarEconomy;
+import net.tfminecraft.tlibs.TLibs;
+import net.tfminecraft.tlibs.objects.api.subapi.StringFormatter;
+import net.tfminecraft.denareconomy.DenarEconomy;
 import net.tfminecraft.trialrooms.TrialRooms;
 import net.tfminecraft.trialrooms.cache.Cache;
 import net.tfminecraft.trialrooms.environment.entrance.Entrance;
@@ -282,7 +282,7 @@ public final class EntranceManager implements Listener {
             double a = (Math.PI * 2 * i) / points;
             double x = c.getX() + Math.cos(a) * r;
             double z = c.getZ() + Math.sin(a) * r;
-            w.spawnParticle(Particle.REDSTONE, x, c.getY(), z, 1, 0, 0, 0, 0, dust);
+            w.spawnParticle(Particle.DUST, x, c.getY(), z, 1, 0, 0, 0, 0, dust);
         }
     }
 

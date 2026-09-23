@@ -83,7 +83,7 @@ public final class DoorBlock {
 
         if (withFx) {
             World w = loc.getWorld();
-            w.spawnParticle(Particle.SMOKE_NORMAL, loc.clone().add(0.5, 0.8, 0.5), 10, 0.25, 0.20, 0.25, 0.0);
+            w.spawnParticle(Particle.SMOKE, loc.clone().add(0.5, 0.8, 0.5), 10, 0.25, 0.20, 0.25, 0.0);
             w.playSound(loc, Sound.BLOCK_IRON_TRAPDOOR_OPEN, 0.8f, 0.9f);
         }
     }

@@ -31,7 +31,7 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
-import me.Plugins.TLibs.TLibs;
+import net.tfminecraft.tlibs.TLibs;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -240,7 +240,7 @@ public final class ChestManager implements Listener {
             w.playSound(base, Sound.BLOCK_IRON_TRAPDOOR_OPEN, 0.9f, 0.85f);
             w.playSound(base, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.4f, 1.6f);
             w.spawnParticle(Particle.CLOUD, base, 18, 0.35, 0.25, 0.35, 0.0);
-            w.spawnParticle(Particle.CRIT_MAGIC, base, 12, 0.25, 0.20, 0.25, 0.0);
+            w.spawnParticle(Particle.ENCHANTED_HIT, base, 12, 0.25, 0.20, 0.25, 0.0);
 
             // Select entries and launch
             List<WeightedEntry> picks = pickWeightedWithoutReplacement(decoded.pool, decoded.rollsMin, decoded.rollsMax);
