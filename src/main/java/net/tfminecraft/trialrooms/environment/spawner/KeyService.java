@@ -48,9 +48,6 @@ class KeyService {
     private static final String KEY_COLOR_HEX = "#eaeaea";
 
     // --- Mob-key drop tuning ---
-    private static final double MOB_KEY_BASE_CHANCE = Cache.MOB_KEY_BASE_CHANCE;  // 2% base
-    private static final double MOB_KEY_CHANCE_PER_LEVEL = Cache.MOB_KEY_CHANCE_PER_LEVEL; // +0.15% per level
-    private static final double MOB_KEY_MAX_CHANCE = Cache.MOB_KEY_MAX_CHANCE;  // hard cap 15%
 
     enum Rarity {
         COMMON    ("#9e9e9e", "[Common]",    () -> Cache.commonScore),
@@ -296,11 +293,11 @@ class KeyService {
 
         double r = ThreadLocalRandom.current().nextDouble(total);
         double acc = 0.0;
-        for (int i = 0; i < tiers.length; i++) {
+        for (int i = 0; i < tiers.length - 1; i++) {
             acc += w[i];
-            if (r <= acc) return tiers[i];
+            if (r < acc) return tiers[i];
         }
-        return tiers[0];
+        return tiers[tiers.length - 1];
     }
 
 
@@ -356,10 +353,11 @@ class KeyService {
         if (table == null || table.isEmpty()) return out;
 
         List<LootTable.Entry> entries = table.getEntries();
-        if (entries.isEmpty()) return out;
 
         // 6 buckets: 0=BAD,1=COMMON,2=UNCOMMON,3=RARE,4=EPIC,5=LEGENDARY
-        record Cand(LootTable.Entry e, double w, int tierIdx) {}
+        record Cand(LootTable.Entry e, double w, double encodedWeight, int tierIdx) {}
+        double scale = 1.0;
+        for (LootTable.Entry e : entries) scale = Math.max(scale, e.baseWeight);
         List<Cand> cands = new ArrayList<>(entries.size());
 
         for (LootTable.Entry e : entries) {
@@ -379,8 +377,10 @@ class KeyService {
             double jitter = jitterFor(salt, e.type) * (1.0 + 0.25 * Math.abs(e.tier.score));
             double jitterMult = 1.0 + clamp(jitter, -JITTER_MAX, JITTER_MAX);
 
-            double w = Math.max(0.0, e.baseWeight * lvlMult * rarityMult * jitterMult);
-            if (w > 0) cands.add(new Cand(e, w, tierIdx));
+            // Normalize only selection weights; preserve original units on the encoded key.
+            double w = Math.max(0.0, (e.baseWeight / scale) * lvlMult * rarityMult * jitterMult);
+            double encodedWeight = e.baseWeight * lvlMult * rarityMult * jitterMult;
+            if (w > 0) cands.add(new Cand(e, w, encodedWeight, tierIdx));
         }
         if (cands.isEmpty()) return out;
 
@@ -389,22 +389,23 @@ class KeyService {
 
         // Select without replacement respecting caps
         for (int pick = 0; pick < maxPicks && !cands.isEmpty(); pick++) {
+            List<Cand> eligible = new ArrayList<>();
             double total = 0.0;
-            for (Cand c : cands) if (used[c.tierIdx] < tierMax[c.tierIdx]) total += c.w;
-            if (total <= 0.0) break;
-
+            for (Cand c : cands) {
+                if (used[c.tierIdx] < tierMax[c.tierIdx]) { eligible.add(c); total += c.w; }
+            }
+            if (eligible.isEmpty()) break;
             double r = ThreadLocalRandom.current().nextDouble(total);
             double acc = 0.0;
-            Cand chosen = null;
-            for (Cand c : cands) {
-                if (used[c.tierIdx] >= tierMax[c.tierIdx]) continue;
+            Cand chosen = eligible.getLast();
+            for (int i = 0; i < eligible.size() - 1; i++) {
+                Cand c = eligible.get(i);
                 acc += c.w;
-                if (r <= acc) { chosen = c; break; }
+                if (r < acc) { chosen = c; break; }
             }
-            if (chosen == null) break;
 
             used[chosen.tierIdx]++;
-            int wUnits = (int) Math.max(1, Math.round(chosen.w * 1000.0));
+            int wUnits = (int) Math.min(Integer.MAX_VALUE, Math.max(1, Math.round(chosen.encodedWeight * 1000.0)));
             LootTable.Entry e = chosen.e;
             out.add(new EncodedEntry(e.type, e.minAmount, e.maxAmount, wUnits));
             cands.remove(chosen);
@@ -416,20 +417,13 @@ class KeyService {
     private int[] tierMaxFor(Rarity rarity, int picks) {
         int big = 999; // effectively "no cap"
         // order: 0=BAD, 1=COMMON, 2=UNCOMMON, 3=RARE, 4=EPIC, 5=LEGENDARY
-        switch (rarity) {
-            case COMMON:
-                return new int[]{big, big, big, 1, 1, 0};
-            case UNCOMMON:
-                return new int[]{big, big, big, 2, 1, 0};
-            case RARE:
-                return new int[]{big, big, big, big, 2, 1};
-            case EPIC:
-                return new int[]{big, big, big, big, 3, 1};
-            case LEGENDARY:
-                return new int[]{big, big, big, big, 3, Math.min(2, Math.max(1, picks / 3))};
-            default:
-                return new int[]{big, big, big, 1, 1, 0}; // safe default
-        }
+        return switch (rarity) {
+            case COMMON -> new int[]{big, big, big, 1, 1, 0};
+            case UNCOMMON -> new int[]{big, big, big, 2, 1, 0};
+            case RARE -> new int[]{big, big, big, big, 2, 1};
+            case EPIC -> new int[]{big, big, big, big, 3, 1};
+            case LEGENDARY -> new int[]{big, big, big, big, 3, Math.min(2, Math.max(1, picks / 3))};
+        };
     }
 
 
@@ -455,7 +449,7 @@ class KeyService {
         if (enc.isEmpty()) return Collections.emptyList();
         List<String> lore = new ArrayList<>();
 
-        long total = 0; for (EncodedEntry e : enc) total += e.w; if (total <= 0) total = 1;
+        long total = 0; for (EncodedEntry e : enc) total += e.w;
         enc.sort((a,b) -> Integer.compare(b.w, a.w));
 
         for (EncodedEntry e : enc) {
@@ -479,11 +473,12 @@ class KeyService {
             ItemStack it = TLibs.getItemAPI().getCreator().getItemFromPath(path);
             if (it != null && it.getType() != Material.AIR) {
                 ItemMeta im = it.getItemMeta();
-                if (im != null && im.hasDisplayName()) return im.getDisplayName();
+                if (im.hasDisplayName()) return im.getDisplayName();
             }
         } catch (Exception ignored) {}
         String token = path == null ? "Item" : path.substring(path.lastIndexOf('.') + 1);
         token = token.replace('_', ' ');
+        if (token.isEmpty()) return "Item";
         return Character.toUpperCase(token.charAt(0)) + token.substring(1).toLowerCase();
     }
 
@@ -512,8 +507,8 @@ class KeyService {
     }
 
     private double mobKeyChanceForLevel(int lvl) {
-        double p = MOB_KEY_BASE_CHANCE + Math.max(0, lvl) * MOB_KEY_CHANCE_PER_LEVEL;
-        if (p > MOB_KEY_MAX_CHANCE) p = MOB_KEY_MAX_CHANCE;
+        double p = Cache.MOB_KEY_BASE_CHANCE + Math.max(0, lvl) * Cache.MOB_KEY_CHANCE_PER_LEVEL;
+        if (p > Cache.MOB_KEY_MAX_CHANCE) p = Cache.MOB_KEY_MAX_CHANCE;
         if (p < 0) p = 0;
         return p;
     }
@@ -526,7 +521,7 @@ class KeyService {
         if (mobTable == null || TableLoader.getByString(mobTable) == null) return;
 
         double chance = mobKeyChanceForLevel(spawner.getLevel());
-        if (ThreadLocalRandom.current().nextDouble() <= chance) {
+        if (ThreadLocalRandom.current().nextDouble() < chance) {
             dropMobKeyNow(at, mobTable);
         }
     }

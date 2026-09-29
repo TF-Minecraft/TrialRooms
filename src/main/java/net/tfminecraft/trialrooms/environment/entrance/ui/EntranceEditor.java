@@ -22,7 +22,7 @@ public final class EntranceEditor implements Listener {
     public enum Field { KEY, DESTINATION, EXIT }
     private record Pending(Player player, Entrance entrance, Field field) {}
 
-    private static final Map<UUID, Pending> PENDING = new HashMap<>();
+    private static final Map<UUID, Pending> PENDING = new java.util.concurrent.ConcurrentHashMap<>();
 
     public static void open(Player p, Entrance ent) {
         Inventory inv = Bukkit.createInventory(new Holder(ent), 27, ChatColor.DARK_AQUA + "Edit Entrance");
@@ -35,7 +35,7 @@ public final class EntranceEditor implements Listener {
         // filler
         ItemStack filler = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
         ItemMeta fm = filler.getItemMeta(); fm.setDisplayName(" "); filler.setItemMeta(fm);
-        for (int i = 0; i < inv.getSize(); i++) if (inv.getItem(i) == null) inv.setItem(i, filler);
+        for (int i = 0; i < inv.getSize(); i++) inv.setItem(i, filler);
 
         // re-set
         inv.setItem(10, info("Entrance", locText(e.getEntranceLoc())));
@@ -57,7 +57,7 @@ public final class EntranceEditor implements Listener {
         ItemStack it = new ItemStack(Material.BOOK);
         ItemMeta m = it.getItemMeta();
         m.setDisplayName(ChatColor.GOLD + title);
-        m.setLore(Collections.singletonList(ChatColor.YELLOW + (value == null ? "none" : value)));
+        m.setLore(Collections.singletonList(ChatColor.YELLOW + value));
         it.setItemMeta(m);
         return it;
     }
@@ -100,43 +100,37 @@ public final class EntranceEditor implements Listener {
         PENDING.put(p.getUniqueId(), new Pending(p, holder.entrance, field));
         p.closeInventory();
 
-        switch (field) {
-            case KEY -> {
-                p.sendMessage(ChatColor.GREEN + "Type the key item path (e.g. " + ChatColor.GOLD + "v.blaze_powder"
-                        + ChatColor.GREEN + ") in chat. Type " + ChatColor.RED + "cancel" + ChatColor.GREEN + " to abort.");
-            }
-            case DESTINATION -> {
-                p.sendMessage(ChatColor.GREEN + "Right-click any block within 32 blocks to set Destination. "
-                        + ChatColor.DARK_GRAY + "(Type 'cancel' to abort.)");
-            }
-            case EXIT -> {
-                p.sendMessage(ChatColor.GREEN + "Right-click a " + ChatColor.AQUA + "Lodestone " + ChatColor.GREEN +
-                        "within 32 blocks to set Exit. " + ChatColor.DARK_GRAY + "(Type 'cancel' to abort.)");
-            }
-        }
+        p.sendMessage(switch (field) {
+            case KEY -> ChatColor.GREEN + "Type the key item path (e.g. " + ChatColor.GOLD + "v.blaze_powder"
+                    + ChatColor.GREEN + ") in chat. Type " + ChatColor.RED + "cancel" + ChatColor.GREEN + " to abort.";
+            case DESTINATION -> ChatColor.GREEN + "Right-click any block within 32 blocks to set Destination. "
+                    + ChatColor.DARK_GRAY + "(Type 'cancel' to abort.)";
+            case EXIT -> ChatColor.GREEN + "Right-click a " + ChatColor.AQUA + "Lodestone " + ChatColor.GREEN +
+                    "within 32 blocks to set Exit. " + ChatColor.DARK_GRAY + "(Type 'cancel' to abort.)";
+        });
     }
 
     // ----- Setting KEY via chat -----
     @EventHandler(priority = EventPriority.LOWEST)
     public void onChat(AsyncPlayerChatEvent e) {
         Pending pen = PENDING.get(e.getPlayer().getUniqueId());
-        if (pen == null || pen.field != Field.KEY) return;
-
-        e.setCancelled(true);
+        if (pen == null) return;
         String msg = e.getMessage().trim();
-
-        if (msg.equalsIgnoreCase("cancel")) {
+        boolean cancel = msg.equalsIgnoreCase("cancel");
+        if (pen.field != Field.KEY && !cancel) return;
+        e.setCancelled(true);
+        Bukkit.getScheduler().runTask(TrialRooms.getInstance(), () -> {
+            if (PENDING.get(e.getPlayer().getUniqueId()) != pen) return;
             PENDING.remove(e.getPlayer().getUniqueId());
-            e.getPlayer().sendMessage(ChatColor.YELLOW + "Edit cancelled.");
-            Bukkit.getScheduler().runTask(TrialRooms.getInstance(), () -> open(e.getPlayer(), pen.entrance));
-            return;
-        }
-
-        // Set key path
-        pen.entrance.setKeyPath(msg);
-        PENDING.remove(e.getPlayer().getUniqueId());
-        e.getPlayer().sendMessage(ChatColor.GREEN + "Key set to " + ChatColor.GOLD + msg);
-        Bukkit.getScheduler().runTask(TrialRooms.getInstance(), () -> open(e.getPlayer(), pen.entrance));
+            if (cancel) {
+                e.getPlayer().sendMessage(ChatColor.YELLOW + "Edit cancelled.");
+            } else {
+                pen.entrance.setKeyPath(msg);
+                EntranceManager.get().edited(pen.entrance);
+                e.getPlayer().sendMessage(ChatColor.GREEN + "Key set to " + ChatColor.GOLD + msg);
+            }
+            open(e.getPlayer(), pen.entrance);
+        });
     }
 
     // ----- Setting DESTINATION / EXIT via right-click -----
@@ -147,7 +141,7 @@ public final class EntranceEditor implements Listener {
         if (e.getHand() != EquipmentSlot.HAND) return;
 
         Pending pen = PENDING.get(e.getPlayer().getUniqueId());
-        if (pen == null) return;
+        if (pen == null || pen.field == Field.KEY) return;
 
         // Only accept with edit wand
         if (!SpawnerManager.hasEditWand(e.getPlayer())) return;
@@ -168,7 +162,7 @@ public final class EntranceEditor implements Listener {
             // center-ish
             pen.entrance.setDestination(clicked.clone().add(0.5, 0.0, 0.5));
             e.getPlayer().sendMessage(ChatColor.GREEN + "Destination set.");
-        } else if (pen.field == Field.EXIT) {
+        } else {
             if (e.getClickedBlock().getType() != Material.LODESTONE) {
                 e.getPlayer().sendMessage(ChatColor.RED + "Exit must be a Lodestone.");
                 return;
@@ -177,6 +171,7 @@ public final class EntranceEditor implements Listener {
             e.getPlayer().sendMessage(ChatColor.GREEN + "Exit set.");
         }
 
+        EntranceManager.get().edited(pen.entrance);
         PENDING.remove(e.getPlayer().getUniqueId());
         Bukkit.getScheduler().runTask(TrialRooms.getInstance(), () -> open(e.getPlayer(), pen.entrance));
     }

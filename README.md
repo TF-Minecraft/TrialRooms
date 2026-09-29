@@ -32,6 +32,15 @@ Originally created by [Drefvelin](https://github.com/Drefvelin).
 
 Technical documentation is maintained in [TF-Minecraft/Docs](https://github.com/TF-Minecraft/Docs).
 
+## Tests and coverage
+
+Run `mvn clean verify` with Java 21 and the pinned plugin dependencies prepared by
+`.github/scripts/prepare-release.sh`. JUnit and MockBukkit test the plugin logic;
+Mockito isolates external plugin APIs and selected Bukkit entity boundaries.
+JaCoCo requires 100% production instruction, branch, and line coverage with no
+coverage exclusions. HTML and XML reports are written to `target/site/jacoco/`
+and uploaded by CI. These tests do not replace live Paper/MythicMobs integration checks.
+
 ## License
 
 Copyright (c) 2026 TF-Minecraft contributors.

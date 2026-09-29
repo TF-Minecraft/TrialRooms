@@ -60,6 +60,7 @@ public class ActiveSpawner {
     private boolean destroyed = false;
     private int enemiesAlive = 0;
     private int pendingSpawns = 0;
+    private long spawnGeneration;
 
     // Cooldown
     private int cooldownSeconds = 10;
@@ -88,7 +89,8 @@ public class ActiveSpawner {
     }
     public Location getChestLocation() {
         // Optional: you can track last bound location if you want to display it in the editor
-        return hasChestBound() ? loc : null;// or return from a stored field you set when binding
+        LootChest chest = ChestManager.get(this);
+        return chest == null ? null : chest.getLocation();
     }
     public boolean hasChestBound() {
         // Optional: track a stored boolean if you want
@@ -175,9 +177,8 @@ public class ActiveSpawner {
         this.loaded = false;
         removeHolograms(plugin);
         killActiveEnemiesSilently(); // << add this
-        if(this.state.equals(State.ACTIVE)) {
-            cooldownRemaining = cooldownSeconds;
-            this.state = State.COOLDOWN;
+        if (state == State.ACTIVE || state == State.UNLOCKING) {
+            beginCooldownFromUnlock();
         }
         // No block change needed here; we'll fix state on next load
     }
@@ -201,21 +202,19 @@ public class ActiveSpawner {
             if (cooldownRemaining > 0) {
                 cooldownRemaining--;
                 refreshStatusHolograms();
-                if (cooldownRemaining == 0) setState(State.IDLE);
             }
+            if (cooldownRemaining == 0) setState(State.IDLE);
             return;
         }
         if (state == State.UNLOCKING) return;
 
         if(state == State.ACTIVE && !hasEligiblePlayerNearby()) {
-            cooldownRemaining = cooldownSeconds;
-            this.state = State.COOLDOWN;
             killActiveEnemiesSilently();
-            refreshStatusHolograms();
+            beginCooldownFromUnlock();
         }
 
         for(DoorBlock b : doors) {
-            b.enforceForState(state == State.ACTIVE || state == State.UNLOCKING ? true : false);
+            b.enforceForState(state == State.ACTIVE);
         }
 
         if (state == State.IDLE && hasEligiblePlayerInRange()) {
@@ -223,7 +222,6 @@ public class ActiveSpawner {
             double r2 = (double) activateRadius * (double) activateRadius;
             for (org.bukkit.entity.Player pl : c.getWorld().getPlayers()) {
                 if ((pl.getGameMode() == org.bukkit.GameMode.SURVIVAL || pl.getGameMode() == org.bukkit.GameMode.ADVENTURE)
-                        && pl.getWorld().equals(c.getWorld())
                         && pl.getLocation().distanceSquared(c) <= r2) {
                     PlayerManager.get().ensureInside(pl);
                 }
@@ -237,8 +235,8 @@ public class ActiveSpawner {
     public void tick() {
         if (!loaded || loc == null || loc.getWorld() == null) return;
 
-        if(statusHologram != null) statusHologram.tick();
-        if(levelHologram != null) levelHologram.tick();
+        statusHologram.tick();
+        levelHologram.tick();
 
         if (state == State.IDLE || state == State.ACTIVE) {
             particles.animateIdleActiveRing();
@@ -256,6 +254,7 @@ public class ActiveSpawner {
         if (targets.isEmpty()) return;
 
         setState(State.ACTIVE);
+        long generation = ++spawnGeneration;
         pendingSpawns = targets.size();
         refreshStatusHolograms();
 
@@ -266,9 +265,9 @@ public class ActiveSpawner {
             cumulative += rng.nextLong(20L, 61L); // 1–3s
 
             Bukkit.getScheduler().runTaskLater(TrialRooms.getInstance(), () -> {
-                if (!loaded || destroyed || state != State.ACTIVE) return;
+                if (!loaded || destroyed || state != State.ACTIVE || generation != spawnGeneration) return;
                 World w = target.getWorld();
-                if (w == null) return;
+                if (w == null) { failedSpawn(); return; }
 
                 particles.traceFromOrbTo(target);
 
@@ -279,7 +278,7 @@ public class ActiveSpawner {
                 w.playSound(target, Sound.ITEM_FIRECHARGE_USE, 0.6f, 1.6f);
 
                 MythicMob mm = getMythicMob();
-                if (mm == null) return;
+                if (mm == null) { failedSpawn(); return; }
 
                 ActiveMob am = mm.spawn(BukkitAdapter.adapt(target), 1);
                 LivingEntity ent = (LivingEntity) am.getEntity().getBukkitEntity();
@@ -317,6 +316,12 @@ public class ActiveSpawner {
                 refreshStatusHolograms();
             }, cumulative);
         }
+    }
+
+    private void failedSpawn() {
+        pendingSpawns = Math.max(0, pendingSpawns - 1);
+        refreshStatusHolograms();
+        if (enemiesLeft() == 0) beginCooldownFromUnlock();
     }
 
     // ---------- Enemies ----------
@@ -401,7 +406,7 @@ public class ActiveSpawner {
     }
 
     public void maybeDropMobKey(Location at) {
-        if (keyService != null) keyService.maybeDropMobKeyAt(at);
+        keyService.maybeDropMobKeyAt(at);
     }
 
     private boolean hasEligiblePlayerInRange() {
@@ -438,7 +443,7 @@ public class ActiveSpawner {
         Location c = this.loc;
         return c.getWorld().getPlayers().stream()
                 .filter(p -> p.getGameMode() == GameMode.SURVIVAL || p.getGameMode() == GameMode.ADVENTURE)
-                .anyMatch(p -> p.getWorld().equals(c.getWorld()) && p.getLocation().distanceSquared(c) <= r2);
+                .anyMatch(p -> p.getLocation().distanceSquared(c) <= r2);
     }
 
     public String getMobName() {
@@ -527,6 +532,7 @@ public class ActiveSpawner {
 
     // --- kill all spawned mobs for this spawner, silently (no drops/keys/unlock) ---
     private void killActiveEnemiesSilently() {
+        spawnGeneration++;
         if (loc == null || loc.getWorld() == null) return;
         World w = loc.getWorld();
 

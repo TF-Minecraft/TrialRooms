@@ -58,22 +58,15 @@ public class TrialRooms extends JavaPlugin{
 
     @Override
     public void onDisable() {
+        if (spawnerManager == null) return;
         // Dump to disk
         Database.saveSpawners(spawnerManager.allActiveSpawners()); // implement: Collection<ActiveSpawner>
         Database.saveChests(ChestManager.allChests());   
         EntranceManager.get().saveAllNow();
 
-        if (spawnerManager != null) {
-            spawnerManager.removeAllHolograms();
-        }
-        if (ChestManager.get() != null) {
-            ChestManager.get().removeAllHolograms();
-        }
-        if (EntranceManager.get() != null) {
-            EntranceManager.get().removeAllHolograms();
-            // optional if you added it:
-            // EntranceManager.get().shutdown();
-        }
+        spawnerManager.removeAllHolograms();
+        ChestManager.get().removeAllHolograms();
+        EntranceManager.get().removeAllHolograms();
         getLogger().info("TrialRooms Plugin Disabled!");
     }
 

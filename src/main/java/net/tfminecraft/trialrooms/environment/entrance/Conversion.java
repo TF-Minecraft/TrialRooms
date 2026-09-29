@@ -18,7 +18,10 @@ public class Conversion {
      */
     public Conversion(String s) {
 
-        String[] parts = s.split("\\s+");
+        if (s == null) throw new IllegalArgumentException("Conversion cannot be null");
+        String line = s.split("#", 2)[0].trim();
+        if (line.isEmpty()) throw new IllegalArgumentException("Conversion cannot be empty");
+        String[] parts = line.split("\\s+");
 
         this.item = parts[0];
 
@@ -30,6 +33,9 @@ public class Conversion {
             }
         } else {
             this.amount = 1.0; // default if not provided
+        }
+        if (!Double.isFinite(amount) || amount < 0) {
+            throw new IllegalArgumentException("Conversion amount must be finite and nonnegative");
         }
     }
 
@@ -50,4 +56,3 @@ public class Conversion {
         return item + " " + amount;
     }
 }
-

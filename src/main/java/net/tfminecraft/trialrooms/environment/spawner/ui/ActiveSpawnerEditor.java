@@ -52,7 +52,7 @@ public class ActiveSpawnerEditor implements Listener {
         inv.clear();
         // Cosmetic separators
         for (int i = 0; i < inv.getSize(); i++) {
-            if (inv.getItem(i) == null) inv.setItem(i, filler());
+            inv.setItem(i, filler());
         }
         // Re-set our items (ensure they’re not overwritten by filler)
         inv.setItem(10, info("ID", s.getId()));
@@ -169,31 +169,22 @@ public class ActiveSpawnerEditor implements Listener {
         player.sendMessage(ChatColor.GREEN + "Type a new value for " + ChatColor.AQUA + fieldName(field)
                 + ChatColor.GREEN + " in chat. Type " + ChatColor.RED + "cancel" + ChatColor.GREEN + " to abort.");
 
-        // Provide tiny hints
-        switch (field) {
+        // The enum is exhaustive; each edit mode has one prompt.
+        String hint = switch (field) {
             case AMOUNT, LEVEL, SPAWN_RADIUS, ACTIVATE_RADIUS, COOLDOWN ->
-                player.sendMessage(ChatColor.DARK_GRAY + "(integer expected)");
-            case MOB ->
-                    player.sendMessage(ChatColor.DARK_GRAY + "(string; e.g. ZOMBIE, SKELETON — your logic)");
-            case LOOT_TABLE ->
-                player.sendMessage(ChatColor.DARK_GRAY + "(string; existing table id — type 'null' or 'none' to clear)");
-            case CHEST -> {
-                PENDING.put(player.getUniqueId(), new PendingEdit(holder.spawner, field));
-                player.closeInventory();
-                player.sendMessage(ChatColor.GREEN + "Right-click a chest block with your edit wand to bind it.");
-                player.sendMessage(ChatColor.DARK_GRAY + "(Type " + ChatColor.RED + "cancel" + ChatColor.DARK_GRAY + " in chat to abort.)");
-                return;
-            }
-            case DOOR_BLOCKS -> {
-                PENDING.put(player.getUniqueId(), new PendingEdit(holder.spawner, field));
-                player.closeInventory();
-                player.sendMessage(ChatColor.GREEN + "Right-click a block (≤32 blocks away) to add a Door Block, "
-                        + "or type " + ChatColor.RED + "remove" + ChatColor.GREEN + " to remove the latest.");
-                player.sendMessage(ChatColor.DARK_GRAY + "(Block must not be the spawner block or a chest. Type 'cancel' to abort.)");
-                return;
-            }
-            case MOB_LOOT_TABLE ->
-                player.sendMessage(ChatColor.DARK_GRAY + "(string; loot table id used for MOB keys — 'null' to disable)");
+                ChatColor.DARK_GRAY + "(integer expected)";
+            case MOB -> ChatColor.DARK_GRAY + "(string; e.g. ZOMBIE, SKELETON — your logic)";
+            case LOOT_TABLE -> ChatColor.DARK_GRAY + "(string; existing table id — type 'null' or 'none' to clear)";
+            case MOB_LOOT_TABLE -> ChatColor.DARK_GRAY + "(string; loot table id used for MOB keys — 'null' to disable)";
+            case CHEST -> ChatColor.GREEN + "Right-click a chest block with your edit wand to bind it.";
+            case DOOR_BLOCKS -> ChatColor.GREEN + "Right-click a block (≤32 blocks away) to add a Door Block, "
+                    + "or type " + ChatColor.RED + "remove" + ChatColor.GREEN + " to remove the latest.";
+        };
+        player.sendMessage(hint);
+        if (field == Field.CHEST) {
+            player.sendMessage(ChatColor.DARK_GRAY + "(Type " + ChatColor.RED + "cancel" + ChatColor.DARK_GRAY + " in chat to abort.)");
+        } else if (field == Field.DOOR_BLOCKS) {
+            player.sendMessage(ChatColor.DARK_GRAY + "(Block must not be the spawner block or a chest. Type 'cancel' to abort.)");
         }
     }
 
@@ -320,12 +311,6 @@ public class ActiveSpawnerEditor implements Listener {
                     Bukkit.getScheduler().runTask(TrialRooms.getInstance(), () -> openEditor(player, pending.spawner()));
                     return;
                 }
-                if (msg.equalsIgnoreCase("cancel")) {
-                    PENDING.remove(player.getUniqueId());
-                    player.sendMessage(ChatColor.YELLOW + "Edit cancelled.");
-                    Bukkit.getScheduler().runTask(TrialRooms.getInstance(), () -> openEditor(player, pending.spawner()));
-                    return;
-                }
                 // Any other typed input is ignored for DOOR_BLOCKS; user must right-click a block.
                 player.sendMessage(ChatColor.RED + "Right-click a block to add a Door Block, or type 'remove'/'cancel'.");
                 return;
@@ -356,56 +341,62 @@ public class ActiveSpawnerEditor implements Listener {
 
     private static boolean applyEdit(Player player, ActiveSpawner s, Field field, String raw) {
         try {
-            switch (field) {
+            boolean updated = switch (field) {
                 case MOB -> {
                     String val = raw.isEmpty() ? null : raw;
                     s.setMob(val);
+                    yield true;
                 }
                 case AMOUNT -> {
                     int v = Integer.parseInt(raw);
                     if (v < 0) throw new IllegalArgumentException("Amount must be >= 0");
                     s.setAmount(v);
+                    yield true;
                 }
                 case LEVEL -> {
                     int v = Integer.parseInt(raw);
                     if (v < 1) throw new IllegalArgumentException("Level must be >= 1");
                     s.setLevel(v);
+                    yield true;
                 }
                 case SPAWN_RADIUS -> {
                     int v = Integer.parseInt(raw);
                     if (v < 0) throw new IllegalArgumentException("Spawn radius must be >= 0");
                     s.setSpawnRadius(v);
+                    yield true;
                 }
                 case ACTIVATE_RADIUS -> {
                     int v = Integer.parseInt(raw);
                     if (v < 0) throw new IllegalArgumentException("Activate radius must be >= 0");
                     s.setActivateRadius(v);
+                    yield true;
                 }
                 case COOLDOWN -> {
                     int v = Integer.parseInt(raw);
                     if (v < 0) throw new IllegalArgumentException("Cooldown must be >= 0");
                     s.setCooldownSeconds(v);
+                    yield true;
                 }
                 case CHEST -> {
-                    break;
+                    yield true;
                 }
                 case DOOR_BLOCKS -> {
-                    break;
+                    yield true;
                 }
                 case MOB_LOOT_TABLE -> {
                     String rawId = raw.trim();
                     if (rawId.equalsIgnoreCase("null") || rawId.equalsIgnoreCase("none") || rawId.isEmpty()) {
                         s.setMobLootTable(null); // disabling mob keys
-                        break;
+                        yield true;
                     }
 
-                    if (TableLoader.getByString(rawId) != null) { s.setMobLootTable(rawId); break; }
+                    if (TableLoader.getByString(rawId) != null) { s.setMobLootTable(rawId); yield true; }
 
                     String resolved = null;
                     for (String key : TableLoader.get().keySet()) {
                         if (key.equalsIgnoreCase(rawId)) { resolved = key; break; }
                     }
-                    if (resolved != null) { s.setMobLootTable(resolved); break; }
+                    if (resolved != null) { s.setMobLootTable(resolved); yield true; }
 
                     player.sendMessage(ChatColor.RED + "Unknown loot table: " + rawId);
                     StringBuilder sb = new StringBuilder(ChatColor.GRAY + "Available: " + ChatColor.WHITE);
@@ -416,19 +407,19 @@ public class ActiveSpawnerEditor implements Listener {
                         if (shown >= 10) { sb.append(ChatColor.GRAY).append(", ..."); break; }
                     }
                     player.sendMessage(sb.toString());
-                    return false;
+                    yield false;
                 }
                 case LOOT_TABLE -> {
                     String rawId = raw.trim();
                     if (rawId.equalsIgnoreCase("null") || rawId.equalsIgnoreCase("none") || rawId.isEmpty()) {
                         s.setLootTable(null);
-                        break;
+                        yield true;
                     }
 
                     // Exact match
                     if (TableLoader.getByString(rawId) != null) {
                         s.setLootTable(rawId);
-                        break;
+                        yield true;
                     }
 
                     // Case-insensitive resolve
@@ -438,7 +429,7 @@ public class ActiveSpawnerEditor implements Listener {
                     }
                     if (resolved != null) {
                         s.setLootTable(resolved);
-                        break;
+                        yield true;
                     }
 
                     // Not found -> show suggestions
@@ -451,9 +442,10 @@ public class ActiveSpawnerEditor implements Listener {
                         if (shown >= 10) { sb.append(ChatColor.GRAY).append(", ..."); break; }
                     }
                     player.sendMessage(sb.toString());
-                    return false;
+                    yield false;
                 }
-            }
+            };
+            if (!updated) return false;
             s.refreshStatusHolograms();
             return true;
         } catch (NumberFormatException ex) {
