@@ -139,9 +139,7 @@ public final class DoorBlock {
     }
     private static Material safeMaterial(String s) {
         if (s == null || s.isBlank()) return null;
-        Material m = Material.matchMaterial(s);
-        if (m == null) try { m = Material.valueOf(s.toUpperCase(Locale.ROOT)); } catch (Exception ignored) {}
-        return m;
+        return Material.matchMaterial(s);
     }
     private static BlockFace safeFace(String s) {
         if (s == null || s.isBlank()) return null;

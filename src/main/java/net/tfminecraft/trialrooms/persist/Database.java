@@ -25,11 +25,15 @@ public final class Database {
     private static File CHESTS_DIR;
 
     private static Gson GSON;
+    private static final Set<File> unreadableFiles = new HashSet<>();
+    private static final Map<Object, File> sourceFiles = new IdentityHashMap<>();
 
     private Database() {}
 
     // ---------------------- Init ----------------------
     public static void init(TrialRooms plugin) {
+        unreadableFiles.clear();
+        sourceFiles.clear();
         DATA_DIR     = new File(plugin.getDataFolder(), "data");
         SPAWNERS_DIR = new File(DATA_DIR, "spawners");
         CHESTS_DIR   = new File(DATA_DIR, "chests");
@@ -101,23 +105,43 @@ public final class Database {
         for (File f : files) {
             try (Reader r = Files.newBufferedReader(f.toPath(), StandardCharsets.UTF_8)) {
                 T obj = GSON.fromJson(r, type);
-                if (obj != null) out.add(obj);
-            } catch (Exception ignored) {}
+                if (obj != null) { out.add(obj); sourceFiles.put(obj, f); }
+                else unreadableFiles.add(f);
+            } catch (Exception ignored) { unreadableFiles.add(f); }
         }
         return out;
     }
 
     private static void writeJson(File file, Object data) {
+        if (!preserveUnreadable(file)) return;
         try (Writer w = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
             GSON.toJson(data, w);
         } catch (Exception ignored) {}
+    }
+
+    /** Preserve source bytes when a valid DTO cannot be restored (for example, a missing world). */
+    public static void retainRecord(Object record) {
+        File file = sourceFiles.get(record);
+        if (file != null) unreadableFiles.add(file);
+    }
+
+    private static boolean preserveUnreadable(File file) {
+        if (!unreadableFiles.contains(file)) return true;
+        try {
+            Files.move(file.toPath(), file.toPath().resolveSibling(file.getName() + ".rejected-" + UUID.randomUUID()));
+            unreadableFiles.remove(file);
+            return true;
+        } catch (IOException ex) {
+            TrialRooms.getInstance().getLogger().warning("Cannot preserve unreadable data " + file.getName() + ": " + ex.getMessage());
+            return false;
+        }
     }
 
     private static void pruneOthers(File dir, Set<String> keepFilenames) {
         File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
         if (files == null) return;
         for (File f : files) {
-            if (!keepFilenames.contains(f.getName())) {
+            if (!keepFilenames.contains(f.getName()) && !unreadableFiles.contains(f)) {
                 try { Files.deleteIfExists(f.toPath()); } catch (IOException ignored) {}
             }
         }
@@ -278,20 +302,8 @@ public final class Database {
             r.id = c.getId().toString();
             r.loc = SimpleLocation.of(c.getLocation());
 
-            // We don’t have direct accessors for spawner UUID / facing in your snippet,
-            // so expose them in LootChest (getSpawnerUUID(), getFacing()) or fill here if available.
             r.spawnerUUID = (c.getSpawner() != null) ? c.getSpawner().getUUID() : null;
-
-            // If you can, add a getter in LootChest: getFacing() returns BlockFace
-            try {
-                // reflection-less if you add `public BlockFace getFacing()`
-                java.lang.reflect.Field f = LootChest.class.getDeclaredField("facing");
-                f.setAccessible(true);
-                BlockFace bf = (BlockFace) f.get(c);
-                r.facing = (bf != null ? bf.name() : BlockFace.NORTH.name());
-            } catch (Throwable ex) {
-                r.facing = BlockFace.NORTH.name();
-            }
+            r.facing = c.getFacing().name();
             return r;
         }
     }
@@ -346,8 +358,9 @@ public final class Database {
         for (File f : files) {
             try (Reader r = new BufferedReader(new FileReader(f, StandardCharsets.UTF_8))) {
                 EntranceRecord rec = gson.fromJson(r, EntranceRecord.class);
-                if (rec != null && rec.entrance != null) out.add(rec);
-            } catch (Exception ignored) {}
+                if (rec != null && rec.entrance != null) { out.add(rec); sourceFiles.put(rec, f); }
+                else unreadableFiles.add(f);
+            } catch (Exception ignored) { unreadableFiles.add(f); }
         }
         return out;
     }
@@ -360,6 +373,7 @@ public final class Database {
         for (Entrance e : entrances) {
             File f = fileForEntrance(plugin, e.getEntranceLoc());
             EntranceRecord rec = e.toRecord();
+            if (!preserveUnreadable(f)) continue;
             try (Writer w = new BufferedWriter(new FileWriter(f, StandardCharsets.UTF_8))) {
                 gson.toJson(rec, w);
             } catch (Exception ex) {
@@ -371,12 +385,7 @@ public final class Database {
         Set<String> keep = entrances.stream()
                 .map(en -> fileForEntrance(plugin, en.getEntranceLoc()).getName())
                 .collect(Collectors.toSet());
-        File[] files = dir.listFiles((d, n) -> n.endsWith(".json"));
-        if (files != null) {
-            for (File f : files) {
-                if (!keep.contains(f.getName())) try { f.delete(); } catch (Exception ignored) {}
-            }
-        }
+        pruneOthers(dir, keep);
     }
 
 }

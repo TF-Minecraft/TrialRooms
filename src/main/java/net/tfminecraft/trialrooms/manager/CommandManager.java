@@ -26,9 +26,14 @@ public class CommandManager implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        if (args.length == 0) {
+            player.sendMessage("§cUsage: /tr resetcooldowns");
+            return true;
+        }
         if(args[0].equalsIgnoreCase("resetcooldowns")) {
             SpawnerManager.resetCooldowns();
             player.sendMessage("§aReset all cooldowns");
+            return true;
         }
 
         player.sendMessage("§cUnknown subcommand.");

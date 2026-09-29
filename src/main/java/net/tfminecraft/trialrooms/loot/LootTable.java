@@ -30,7 +30,12 @@ public final class LootTable {
             if (s == null) return COMMON;
             String t = s.trim().toUpperCase(Locale.ROOT);
             if (t.matches("\\d+")) {
-                int n = Integer.parseInt(t);
+                int n;
+                try {
+                    n = Integer.parseInt(t);
+                } catch (NumberFormatException ex) {
+                    return LEGENDARY;
+                }
                 return switch (Math.max(1, Math.min(5, n))) {
                     case 1 -> COMMON;
                     case 2 -> UNCOMMON;
@@ -68,7 +73,7 @@ public final class LootTable {
 
         public int rollAmount(ThreadLocalRandom rng) {
             if (minAmount >= maxAmount) return Math.max(0, minAmount);
-            return rng.nextInt(minAmount, maxAmount + 1);
+            return (int) rng.nextLong(minAmount, (long) maxAmount + 1);
         }
 
         @Override
@@ -90,7 +95,7 @@ public final class LootTable {
 
     public LootTable(String name, List<String> lines, double biasPerLevel) {
         this.name = name;
-        this.biasPerLevel = biasPerLevel;
+        this.biasPerLevel = Double.isFinite(biasPerLevel) ? biasPerLevel : 0.0;
         this.entries = parseLines(lines);
     }
 
@@ -102,19 +107,20 @@ public final class LootTable {
     /** Weighted random pick of ONE entry given a spawner level. */
     public Entry pickOne(int level, ThreadLocalRandom rng) {
         if (entries.isEmpty()) return null;
+        double scale = entries.stream().mapToDouble(e -> e.baseWeight).max().orElseThrow();
+        if (scale <= 0.0) return null;
         double total = 0.0;
         double[] weights = new double[entries.size()];
         for (int i = 0; i < entries.size(); i++) {
-            double w = adjustedWeight(entries.get(i), level);
+            double w = adjustedWeight(entries.get(i), level, scale);
             weights[i] = w;
             total += w;
         }
-        if (total <= 0.0) return null;
         double r = rng.nextDouble() * total;
         double acc = 0.0;
-        for (int i = 0; i < entries.size(); i++) {
+        for (int i = 0; i < entries.size() - 1; i++) {
             acc += weights[i];
-            if (r <= acc) return entries.get(i);
+            if (r < acc) return entries.get(i);
         }
         return entries.get(entries.size() - 1); // fallback
     }
@@ -181,6 +187,10 @@ public final class LootTable {
             Bukkit.getLogger().warning("[LootTable:" + name + "] Bad weight: " + line);
             return null;
         }
+        if (!Double.isFinite(weight)) {
+            Bukkit.getLogger().warning("[LootTable:" + name + "] Nonfinite weight: " + line);
+            return null;
+        }
 
         LootTable.Tier tier = (parts.length >= 4) ? LootTable.Tier.parse(parts[3]) : LootTable.Tier.COMMON;
 
@@ -192,11 +202,11 @@ public final class LootTable {
         return (i >= 0) ? s.substring(0, i).trim() : s;
     }
 
-    private double adjustedWeight(Entry e, int level) {
+    private double adjustedWeight(Entry e, int level, double scale) {
         // linear bias by level and tier score, clamped to sensible range
-        double mult = 1.0 + biasPerLevel * Math.max(0, level) * e.tier.score;
+        double mult = 1.0 + biasPerLevel * (Math.max(0, level) * (double) e.tier.score);
         mult = Math.max(0.05, Math.min(mult, 10.0));
-        return e.baseWeight * mult;
+        return (e.baseWeight / scale) * mult;
     }
 
     /** Min–max draws for a given key rarity (COMMON..LEGENDARY). */
@@ -213,13 +223,13 @@ public final class LootTable {
         // parse drops
         List<String> drops = section.getStringList("drops");
         // fallback for legacy (flat list of lines directly under table)
-        if (drops == null || drops.isEmpty()) drops = section.getStringList(""); // often empty, harmless
+        if (drops.isEmpty()) drops = section.getStringList(""); // often empty, harmless
 
         LootTable lt = new LootTable(name, drops, biasPerLevel);
 
         // parse amounts
         List<String> amounts = section.getStringList("amounts");
-        if (amounts != null) lt.parseAmounts(amounts);
+        lt.parseAmounts(amounts);
 
         return lt;
     }

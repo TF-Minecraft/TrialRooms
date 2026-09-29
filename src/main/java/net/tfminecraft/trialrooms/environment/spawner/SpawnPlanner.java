@@ -14,6 +14,7 @@ final class SpawnPlanner {
     private SpawnPlanner() {}
 
     static List<Location> findSpawnLocations(ActiveSpawner s, int max) {
+        if (max <= 0) return List.of();
         List<Location> results = new ArrayList<>(max);
         Location loc = s.getLoc();
         if (loc == null) return results;

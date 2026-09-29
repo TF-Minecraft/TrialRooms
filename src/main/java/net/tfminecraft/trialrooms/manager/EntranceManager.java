@@ -77,7 +77,7 @@ public final class EntranceManager implements Listener {
                 if (p.getLocation().distanceSquared(center) > r2) continue;
 
                 Location entrance = ent.getEntranceLoc();
-                if (entrance == null || entrance.getWorld() == null) continue;
+                if (entrance.getWorld() == null) continue;
 
                 playWarpFx(p.getLocation());
                 p.teleport(entrance.clone().add(0.5, 1.0, 0.5));
@@ -134,7 +134,7 @@ public final class EntranceManager implements Listener {
 
     // when registering or removing an entrance
     public Entrance registerOrGet(Location lodestoneBlockLoc) {
-        Location key = Entrance.normalizeBlock(lodestoneBlockLoc);
+        Location key = Objects.requireNonNull(Entrance.normalizeBlock(lodestoneBlockLoc), "entrance location");
         Entrance ent = entrances.computeIfAbsent(key, k -> {
             Entrance ne = new Entrance(k);
             markDirty();
@@ -218,6 +218,7 @@ public final class EntranceManager implements Listener {
     // ---------- Using the Entrance (with key) ----------
     @EventHandler(priority = EventPriority.NORMAL)
     public void onUseEntranceWithKey(PlayerInteractEvent e) {
+        if (e.getHand() != EquipmentSlot.HAND) return;
         // Player right-clicks (air or block) near an entrance (≤ 1 block)
         if (SpawnerManager.hasEditWand(e.getPlayer())) return; // ignore when editing
 
@@ -293,7 +294,7 @@ public final class EntranceManager implements Listener {
         Entrance best = null;
         double bestD2 = Double.MAX_VALUE;
         for (Entrance e : entrances.values()) {
-            if (e.getEntranceLoc() == null || !loc.getWorld().equals(e.getEntranceLoc().getWorld())) continue;
+            if (!loc.getWorld().equals(e.getEntranceLoc().getWorld())) continue;
             double d2 = loc.distanceSquared(e.getEntranceLoc().clone().add(0.5, 0, 0.5));
             if (d2 <= r2 && d2 < bestD2) { best = e; bestD2 = d2; }
         }
@@ -325,6 +326,7 @@ public final class EntranceManager implements Listener {
 
     @EventHandler
     public void onBreakEntranceBits(org.bukkit.event.block.BlockBreakEvent e) {
+        if (e.isCancelled()) return;
         Block b = e.getBlock();
         Location broken = Entrance.normalizeBlock(b.getLocation());
         Player p = e.getPlayer();
@@ -333,6 +335,7 @@ public final class EntranceManager implements Listener {
         Entrance ent = entrances.remove(broken);
         if (ent != null) {
             try { ent.removeHolograms(TrialRooms.getInstance()); } catch (Exception ignored) {}
+            markDirty();
             p.sendMessage(ChatColor.YELLOW + "Entrance removed.");
             return;
         }
@@ -342,6 +345,7 @@ public final class EntranceManager implements Listener {
             // Exit?
             if (other.getExitLoc() != null && broken.equals(other.getExitLoc())) {
                 other.setExitLoc(null);
+                markDirty();
                 try { other.spawnHolograms(TrialRooms.getInstance()); } catch (Exception ignored) {} // refresh text
                 p.sendMessage(ChatColor.YELLOW + "Exit cleared for that entrance.");
                 return;
@@ -351,6 +355,7 @@ public final class EntranceManager implements Listener {
                 Location destBlock = Entrance.normalizeBlock(other.getDestination());
                 if (broken.equals(destBlock)) {
                     other.setDestination(null);
+                    markDirty();
                     try { other.spawnHolograms(TrialRooms.getInstance()); } catch (Exception ignored) {}
                     p.sendMessage(ChatColor.YELLOW + "Destination cleared for that entrance.");
                     return;
@@ -443,14 +448,13 @@ public final class EntranceManager implements Listener {
         List<Database.EntranceRecord> recs = Database.loadEntrances(TrialRooms.getInstance(), gson);
         for (Database.EntranceRecord r : recs) {
             Entrance e = Entrance.fromRecord(r);
-            if (e == null) continue;
+            if (e == null) { Database.retainRecord(r); continue; }
             Location key = Entrance.normalizeBlock(e.getEntranceLoc());
             entrances.put(key, e);
 
             // spawn holo immediately if chunk is loaded
             Location loc = e.getEntranceLoc();
-            if (loc.getWorld() != null &&
-                loc.getWorld().isChunkLoaded(loc.getBlockX() >> 4, loc.getBlockZ() >> 4)) {
+            if (loc.getWorld().isChunkLoaded(loc.getBlockX() >> 4, loc.getBlockZ() >> 4)) {
                 e.spawnHolograms(TrialRooms.getInstance());
             }
         }

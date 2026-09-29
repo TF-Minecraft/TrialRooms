@@ -108,7 +108,7 @@ public final class ChestManager implements Listener {
                 c.setDesiredVisible(true);
                 // a short flourish before appearing
                 Bukkit.getScheduler().runTaskLater(TrialRooms.getInstance(),
-                        () -> { if (c.isInLoadedChunk()) c.show(true); }, 20L);
+                        () -> { if (chests.get(c.getLocation()) == c && c.getDesiredVisible() && c.isInLoadedChunk()) c.show(true); }, 20L);
             }
         }
     }
@@ -155,6 +155,7 @@ public final class ChestManager implements Listener {
 
     @EventHandler
     public void chestBreak(BlockBreakEvent e) {
+        if (e.isCancelled()) return;
         Player p = e.getPlayer();
         Location loc = e.getBlock().getLocation();
         if(!chests.containsKey(loc)) return;
@@ -220,7 +221,7 @@ public final class ChestManager implements Listener {
         e.setCancelled(true);
 
         DecodedKey decoded = decodeKey(hand);
-        if (decoded == null || decoded.pool.isEmpty()) {
+        if (decoded == null) {
             e.getPlayer().sendMessage(ChatColor.RED + "That key seems inert.");
             return;
         }
@@ -248,7 +249,7 @@ public final class ChestManager implements Listener {
                 int amt = rollAmount(we.min, we.max);
                 if (amt <= 0) continue;
                 ItemStack it = itemFromPath(we.type, amt);
-                if (it == null || it.getType() == Material.AIR) continue;
+                if (it == null) continue;
 
                 Item ent = w.dropItem(base.clone().add(0, 0.3, 0), it);
                 ent.setCustomName(entityNameFor(it));
@@ -325,23 +326,23 @@ public final class ChestManager implements Listener {
     }
 
     private List<WeightedEntry> pickWeightedWithoutReplacement(List<WeightedEntry> pool, int rollsMin, int rollsMax) {
-        int rolls = (rollsMin == rollsMax) ? rollsMin : ThreadLocalRandom.current().nextInt(rollsMin, rollsMax + 1);
+        int rolls = (rollsMin == rollsMax) ? rollsMin : (int) ThreadLocalRandom.current().nextLong(rollsMin, (long) rollsMax + 1);
         rolls = Math.max(0, Math.min(rolls, pool.size()));
 
         List<WeightedEntry> src = new ArrayList<>(pool);
         List<WeightedEntry> out = new ArrayList<>(rolls);
 
-        for (int i = 0; i < rolls && !src.isEmpty(); i++) {
+        for (int i = 0; i < rolls; i++) {
             long total = 0;
             for (WeightedEntry e : src) total += Math.max(1, e.w);
             long r = ThreadLocalRandom.current().nextLong(total);
             long acc = 0;
-            WeightedEntry pick = null;
-            for (WeightedEntry e : src) {
+            WeightedEntry pick = src.getLast();
+            for (int j = 0; j < src.size() - 1; j++) {
+                WeightedEntry e = src.get(j);
                 acc += Math.max(1, e.w);
                 if (r < acc) { pick = e; break; }
             }
-            if (pick == null) pick = src.get(src.size() - 1);
             out.add(pick);
             src.remove(pick);
         }
@@ -353,16 +354,10 @@ public final class ChestManager implements Listener {
         min = Math.max(0, min);
         max = Math.max(0, max);
         if (max <= min) return min;
-        return ThreadLocalRandom.current().nextInt(min, max + 1);
+        return (int) ThreadLocalRandom.current().nextLong(min, (long) max + 1);
     }
 
     // -------------- FX / utils --------------
-    private String readString(ItemStack stack, NamespacedKey key) {
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null) return null;
-        return meta.getPersistentDataContainer().get(key, PersistentDataType.STRING);
-    }
-
     private void consumeOne(Player player, EquipmentSlot hand) {
         ItemStack stack = player.getInventory().getItem(hand);
         if (stack == null) return;
@@ -422,25 +417,21 @@ public final class ChestManager implements Listener {
     public void hydrateFrom(List<Database.ChestRecord> records) {
         for (var r : records) {
             Location loc = (r.loc == null) ? null : r.loc.toBukkit();
-            if (loc == null) continue;
-
-            ActiveSpawner bound = null;
-            if (r.spawnerUUID != null) bound = SpawnerManager.get(r.spawnerUUID); // implement in SpawnerManager
-
-            LootChest c = (bound == null)
-                    ? registerIndependent(loc)                   // returns id
-                    : registerBound(bound, loc);                 // returns id
-            c.setId(UUID.fromString(r.id));
-
-            // Apply facing immediately so the first show() uses it:
-            try {
-                BlockFace face = BlockFace.valueOf(r.facing == null ? "NORTH" : r.facing);
-                // add a setter in LootChest to keep it tidy:
-                // c.setFacing(face);
-                java.lang.reflect.Field f = LootChest.class.getDeclaredField("facing");
-                f.setAccessible(true);
-                f.set(c, face);
-            } catch (Throwable ignored) {}
+            if (loc == null) { Database.retainRecord(r); continue; }
+            UUID id;
+            try { id = UUID.fromString(r.id); }
+            catch (IllegalArgumentException | NullPointerException ex) { Database.retainRecord(r); continue; }
+            ActiveSpawner bound = r.spawnerUUID == null ? null : SpawnerManager.get(r.spawnerUUID);
+            if (r.spawnerUUID != null && bound == null) { Database.retainRecord(r); continue; }
+            BlockFace facing;
+            try { facing = BlockFace.valueOf(r.facing == null ? "NORTH" : r.facing); }
+            catch (IllegalArgumentException ex) { facing = BlockFace.NORTH; }
+            LootChest c = new LootChest(n(loc), bound);
+            c.setId(id);
+            c.setFacing(facing);
+            c.setDesiredVisible(bound == null || bound.getState() == ActiveSpawner.State.COOLDOWN);
+            chests.put(n(loc), c);
+            if (c.isInLoadedChunk()) c.enforceNow();
         }
     }
 

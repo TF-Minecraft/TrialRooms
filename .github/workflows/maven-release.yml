@@ -74,6 +74,14 @@ jobs:
           echo "jar=target/$final_name.jar" >> "$GITHUB_OUTPUT"
           mvn -B --no-transfer-progress clean verify -DskipTests=false -Dmaven.test.skip=false
 
+      - name: Upload coverage reports
+        if: ${{ success() && hashFiles('target/site/jacoco/jacoco.xml') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/site/jacoco/
+          if-no-files-found: error
+
       - name: Stage only the release JAR
         env:
           ARTIFACT_PATH: ${{ steps.maven.outputs.jar }}

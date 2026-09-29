@@ -110,7 +110,7 @@ public final class Entrance {
 
         ItemStack it = resolveItemFromPath(keyPath);
         if (it != null && it.getType() != Material.AIR) {
-            if (it.hasItemMeta() && it.getItemMeta().hasDisplayName()) {
+            if (it.getItemMeta().hasDisplayName()) {
                 return it.getItemMeta().getDisplayName();
             }
             return prettifyMaterial(it.getType());
@@ -137,13 +137,12 @@ public final class Entrance {
     }
 
     public void tick() {
-        if(entranceHolo != null) entranceHolo.tick();
-        if(exitHolo != null) exitHolo.tick();
+        entranceHolo.tick();
+        exitHolo.tick();
     }
 
     private String prettifyMaterial(Material m) {
         String s = m.name().toLowerCase().replace('_', ' ');
-        if (s.isEmpty()) return "Item";
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 

@@ -22,6 +22,7 @@ import net.tfminecraft.trialrooms.persist.Database;
 public class TrialRooms extends JavaPlugin{
     private static TrialRooms instance;
     private SpawnerManager spawnerManager;
+    private boolean persistenceReady;
     private final ConfigLoader configLoader = new ConfigLoader();
     private final SpawnerLoader spawnerLoader = new SpawnerLoader();
     private final TableLoader tableLoader = new TableLoader();
@@ -29,6 +30,7 @@ public class TrialRooms extends JavaPlugin{
     @Override
     public void onEnable() {
         instance = this;
+        persistenceReady = false;
         createConfigs();
         loadConfigs();
         spawnerManager = new SpawnerManager(this);
@@ -52,28 +54,24 @@ public class TrialRooms extends JavaPlugin{
         List<Database.ChestRecord>   chests    = Database.loadChests();
         spawnerManager.hydrateFrom(spawners);
         ChestManager.get().hydrateFrom(chests);
+        persistenceReady = true;
         spawnerManager.start();
         getLogger().info("TrialRooms Plugin Enabled!");
         }
 
     @Override
     public void onDisable() {
-        // Dump to disk
-        Database.saveSpawners(spawnerManager.allActiveSpawners()); // implement: Collection<ActiveSpawner>
-        Database.saveChests(ChestManager.allChests());   
-        EntranceManager.get().saveAllNow();
+        if (spawnerManager == null) return;
+        // Incomplete hydration must never prune records that were not loaded.
+        if (persistenceReady) {
+            Database.saveSpawners(spawnerManager.allActiveSpawners());
+            Database.saveChests(ChestManager.allChests());
+            EntranceManager.get().saveAllNow();
+        }
 
-        if (spawnerManager != null) {
-            spawnerManager.removeAllHolograms();
-        }
-        if (ChestManager.get() != null) {
-            ChestManager.get().removeAllHolograms();
-        }
-        if (EntranceManager.get() != null) {
-            EntranceManager.get().removeAllHolograms();
-            // optional if you added it:
-            // EntranceManager.get().shutdown();
-        }
+        spawnerManager.removeAllHolograms();
+        ChestManager.get().removeAllHolograms();
+        EntranceManager.get().removeAllHolograms();
         getLogger().info("TrialRooms Plugin Disabled!");
     }
 

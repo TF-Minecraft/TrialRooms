@@ -111,6 +111,7 @@ public class SpawnerManager implements Listener {
     // ============== Creation / Editing ==============
     @EventHandler
     public void createSpawner(PlayerInteractEvent e) {
+        if (e.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) return;
         if (!e.getAction().equals(Action.RIGHT_CLICK_BLOCK)) return;
 
         Player p = e.getPlayer();
@@ -134,7 +135,7 @@ public class SpawnerManager implements Listener {
             active = new ActiveSpawner(loc, s);
             spawners.put(loc, active);
             // Spawn hologram immediately if the chunk is loaded
-            if (loc.getWorld() != null && loc.getWorld().isChunkLoaded(loc.getBlockX() >> 4, loc.getBlockZ() >> 4)) {
+            if (loc.getWorld().isChunkLoaded(loc.getBlockX() >> 4, loc.getBlockZ() >> 4)) {
                 active.spawnHolograms(plugin);
             }
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
@@ -196,7 +197,6 @@ public class SpawnerManager implements Listener {
     public void onSpawnerBreak(BlockBreakEvent e) {
         Player p = e.getPlayer();
 
-        if (e.getBlock() == null) return;
         Location loc = e.getBlock().getLocation();
         if(!spawners.containsKey(loc)) return;
         // Only act if we actually track a spawner at this location
@@ -238,32 +238,13 @@ public class SpawnerManager implements Listener {
         if (!(e.getTarget().getBukkitEntity() instanceof Player)) return;
         Player p = (Player) e.getTarget().getBukkitEntity();
 
-        LivingEntity attacker = null;
-
-        if(attacker instanceof Player) {
-            Player a = (Player) attacker;
-            if(PlayerManager.get().get(p).isInDungeon() && PlayerManager.get().get(a).isInDungeon()) e.setCancelled(true);
+        if (!(e.getCaster().getEntity().getBukkitEntity() instanceof LivingEntity attacker)) return;
+        if (attacker instanceof Player a && PlayerManager.get().get(p).isInDungeon()
+                && PlayerManager.get().get(a).isInDungeon()) {
+            e.setCancelled(true);
+            return;
         }
-
-        // Direct melee attacker
-        if (e.getCaster().getEntity().getBukkitEntity() instanceof LivingEntity le) {
-            attacker = le;
-        }
-
-        if (attacker == null) return;
-        if(!attacker.getPersistentDataContainer().has(PDC_SPAWNER_LEVEL, PersistentDataType.INTEGER)) return;
-
-        // Fast path: use level we wrote onto the mob
         Integer lvl = attacker.getPersistentDataContainer().get(PDC_SPAWNER_LEVEL, PersistentDataType.INTEGER);
-
-        // Optional fallback if you have a lookup by spawner UUID:
-        // if (lvl == null) {
-        //     String sid = attacker.getPersistentDataContainer().get(PDC_SPAWNER_ID, PersistentDataType.STRING);
-        //     if (sid != null) {
-        //         ActiveSpawner sp = getByUUID(sid); // implement if you have a map
-        //         if (sp != null) lvl = sp.getLevel();
-        //     }
-        // }
 
         if (lvl == null || lvl <= 0) return;
         if (!PlayerManager.get().isInside(p)) {
@@ -291,13 +272,20 @@ public class SpawnerManager implements Listener {
 
     // SpawnerManager snippet
     public void hydrateFrom(List<Database.SpawnerRecord> records) {
-        for (var r : records) {
+        records: for (var r : records) {
             Location loc = (r.loc == null) ? null : r.loc.toBukkit();
-            if (loc == null) continue;
+            if (loc == null) { Database.retainRecord(r); continue; }
 
             Spawner def = SpawnerLoader.getByString(r.id);
-            if (def == null) continue;
+            if (def == null) { Database.retainRecord(r); continue; }
 
+            List<DoorBlock> restoredDoors = new ArrayList<>();
+            if (r.doors == null) { Database.retainRecord(r); continue; }
+            for (DoorRecord dr : r.doors) {
+                DoorBlock door = DoorBlock.fromRecord(dr);
+                if (door == null) { Database.retainRecord(r); continue records; }
+                restoredDoors.add(door);
+            }
             ActiveSpawner s = new ActiveSpawner(loc, def);
             s.setUUID(r.uuid);
             s.setMob(r.mob);
@@ -312,22 +300,9 @@ public class SpawnerManager implements Listener {
             // NEW: restore persisted state + remaining cooldown
             try {
                 ActiveSpawner.State st = ActiveSpawner.State.valueOf(r.state); // ensure your record has "state"
-                switch(st) {
-                    case ACTIVE:
-                        st = ActiveSpawner.State.COOLDOWN;
-                        r.cooldownRemaining = r.cooldownSeconds;
-                        break;
-                    case COOLDOWN:
-                        break;
-                    case IDLE:
-                        break;
-                    case UNLOCKING:
-                        st = ActiveSpawner.State.COOLDOWN;
-                        r.cooldownRemaining = r.cooldownSeconds;
-                        break;
-                    default:
-                        break;
-                    
+                if (st == State.ACTIVE || st == State.UNLOCKING) {
+                    st = State.COOLDOWN;
+                    r.cooldownRemaining = r.cooldownSeconds;
                 }
                 s.restoreState(st, r.cooldownRemaining);                       // ensure your record has "cooldownRemaining"
             } catch (Exception ignored) {
@@ -335,8 +310,7 @@ public class SpawnerManager implements Listener {
                 s.restoreState(ActiveSpawner.State.IDLE, 0);
             }
 
-            for(DoorRecord dr : r.doors) {
-                DoorBlock door = DoorBlock.fromRecord(dr);
+            for (DoorBlock door : restoredDoors) {
                 s.addDoorBlock(door);
                 if(door.isInLoadedChunk()) door.enforceForState(false);
             }

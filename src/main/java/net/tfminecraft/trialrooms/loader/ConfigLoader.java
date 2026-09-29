@@ -62,9 +62,15 @@ public class ConfigLoader {
         Cache.MOB_KEY_CHANCE_PER_LEVEL = config.getDouble("mob-key-chance-per-level", 0.0015);
         Cache.MOB_KEY_MAX_CHANCE = config.getDouble("mob-key-max-chance", 0.25);
 
+        Cache.conversions.clear();
         if(config.contains("conversions")) {
             for(String s : config.getStringList("conversions")) {
-                Cache.conversions.add(new Conversion(s));
+                try {
+                    Cache.conversions.add(new Conversion(s));
+                } catch (IllegalArgumentException ex) {
+                    java.util.logging.Logger.getLogger(ConfigLoader.class.getName()).warning(
+                            "Skipping invalid conversion '" + s + "': " + ex.getMessage());
+                }
             }
         }
 	}

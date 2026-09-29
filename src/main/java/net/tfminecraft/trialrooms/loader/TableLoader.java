@@ -47,7 +47,7 @@ public class TableLoader implements LoaderInterface{
 				continue;
 			}
 			LootTable o = LootTable.fromSection(key, sec, Cache.rarityBiasPerLevel);
-			if (o != null) oList.put(key, o);
+			oList.put(key, o);
 		}
 
 	}

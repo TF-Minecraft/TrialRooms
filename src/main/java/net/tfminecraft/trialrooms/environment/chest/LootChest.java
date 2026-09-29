@@ -34,7 +34,7 @@ public final class LootChest {
     private final Hologram hologram;
 
     public void tick() {
-        if(hologram != null && !hidden) hologram.tick();
+        if(!hidden) hologram.tick();
     }
 
     public LootChest(Location loc, ActiveSpawner spawner) {
@@ -56,6 +56,8 @@ public final class LootChest {
     public java.util.UUID getId() { return id; }
     public ActiveSpawner getSpawner() { return spawner; }
     public Location getLocation() { return loc; }
+    public BlockFace getFacing() { return facing; }
+    public void setFacing(BlockFace face) { facing = java.util.Objects.requireNonNull(face); }
     public boolean isHidden() { return hidden; }
     public boolean isIndependent() { return spawner == null; }
 
@@ -69,7 +71,7 @@ public final class LootChest {
 
     public void setDesiredVisible(boolean v) { this.desiredVisible = v; }
     public boolean getDesiredVisible() {
-        return spawner != null ? true : desiredVisible;
+        return spawner == null || desiredVisible;
     }
 
     // ----- Visibility control -----
@@ -111,10 +113,7 @@ public final class LootChest {
 
         Block b = loc.getBlock();
         if (b.getType() == Material.CHEST) {
-            var bd = b.getBlockData();
-            if (bd instanceof Directional d) {
-                facing = d.getFacing();
-            }
+            facing = ((Directional) b.getBlockData()).getFacing();
         }
         b.setType(Material.AIR, false);
         hidden = true;
