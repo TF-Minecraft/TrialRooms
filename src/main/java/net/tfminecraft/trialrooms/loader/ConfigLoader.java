@@ -65,7 +65,12 @@ public class ConfigLoader {
         Cache.conversions.clear();
         if(config.contains("conversions")) {
             for(String s : config.getStringList("conversions")) {
-                Cache.conversions.add(new Conversion(s));
+                try {
+                    Cache.conversions.add(new Conversion(s));
+                } catch (IllegalArgumentException ex) {
+                    java.util.logging.Logger.getLogger(ConfigLoader.class.getName()).warning(
+                            "Skipping invalid conversion '" + s + "': " + ex.getMessage());
+                }
             }
         }
 	}

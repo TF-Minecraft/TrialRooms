@@ -53,4 +53,62 @@ class LifecycleTest extends TrialTestSupport {
       assertDoesNotThrow(partial::onDisable);
     }
   }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"entrances", "spawners", "chests"})
+  void incompleteHydrationPreservesSavedFilesAndStillCleansDisplays(String stage) throws Exception {
+    var paths = new java.util.ArrayList<java.nio.file.Path>();
+    try (var spawners =
+            mockConstruction(
+                SpawnerManager.class,
+                (mock, context) -> {
+                  if (stage.equals("spawners"))
+                    doThrow(new IllegalStateException("hydrate failure"))
+                        .when(mock)
+                        .hydrateFrom(anyList());
+                });
+        var config = mockConstruction(ConfigLoader.class);
+        var sl = mockConstruction(SpawnerLoader.class);
+        var tl = mockConstruction(TableLoader.class);
+        var chests = mockStatic(ChestManager.class);
+        var entrances = mockStatic(EntranceManager.class)) {
+      var cm = mock(ChestManager.class);
+      var em = mock(EntranceManager.class);
+      chests.when(ChestManager::get).thenReturn(cm);
+      entrances.when(EntranceManager::get).thenReturn(em);
+      singleton.when(TrialRooms::getInstance).thenCallRealMethod();
+      doAnswer(
+              invocation -> {
+                var root = TrialRooms.getInstance().getDataFolder().toPath();
+                for (String kind : List.of("spawners", "chests")) {
+                  var path = root.resolve("data/" + kind + "/saved.json");
+                  java.nio.file.Files.writeString(path, "{\"uuid\":\"preserved\"}");
+                  paths.add(path);
+                }
+                if (stage.equals("entrances"))
+                  throw new IllegalStateException("entrance hydration failure");
+                return null;
+              })
+          .when(em)
+          .loadAllFromDisk();
+      if (stage.equals("chests"))
+        doThrow(new IllegalStateException("chest hydration failure"))
+            .when(cm)
+            .hydrateFrom(anyList());
+      // Keep the actual database save/prune behavior while loading empty DTO lists.
+      try (var db = mockStatic(Database.class, CALLS_REAL_METHODS)) {
+        db.when(Database::loadSpawners).thenReturn(List.of());
+        db.when(Database::loadChests).thenReturn(List.of());
+        assertThrows(RuntimeException.class, () -> MockBukkit.load(TrialRooms.class));
+        var partial = TrialRooms.getInstance();
+        assertNotNull(partial.getSpawnerManager());
+        assertDoesNotThrow(partial::onDisable);
+        for (var path : paths)
+          assertEquals("{\"uuid\":\"preserved\"}", java.nio.file.Files.readString(path));
+        verify(em, never()).saveAllNow();
+        verify(cm, atLeastOnce()).removeAllHolograms();
+        verify(partial.getSpawnerManager(), atLeastOnce()).removeAllHolograms();
+      }
+    }
+  }
 }

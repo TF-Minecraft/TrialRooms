@@ -74,4 +74,18 @@ class LoadersTest extends TrialTestSupport {
     assertTrue(TableLoader.get().isEmpty());
     assertTrue(SpawnerLoader.get().isEmpty());
   }
+
+  @Test
+  void invalidConversionsAreSkippedWithoutLosingLaterValidEntries() throws Exception {
+    var file = temp.resolve("config.yml");
+    Files.writeString(
+        file,
+        "conversions: ['v.emerald 1', '', '# comment', 'v.gold -1', 'v.iron NaN', 'v.stone wrong',"
+            + " 'v.diamond 2']\n");
+    assertDoesNotThrow(() -> new ConfigLoader().loadConfig(file.toFile()));
+    assertEquals(
+        java.util.List.of("v.emerald", "v.diamond"),
+        Cache.conversions.stream().map(c -> c.getItem()).toList());
+    assertEquals(2, Cache.conversions.getLast().getAmount());
+  }
 }
