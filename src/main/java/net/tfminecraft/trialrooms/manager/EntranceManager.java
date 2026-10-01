@@ -237,7 +237,7 @@ public final class EntranceManager implements Listener {
         }
 
         if (!handMatchesPath(p, keyPath)) {
-            p.sendMessage(ChatColor.RED + "You need " + ChatColor.GOLD + keyPath + ChatColor.RED + " to use this entrance.");
+            p.sendMessage(ChatColor.RED + "You are not holding what opens this entrance.");
             return;
         }
 
