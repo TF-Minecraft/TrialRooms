@@ -69,6 +69,7 @@ public final class LootConversion {
 
     public Result settle() throws IOException {
         if (taken) return Result.APPLIED;
+        if (!recorded && !Denars.taxReady()) return Result.UNAVAILABLE;
         if (!recorded) record();
         Result result = Denars.status(opId).orElseGet(
                 () -> Denars.earn(opId, earner, Denars.pouch(earner), cents, true));

@@ -72,15 +72,17 @@ class LootConversionTest extends TrialTestSupport {
   void unavailablePaymentIsSavedBeforePostingAndRetryUsesTheSameOperation() throws Exception {
     var ref = money.play(player);
     var conversion = plan();
-    TestMoney.close();
-    assertEquals(Result.UNAVAILABLE, conversion.settle());
+    try (var denars = mockStatic(Denars.class, CALLS_REAL_METHODS)) {
+      denars.when(() -> Denars.earn(anyString(), any(), anyString(), anyLong(), eq(true)))
+          .thenReturn(Result.UNAVAILABLE);
+      assertEquals(Result.UNAVAILABLE, conversion.settle());
+    }
     var file = temp.resolve("pending/" + player.getUniqueId() + ".properties");
     Properties intent = new Properties();
     try (var stream = Files.newInputStream(file)) { intent.load(stream); }
     assertEquals(ref.characterId().toString(), intent.getProperty("character"));
     assertEquals("375", intent.getProperty("grossCents"));
     assertThrows(IOException.class, plan()::settle);
-    TestMoney.open(temp);
     assertEquals(Result.APPLIED, conversion.settle());
     assertEquals(375, Denars.balance(Denars.pouch(ref)));
     assertEquals(Result.APPLIED, Denars.status(intent.getProperty("operation")).orElseThrow());
@@ -137,5 +139,16 @@ class LootConversionTest extends TrialTestSupport {
     assertThrows(IOException.class, plan()::settle);
     assertEquals(0, Denars.balance(Denars.pouch(ref)));
     assertEquals(3, player.getInventory().getItem(0).getAmount());
+  }
+
+  @Test void waitingForFactionTaxDoesNotCreateAnAmbiguousPayment() throws Exception {
+    money.play(player);
+    org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin("SimpleFactions");
+    var conversion=plan();
+    assertEquals(Result.UNAVAILABLE,conversion.settle());
+    assertFalse(Files.exists(temp.resolve("pending")));
+    assertEquals(3,player.getInventory().getItem(0).getAmount());
+    TestMoney.taxAt(20);
+    assertEquals(Result.APPLIED,conversion.settle());
   }
 }
