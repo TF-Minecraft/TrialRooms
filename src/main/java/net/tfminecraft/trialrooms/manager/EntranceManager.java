@@ -2,7 +2,8 @@ package net.tfminecraft.trialrooms.manager;
 
 import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.tlibs.objects.api.subapi.StringFormatter;
-import net.tfminecraft.denareconomy.DenarEconomy;
+import net.tfminecraft.denareconomy.api.Result;
+import net.tfminecraft.trialrooms.environment.entrance.LootConversion;
 import net.tfminecraft.trialrooms.TrialRooms;
 import net.tfminecraft.trialrooms.cache.Cache;
 import net.tfminecraft.trialrooms.environment.entrance.Entrance;
@@ -86,35 +87,20 @@ public final class EntranceManager implements Listener {
                 PlayerManager.get().markExited(p);
                 p.sendMessage("§8[§aTrial§8] §7You leave the dungeon. Natural healing returns.");
                 try {
-                    double total = 0.0;
-                    int count = 0;
-
-                    ItemStack[] contents = p.getInventory().getContents();
-                    for (int slot = 0; slot < contents.length; slot++) {
-                        ItemStack it = contents[slot];
-                        if (it == null || it.getType() == Material.AIR) continue;
-
-                        double perItem = Cache.getConversionAmount(it);
-                        if (perItem <= 0) continue;
-
-                        int amt = it.getAmount();
-                        total += perItem * amt;
-                        count += amt;
-
-                        p.getInventory().setItem(slot, null);
-                    }
-                    p.updateInventory();
-
-                    // round to 2 decimals
-                    double conversions = Math.round(total * 100.0d) / 100.0d;
-
-                    if (conversions > 0.0d) {
-                        p.sendMessage("§eConverted §c" + count + " items §e to §6" 
-                                    + String.format(java.util.Locale.US, "%.2f", conversions) + "d");
-                        DenarEconomy.getMoneyManager().addMoney(p, conversions, false, true);
+                    LootConversion conversion = LootConversion.plan(p,
+                            TrialRooms.getInstance().getDataFolder().toPath().resolve("pending-conversions"));
+                    if (conversion != null) {
+                        if (conversion.settle() == Result.APPLIED) {
+                            p.sendMessage("§eConverted §c" + conversion.count() + " items §e to §6"
+                                    + String.format(java.util.Locale.US, "%.2f", conversion.cents() / 100.0) + "d");
+                        } else {
+                            p.sendMessage("§cYour loot could not be paid, so you kept it.");
+                        }
                     }
                 } catch (Throwable ex) {
-                    TrialRooms.getInstance().getLogger().warning("Conversion failed: " + ex.getMessage());
+                    TrialRooms.getInstance().getLogger().warning("Conversion needs review for "
+                            + p.getUniqueId() + ": " + ex);
+                    p.sendMessage("§cYour loot conversion needs staff review before you convert again.");
                 }
             }
         }

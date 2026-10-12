@@ -5,6 +5,8 @@ import static org.mockito.Mockito.*;
 
 import java.lang.reflect.*;
 import java.util.*;
+import net.tfminecraft.denareconomy.api.Denars;
+import net.tfminecraft.denareconomy.api.Result;
 import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.tlibs.objects.api.ItemAPI;
 import net.tfminecraft.trialrooms.cache.Cache;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.*;
 
 class EntranceManagerTest extends TrialTestSupport {
   EntranceManager manager;
+  TestMoney money;
 
   @BeforeEach
   void reset() throws Exception {
@@ -33,6 +36,12 @@ class EntranceManagerTest extends TrialTestSupport {
     assertSame(manager, EntranceManager.get());
     Database.init(plugin);
     Cache.conversions.clear();
+    money = TestMoney.open(temp);
+  }
+
+  @AfterEach
+  void closeLedger() {
+    TestMoney.close();
   }
 
   PlayerInteractEvent interact(Player p, Block b, EquipmentSlot hand) {
@@ -261,12 +270,11 @@ class EntranceManagerTest extends TrialTestSupport {
     var last = (Map<UUID, Long>) cooldown.get(manager);
     try (var holo = mockConstruction(Hologram.class);
         var players = mockStatic(PlayerManager.class);
-        var cache = mockStatic(Cache.class);
-        var denar = mockStatic(net.tfminecraft.denareconomy.DenarEconomy.class)) {
+        var cache = mockStatic(Cache.class)) {
       var tracker = mock(PlayerManager.class);
       players.when(PlayerManager::get).thenReturn(tracker);
-      var money = mock(net.tfminecraft.denareconomy.managers.MoneyManager.class);
-      denar.when(net.tfminecraft.denareconomy.DenarEconomy::getMoneyManager).thenReturn(money);
+      var earner = money.play(p);
+      String taxes = TestMoney.taxAt(20);
       var ent = manager.registerOrGet(new Location(world, 0, 64, 0));
       check.invoke(manager);
       ent.setExitLoc(new Location(null, 0, 0, 0));
@@ -289,7 +297,8 @@ class EntranceManagerTest extends TrialTestSupport {
                 return it.getType() == Material.DIAMOND ? 1.25 : 0.0;
               });
       check.invoke(manager);
-      verify(money).addMoney(p, 3.75, false, true);
+      assertEquals(300, Denars.balance(Denars.pouch(earner)));
+      assertEquals(75, Denars.balance(taxes));
       verify(tracker).markExited(p);
       assertNull(inventory.getItem(0));
       assertNotNull(inventory.getItem(1));
@@ -299,10 +308,66 @@ class EntranceManagerTest extends TrialTestSupport {
       check.invoke(manager);
       verify(tracker, times(2)).markExited(p);
       last.clear();
+      inventory.setItem(0, new ItemStack(Material.DIAMOND, 3));
+      money.stop(p);
+      check.invoke(manager);
+      verify(p).sendMessage("§cChoose a character before converting loot.");
+      assertEquals(3, inventory.getItem(0).getAmount());
+      var next = money.play(p);
+      Denars.transfer("fund-next", "staff:test", Denars.guild(UUID.randomUUID()), Denars.pouch(next), Long.MAX_VALUE - 1000);
+      // Enough headroom for this credit, then a second conversion would overflow.
+      Denars.transfer("fund-next-more", "staff:test", Denars.MINT, Denars.pouch(next), 999);
+      last.clear();
+      check.invoke(manager);
+      verify(p).sendMessage("§cYour loot could not be paid, so you kept it.");
+      assertEquals(3, inventory.getItem(0).getAmount());
+      last.clear();
       cache
           .when(() -> Cache.getConversionAmount(any()))
           .thenThrow(new IllegalStateException("conversion"));
       assertDoesNotThrow(() -> check.invoke(manager));
+    }
+  }
+
+  @Test
+  void exitPollingCannotRepayAnInterruptedConversion() throws Exception {
+    World world = mock(World.class);
+    when(world.getUID()).thenReturn(UUID.randomUUID());
+    when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+    var player = mock(Player.class);
+    when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+    var inventory = server.addPlayer().getInventory();
+    when(player.getInventory()).thenReturn(inventory);
+    inventory.setItem(0, new ItemStack(Material.DIAMOND, 3));
+    var exit = new Location(world, 10, 64, 0);
+    when(player.getLocation()).thenReturn(exit.clone().add(.5, 0, .5));
+    when(world.getNearbyEntities(any(Location.class), anyDouble(), anyDouble(), anyDouble()))
+        .thenReturn(List.of(player));
+    var earner = money.play(player);
+    try (var holo = mockConstruction(Hologram.class);
+        var players = mockStatic(PlayerManager.class);
+        var cache = mockStatic(Cache.class)) {
+      players.when(PlayerManager::get).thenReturn(mock(PlayerManager.class));
+      cache.when(() -> Cache.getConversionAmount(any())).thenReturn(1.25);
+      manager.registerOrGet(new Location(world, 0, 64, 0)).setExitLoc(exit);
+      try (var denars = mockStatic(Denars.class, CALLS_REAL_METHODS)) {
+        denars.when(() -> Denars.earn(anyString(), any(), anyString(), anyLong(), eq(true)))
+            .thenAnswer(invocation -> {
+              invocation.callRealMethod();
+              throw new IllegalStateException("interrupted after posting");
+            });
+        call("checkExitTeleports", new Class[] {});
+      }
+      var cooldown = EntranceManager.class.getDeclaredField("lastTeleportAt");
+      cooldown.setAccessible(true);
+      ((Map<?, ?>) cooldown.get(manager)).clear();
+      call("checkExitTeleports", new Class[] {});
+      assertEquals(375, Denars.balance(Denars.pouch(earner)));
+      assertEquals(3, inventory.getItem(0).getAmount());
+      assertTrue(java.nio.file.Files.exists(temp.resolve("pending-conversions/"
+          + player.getUniqueId() + ".properties")));
+      verify(player, times(2)).sendMessage(
+          "§cYour loot conversion needs staff review before you convert again.");
     }
   }
 
