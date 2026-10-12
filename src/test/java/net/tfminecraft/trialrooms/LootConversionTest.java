@@ -5,7 +5,9 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Base64;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.tfminecraft.denareconomy.api.Denars;
 import net.tfminecraft.denareconomy.api.Result;
 import net.tfminecraft.trialrooms.cache.Cache;
@@ -24,7 +26,8 @@ class LootConversionTest extends TrialTestSupport {
   @BeforeEach
   void prepare() {
     money = TestMoney.open(temp);
-    player = server.addPlayer();
+    player = spy(server.addPlayer());
+    doNothing().when(player).saveData(); // MockBukkit leaves Player.saveData unimplemented.
     player.getInventory().setItem(0, new ItemStack(Material.DIAMOND, 3));
     cache = mockStatic(Cache.class);
     cache.when(() -> Cache.getConversionAmount(any())).thenReturn(1.25);
@@ -139,6 +142,42 @@ class LootConversionTest extends TrialTestSupport {
     assertThrows(IOException.class, plan()::settle);
     assertEquals(0, Denars.balance(Denars.pouch(ref)));
     assertEquals(3, player.getInventory().getItem(0).getAmount());
+  }
+
+  @Test
+  void intentStoresCompleteCapturedItemDataPerSlot() throws Exception {
+    money.play(player);
+    var named = new ItemStack(Material.DIAMOND, 3);
+    var meta = named.getItemMeta();
+    meta.setDisplayName("Trial loot");
+    named.setItemMeta(meta);
+    player.getInventory().setItem(0, named);
+    var conversion = plan();
+    try (var denars = mockStatic(Denars.class, CALLS_REAL_METHODS)) {
+      denars.when(() -> Denars.earn(anyString(), any(), anyString(), anyLong(), eq(true)))
+          .thenReturn(Result.UNAVAILABLE);
+      assertEquals(Result.UNAVAILABLE, conversion.settle());
+    }
+    Properties intent = new Properties();
+    try (var stream = Files.newInputStream(
+        temp.resolve("pending/" + player.getUniqueId() + ".properties"))) { intent.load(stream); }
+    assertNull(intent.getProperty("items"));
+    var restored = ItemStack.deserializeBytes(Base64.getDecoder().decode(intent.getProperty("item.0")));
+    assertEquals(named, restored);
+  }
+
+  @Test
+  void playerDataIsSavedBeforeTheIntentIsDeleted() throws Exception {
+    money.play(player);
+    var file = temp.resolve("pending/" + player.getUniqueId() + ".properties");
+    var intentPresentWhenSaved = new AtomicBoolean();
+    doAnswer(call -> { intentPresentWhenSaved.set(Files.exists(file)); return null; })
+        .when(player).saveData();
+    assertEquals(Result.APPLIED, plan().settle());
+    verify(player, times(1)).saveData();
+    assertTrue(intentPresentWhenSaved.get());
+    assertFalse(Files.exists(file));
+    assertNull(player.getInventory().getItem(0));
   }
 
   @Test void waitingForFactionTaxDoesNotCreateAnAmbiguousPayment() throws Exception {

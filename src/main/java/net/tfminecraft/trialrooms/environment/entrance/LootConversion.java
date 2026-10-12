@@ -6,6 +6,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -81,6 +82,7 @@ public final class LootConversion {
             }
             for (int slot : items.keySet()) player.getInventory().setItem(slot, null);
             player.updateInventory();
+            player.saveData();
             taken = true;
         }
         if (result == Result.APPLIED || result == Result.REFUSED) {
@@ -100,7 +102,10 @@ public final class LootConversion {
         data.setProperty("owner", earner.ownerId().toString());
         data.setProperty("character", earner.characterId().toString());
         data.setProperty("grossCents", Long.toString(cents));
-        data.setProperty("items", items.toString());
+        for (var item : items.entrySet()) {
+            data.setProperty("item." + item.getKey(),
+                    Base64.getEncoder().encodeToString(item.getValue().serializeAsBytes()));
+        }
         try (FileChannel channel = FileChannel.open(intent,
                 StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             data.store(Channels.newOutputStream(channel), "Pending loot conversion; reconcile before removing");
