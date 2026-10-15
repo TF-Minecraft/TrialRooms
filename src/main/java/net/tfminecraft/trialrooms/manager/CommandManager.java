@@ -2,6 +2,7 @@ package net.tfminecraft.trialrooms.manager;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.bukkit.command.Command;
@@ -42,9 +43,11 @@ public class CommandManager implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (!(sender instanceof Player player)) return Collections.emptyList();
-
-        return Collections.emptyList();
+        if (!(sender instanceof Player player) || !player.hasPermission("trialrooms.admin") || args.length != 1) {
+            return Collections.emptyList();
+        }
+        return "resetcooldowns".startsWith(args[0].toLowerCase(Locale.ROOT))
+                ? List.of("resetcooldowns") : Collections.emptyList();
     }
     
 }
