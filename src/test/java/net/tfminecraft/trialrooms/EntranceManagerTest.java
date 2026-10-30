@@ -461,6 +461,7 @@ class EntranceManagerTest extends TrialTestSupport {
                 (e, c) -> {
                   when(e.getEntranceLoc()).thenReturn((Location) c.arguments().getFirst());
                   doThrow(new IllegalStateException()).when(e).removeHolograms(plugin);
+                  doThrow(new IllegalStateException()).when(e).disposeHolograms(plugin);
                   doThrow(new IllegalStateException()).when(e).tick();
                 })) {
       var entrance = manager.registerOrGet(loc);

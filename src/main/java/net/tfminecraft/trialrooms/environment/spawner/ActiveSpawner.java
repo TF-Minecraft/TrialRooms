@@ -108,11 +108,13 @@ public class ActiveSpawner {
 
         this.levelHologram = new Hologram(
             () -> this.loc,
-            this::getLevelFormatted
+            this::getLevelFormatted,
+            LegacyLabelTexts::spawnerLevel
         );
         this.statusHologram = new Hologram(
                 () -> this.loc,
-                this::getStatusText
+                this::getStatusText,
+                LegacyLabelTexts::spawnerStatus
         );
         this.statusHologram.setYOffset(1.5);
 
@@ -190,7 +192,8 @@ public class ActiveSpawner {
         }
         killActiveEnemiesSilently(); // << add this
         destroyed = true;
-        removeHolograms(TrialRooms.getInstance());
+        levelHologram.dispose(TrialRooms.getInstance());
+        statusHologram.dispose(TrialRooms.getInstance());
     }
 
     // ---------- Ticking ----------

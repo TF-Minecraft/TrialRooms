@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import net.tfminecraft.trialrooms.environment.entrance.ui.EntranceEditor;
+import net.tfminecraft.trialrooms.environment.spawner.LabelCleanup;
 import net.tfminecraft.trialrooms.environment.spawner.ui.ActiveSpawnerEditor;
 import net.tfminecraft.trialrooms.loader.ConfigLoader;
 import net.tfminecraft.trialrooms.loader.SpawnerLoader;
@@ -46,6 +47,8 @@ public class TrialRooms extends JavaPlugin{
         Bukkit.getPluginManager().registerEvents(EntranceManager.get(), this);
         Bukkit.getPluginManager().registerEvents(new ConversionDeathGuard(), this);
         Bukkit.getPluginManager().registerEvents(new PlayerManager(TrialRooms.getInstance()), this);
+        // Removes label displays left behind by older versions when their chunk loads.
+        Bukkit.getPluginManager().registerEvents(new LabelCleanup(), this);
         
 
         // Load DTOs
@@ -54,6 +57,8 @@ public class TrialRooms extends JavaPlugin{
         List<Database.ChestRecord>   chests    = Database.loadChests();
         spawnerManager.hydrateFrom(spawners);
         ChestManager.get().hydrateFrom(chests);
+        // Chunks already loaded before the listener existed (spawn chunks, /reload).
+        LabelCleanup.sweepLoadedChunks();
         persistenceReady = true;
         spawnerManager.start();
         getLogger().info("TrialRooms Plugin Enabled!");

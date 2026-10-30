@@ -9,128 +9,303 @@ import java.util.function.Consumer;
 import net.tfminecraft.trialrooms.TrialTestSupport;
 import org.bukkit.*;
 import org.bukkit.entity.*;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 import org.junit.jupiter.api.*;
+import org.mockito.MockedStatic;
 
 class HologramTest extends TrialTestSupport {
-  @Test
-  void displayLifecycleUpdatesTextAndRemovesOutsideViewRange() {
-    World world = mock(World.class);
-    var loc = new Location(world, 1, 64, 3);
-    var current = new AtomicReference<Location>(loc);
-    var text = new AtomicReference<String>("hello");
-    var display = mock(TextDisplay.class);
-    var id = UUID.randomUUID();
+  World world;
+  TextDisplay display;
+  PersistentDataContainer pdc;
+  UUID id;
+  Player player;
+  MockedStatic<Bukkit> bukkit;
+
+  @BeforeEach
+  void setUpWorld() {
+    world = mock(World.class);
+    when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+    display = mock(TextDisplay.class);
+    pdc = mock(PersistentDataContainer.class);
+    id = UUID.randomUUID();
     when(display.getUniqueId()).thenReturn(id);
+    when(display.getPersistentDataContainer()).thenReturn(pdc);
+    // The display reports the position it was spawned at or last teleported to.
+    var at = new AtomicReference<Location>();
+    when(display.getLocation()).thenAnswer(a -> at.get().clone());
+    doAnswer(a -> { at.set(a.getArgument(0)); return true; }).when(display).teleport(any(Location.class));
     when(world.spawn(any(Location.class), eq(TextDisplay.class), any(Consumer.class)))
         .thenAnswer(
             a -> {
+              at.set(((Location) a.getArgument(0)).clone());
               ((Consumer<TextDisplay>) a.getArgument(2)).accept(display);
               return display;
             });
-    try (var b = mockStatic(Bukkit.class, CALLS_REAL_METHODS)) {
-      b.when(() -> Bukkit.getEntity(id)).thenReturn(display);
-      var h = new Hologram(current::get, text::get);
-      h.setYOffset(2);
-      h.spawn(plugin);
-      verify(display).setInvulnerable(true);
-      verify(display).setPersistent(true);
-      verify(display).setGravity(false);
-      verify(display, atLeastOnce()).setText("hello");
-      verify(display).teleport(loc.clone().add(.5, 2, .5));
-      h.spawn(plugin);
-      verify(world, times(1))
-          .spawn(any(Location.class), eq(TextDisplay.class), any(Consumer.class));
-      text.set(null);
-      h.refresh(plugin);
-      verify(display).setText("");
-      var p = mock(Player.class);
-      when(p.getWorld()).thenReturn(world);
-      when(p.getLocation()).thenReturn(loc);
-      b.when(Bukkit::getOnlinePlayers).thenReturn(List.of(p));
-      h.tick();
-      when(display.isDead()).thenReturn(true);
-      h.tick();
-      h.refresh(plugin);
-      when(display.isDead()).thenReturn(false);
-      when(p.getLocation()).thenReturn(loc.clone().add(200, 0, 0));
-      h.tick();
-      verify(display).remove();
-      h.tick();
-      when(p.getWorld()).thenReturn(mock(World.class));
-      h.tick();
-      current.set(null);
-      h.tick();
-      h.spawn(plugin);
-      h.refresh(plugin);
-      h.remove(plugin);
-      current.set(new Location(null, 0, 0, 0));
-      h.spawn(plugin);
-      h.refresh(plugin);
-    }
+    player = mock(Player.class);
+    when(player.getWorld()).thenReturn(world);
+    bukkit = mockStatic(Bukkit.class, CALLS_REAL_METHODS);
+    bukkit.when(() -> Bukkit.getEntity(id)).thenReturn(display);
+    bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(player));
+  }
+
+  @AfterEach
+  void closeBukkit() {
+    bukkit.close();
+    // Holograms stay registered until collected; make their world look unloaded to later tests.
+    reset(world);
+  }
+
+  private static boolean labelAt(Location pos) {
+    return Hologram.labels().stream().anyMatch(l -> l.position().equals(pos));
+  }
+
+  private void spawns(int times) {
+    verify(world, times(times))
+        .spawn(any(Location.class), eq(TextDisplay.class), any(Consumer.class));
   }
 
   @Test
-  void absentDisplayAndCompatibilityFailuresAreHandled() {
-    World world = mock(World.class);
+  void spawnCreatesOneTaggedRuntimeOnlyDisplayAndUpdatesIt() {
+    var loc = new Location(world, 1, 64, 3);
+    var text = new AtomicReference<String>("hello");
+    when(player.getLocation()).thenReturn(loc);
+    var h = new Hologram(() -> loc, text::get);
+    h.setYOffset(2);
+    var pos = loc.clone().add(.5, 2, .5);
+
+    h.spawn(plugin);
+    spawns(1);
+    verify(world).spawn(eq(pos), eq(TextDisplay.class), any(Consumer.class));
+    verify(display).setInvulnerable(true);
+    verify(display).setPersistent(false);
+    verify(display, never()).setPersistent(true);
+    verify(display).setGravity(false);
+    verify(pdc).set(Hologram.LABEL_KEY, PersistentDataType.BYTE, (byte) 1);
+    verify(display).setBillboard(Display.Billboard.CENTER);
+    verify(display).setText("hello");
+    // Before spawning it looks for a lost display at the exact label position.
+    verify(world).getNearbyEntitiesByType(TextDisplay.class, pos, LabelCleanup.SEARCH_RADIUS);
+
+    // A second spawn, refresh and tick reuse the display.
+    h.spawn(plugin);
+    text.set(null);
+    h.refresh(plugin);
+    h.tick();
+    spawns(1);
+    verify(display, times(2)).teleport(pos);
+    verify(display, times(2)).setText("");
+    assertTrue(Hologram.ownedDisplayIds().contains(id));
+    assertTrue(labelAt(pos));
+
+    h.remove(plugin);
+    verify(display).remove();
+    assertFalse(Hologram.ownedDisplayIds().contains(id));
+  }
+
+  @Test
+  void displayIsOnlyCreatedWhileAPlayerIsInViewRangeAndTheChunkIsLoaded() {
     var loc = new Location(world, 0, 64, 0);
-    var display = mock(TextDisplay.class);
-    var id = UUID.randomUUID();
-    when(display.getUniqueId()).thenReturn(id);
+    var h = new Hologram(() -> loc, () -> "text");
+
+    // Nobody in range: spawn/refresh/tick never create (and tick has nothing to remove).
+    when(player.getLocation()).thenReturn(loc.clone().add(200, 0, 0));
+    h.spawn(plugin);
+    h.refresh(plugin);
+    h.tick();
+    when(player.getWorld()).thenReturn(mock(World.class));
+    when(player.getLocation()).thenReturn(loc);
+    h.tick();
+    spawns(0);
+
+    // Player near but the label's chunk is not loaded.
+    when(player.getWorld()).thenReturn(world);
+    when(world.isChunkLoaded(0, 0)).thenReturn(false);
+    h.spawn(plugin);
+    h.tick();
+    spawns(0);
+
+    // Chunk loaded: tick creates it, then updates it while the player stays.
+    when(world.isChunkLoaded(0, 0)).thenReturn(true);
+    h.tick();
+    spawns(1);
+    h.tick();
+    spawns(1);
+    verify(display, atLeast(2)).setText("text");
+
+    // Player leaves: removed; next tick does nothing more.
+    when(player.getLocation()).thenReturn(loc.clone().add(200, 0, 0));
+    h.tick();
+    verify(display).remove();
+    bukkit.when(() -> Bukkit.getEntity(id)).thenReturn(null);
+    h.tick();
+    verify(display, times(1)).remove();
+
+    // Player back while an (unexpected) display exists but the chunk unloaded: removed.
+    bukkit.when(() -> Bukkit.getEntity(id)).thenReturn(display);
+    when(player.getLocation()).thenReturn(loc);
+    h.tick();
+    spawns(2);
+    when(world.isChunkLoaded(0, 0)).thenReturn(false);
+    h.tick();
+    verify(display, times(2)).remove();
+    h.tick();
+    h.refresh(plugin);
+    verify(display, times(2)).remove();
+  }
+
+  @Test
+  void lostOrDeadDisplaysAreReplacedAndUnloadedLabelsAreDropped() {
+    var loc = new Location(world, 0, 64, 0);
+    when(player.getLocation()).thenReturn(loc);
+    var h = new Hologram(() -> loc, () -> "text");
+    h.tick();
+    spawns(1);
+    // Display unloaded with its chunk (UUID no longer resolves): one replacement.
+    bukkit.when(() -> Bukkit.getEntity(id)).thenReturn(null);
+    h.refresh(plugin);
+    spawns(2);
+    // The UUID resolves to something that is not a TextDisplay.
+    bukkit.when(() -> Bukkit.getEntity(id)).thenReturn(mock(Entity.class));
+    h.tick();
+    spawns(3);
+    // Dead display is replaced, never removed again.
+    bukkit.when(() -> Bukkit.getEntity(id)).thenReturn(display);
+    when(display.isDead()).thenReturn(true);
+    h.tick();
+    spawns(4);
+    h.remove(plugin);
+    verify(display, never()).remove();
+    // Chunk unloaded: refresh drops the reference without spawning.
+    when(display.isDead()).thenReturn(false);
+    when(world.isChunkLoaded(0, 0)).thenReturn(false);
+    h.refresh(plugin);
+    spawns(4);
+  }
+
+  @Test
+  void missingLocationsAndWorldsAreIgnored() {
+    var current = new AtomicReference<Location>(null);
+    var h = new Hologram(current::get, () -> "text");
+    h.tick();
+    h.spawn(plugin);
+    h.refresh(plugin);
+    h.remove(plugin);
+    current.set(new Location(null, 0, 0, 0));
+    h.tick();
+    h.spawn(plugin);
+    assertTrue(Hologram.labels().stream().noneMatch(l -> l.position() == null));
+    spawns(0);
+    // Location#getWorld throws once the world was unloaded: the label is skipped, not fatal.
+    var gone = mock(Location.class);
+    when(gone.getWorld()).thenThrow(new IllegalArgumentException("World unloaded"));
+    var unloaded = new Hologram(() -> gone, () -> "text");
+    assertDoesNotThrow(Hologram::labels);
+    assertDoesNotThrow(unloaded::tick);
+    assertDoesNotThrow(() -> unloaded.refresh(plugin));
+    spawns(0);
+  }
+
+  @Test
+  void movedLabelFollowsInTickAndDisposedLabelsAreNoLongerLive() {
+    var block = new AtomicReference<Location>(new Location(world, 0, 64, 0));
+    when(player.getLocation()).thenReturn(block.get());
+    var h = new Hologram(block::get, () -> "text");
+    h.tick();
+    h.tick();
+    verify(display, never()).teleport(any(Location.class));
+    block.set(new Location(world, 2, 64, 0));
+    h.tick();
+    var moved = new Location(world, 2.5, 65, 0.5);
+    verify(display).teleport(moved);
+    h.tick();
+    verify(display, times(1)).teleport(any(Location.class));
+    spawns(1);
+
+    assertTrue(labelAt(moved));
+    h.dispose(plugin);
+    verify(display).remove();
+    assertFalse(labelAt(moved));
+    assertFalse(Hologram.ownedDisplayIds().contains(id));
+    // An editor still open on the deleted owner keeps calling refresh/spawn: nothing comes back.
+    h.refresh(plugin);
+    h.spawn(plugin);
+    h.tick();
+    spawns(1);
+    verify(display, times(1)).remove();
+  }
+
+  @Test
+  void disposeOffThreadStillStopsAnUpdateQueuedBeforeIt() {
+    var loc = new Location(world, 0, 64, 0);
+    when(player.getLocation()).thenReturn(loc);
+    var h = new Hologram(() -> loc, () -> "text");
+    h.tick();
+    spawns(1);
+    bukkit.when(Bukkit::isPrimaryThread).thenReturn(false);
+    h.refresh(plugin);
+    h.dispose(plugin);
+    bukkit.when(Bukkit::isPrimaryThread).thenReturn(true);
+    // A display that somehow survived is removed by the next tick.
+    h.tick();
+    verify(display).remove();
+    server.getScheduler().performOneTick();
+    spawns(1);
+  }
+
+  @Test
+  void defaultLegacyTextIsTheCurrentPlainText() {
+    var text = new AtomicReference<String>("§e§lRight-Click §7with a §6§lKey §7to open");
+    var loc = new Location(world, 7, 64, 7);
+    var h = new Hologram(() -> loc, text::get);
+    var label =
+        Hologram.labels().stream()
+            .filter(l -> l.position().equals(loc.clone().add(.5, 1, .5)))
+            .findFirst()
+            .orElseThrow();
+    assertTrue(label.legacyText().test("Right-Click with a Key to open"));
+    assertFalse(label.legacyText().test("Right-Click with a Key to open!"));
+    text.set(null);
+    assertTrue(label.legacyText().test(""));
+    assertEquals("[LVL: 1]", Hologram.plain("§7[§eLVL: §x§f§7§e§c§8§81§7]"));
+    assertEquals("", Hologram.plain(null));
+    assertNotNull(h); // keep the weakly registered label alive until here
+  }
+
+  @Test
+  void compatibilityFailuresAndOffThreadCallsAreHandled() {
+    var loc = new Location(world, 0, 64, 0);
+    when(player.getLocation()).thenReturn(loc);
     doThrow(new UnsupportedOperationException()).when(display).setBillboard(any());
     doThrow(new UnsupportedOperationException()).when(display).setShadowed(true);
     doThrow(new UnsupportedOperationException()).when(display).setSeeThrough(false);
-    when(world.spawn(any(Location.class), eq(TextDisplay.class), any(Consumer.class)))
-        .thenAnswer(
-            a -> {
-              ((Consumer<TextDisplay>) a.getArgument(2)).accept(display);
-              return display;
-            });
-    try (var b = mockStatic(Bukkit.class, CALLS_REAL_METHODS)) {
-      var h = new Hologram(() -> loc, () -> "text");
-      h.refresh(plugin);
-      b.when(() -> Bukkit.getEntity(id)).thenReturn(mock(Entity.class));
-      h.refresh(plugin);
-      b.when(() -> Bukkit.getEntity(id)).thenReturn(display);
-      when(display.isDead()).thenReturn(true);
-      h.remove(plugin);
-      verify(display, never()).remove();
-      b.when(Bukkit::isPrimaryThread).thenReturn(false);
-      h.spawn(plugin);
-      b.when(Bukkit::isPrimaryThread).thenReturn(true);
-      server.getScheduler().performOneTick();
-      verify(world, atLeast(3))
-          .spawn(any(Location.class), eq(TextDisplay.class), any(Consumer.class));
-    }
+    var h = new Hologram(() -> loc, () -> "text");
+    bukkit.when(Bukkit::isPrimaryThread).thenReturn(false);
+    h.spawn(plugin);
+    spawns(0);
+    bukkit.when(Bukkit::isPrimaryThread).thenReturn(true);
+    server.getScheduler().performOneTick();
+    spawns(1);
+    verify(display).setText("text");
   }
 
   @Test
-  void disappearingLocationBetweenDisplayLookupAndTeleportIsSafe() {
-    World world = mock(World.class);
+  void spawningRemovesALostDisplayAtTheSamePosition() {
     var loc = new Location(world, 0, 64, 0);
-    var display = mock(TextDisplay.class);
-    var id = UUID.randomUUID();
-    when(display.getUniqueId()).thenReturn(id);
-    when(world.spawn(any(Location.class), eq(TextDisplay.class), any(Consumer.class)))
-        .thenAnswer(
-            a -> {
-              ((Consumer<TextDisplay>) a.getArgument(2)).accept(display);
-              return display;
-            });
-    var calls = new java.util.concurrent.atomic.AtomicInteger();
-    try (var b = mockStatic(Bukkit.class, CALLS_REAL_METHODS)) {
-      var h = new Hologram(() -> calls.incrementAndGet() <= 2 ? loc : null, () -> "text");
-      h.spawn(plugin);
-      verify(display, never()).teleport(any(Location.class));
-      b.when(() -> Bukkit.getEntity(id)).thenReturn(display);
-      h.refresh(plugin);
-      verify(display, never()).teleport(any(Location.class));
-      var p = mock(Player.class);
-      when(p.getWorld()).thenReturn(world);
-      when(p.getLocation()).thenReturn(loc);
-      b.when(Bukkit::getOnlinePlayers).thenReturn(List.of(p));
-      new Hologram(() -> loc, () -> "new").tick();
-      verify(world, times(2))
-          .spawn(any(Location.class), eq(TextDisplay.class), any(Consumer.class));
-    }
+    var pos = loc.clone().add(.5, 1, .5);
+    when(player.getLocation()).thenReturn(loc);
+    var lost = mock(TextDisplay.class);
+    var lostPdc = mock(PersistentDataContainer.class);
+    when(lost.getUniqueId()).thenReturn(UUID.randomUUID());
+    when(lost.getPersistentDataContainer()).thenReturn(lostPdc);
+    when(lostPdc.has(Hologram.LABEL_KEY, PersistentDataType.BYTE)).thenReturn(true);
+    when(lost.getLocation()).thenReturn(pos.clone());
+    doReturn(List.of(lost))
+        .when(world)
+        .getNearbyEntitiesByType(TextDisplay.class, pos, LabelCleanup.SEARCH_RADIUS);
+    var h = new Hologram(() -> loc, () -> "text");
+    h.tick();
+    verify(lost).remove();
+    spawns(1);
   }
 }

@@ -86,7 +86,12 @@ class ChestManagerTest extends TrialTestSupport {
       assertNull(manager.registerBound(spawner, null));
       var independent = manager.registerIndependent(loc);
       verify(independent).show(false);
+      var replacedBound = manager.registerBound(spawner, loc.clone().add(1, 0, 0));
+      verify(replacedBound, never()).disposeHologram();
+      // Rebinding at the same block retires the replaced chest's label.
       var bound = manager.registerBound(spawner, loc.clone().add(1, 0, 0));
+      verify(replacedBound).disposeHologram();
+      verify(bound, never()).disposeHologram();
       verify(bound).setDesiredVisible(false);
       assertSame(bound, ChestManager.get(spawner));
       assertNull(ChestManager.get(mock(ActiveSpawner.class)));

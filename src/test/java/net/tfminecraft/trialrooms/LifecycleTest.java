@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+import net.tfminecraft.trialrooms.environment.spawner.LabelCleanup;
 import net.tfminecraft.trialrooms.loader.*;
 import net.tfminecraft.trialrooms.manager.*;
 import net.tfminecraft.trialrooms.persist.Database;
@@ -19,13 +20,16 @@ class LifecycleTest extends TrialTestSupport {
         var tl = mockConstruction(TableLoader.class);
         var db = mockStatic(Database.class);
         var chests = mockStatic(ChestManager.class);
-        var entrances = mockStatic(EntranceManager.class)) {
+        var entrances = mockStatic(EntranceManager.class);
+        var cleanup = mockStatic(LabelCleanup.class)) {
       var cm = mock(ChestManager.class);
       var em = mock(EntranceManager.class);
       chests.when(ChestManager::get).thenReturn(cm);
       entrances.when(EntranceManager::get).thenReturn(em);
       singleton.when(TrialRooms::getInstance).thenCallRealMethod();
       var loaded = MockBukkit.load(TrialRooms.class);
+      // Leftover label displays in chunks that loaded before the plugin are swept once.
+      cleanup.verify(LabelCleanup::sweepLoadedChunks);
       assertSame(loaded, TrialRooms.getInstance());
       assertSame(spawners.constructed().getFirst(), loaded.getSpawnerManager());
       verify(cm).hydrateFrom(List.of());

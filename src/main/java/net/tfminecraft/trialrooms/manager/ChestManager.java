@@ -87,6 +87,9 @@ public final class ChestManager implements Listener {
         LootChest chest = new LootChest(key, spawner);
         // visible only during COOLDOWN; hidden otherwise
         chest.setDesiredVisible(spawner.getState() == ActiveSpawner.State.COOLDOWN);
+        // Rebinding replaces the chest at this block: retire the old one's label first.
+        LootChest replaced = chests.get(key);
+        if (replaced != null) replaced.disposeHologram();
         chests.put(key, chest);
         if (chest.isInLoadedChunk()) chest.enforceNow();
         return chest;
@@ -170,7 +173,7 @@ public final class ChestManager implements Listener {
 
     public static void remove(LootChest chest) {
         chest.getLocation().getBlock().setType(Material.AIR);
-        chest.removeHologram();
+        chest.disposeHologram();
         chests.remove(chest.getLocation());
         chest.getLocation().getWorld().playSound(chest.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.7f, 1.3f);
     }
