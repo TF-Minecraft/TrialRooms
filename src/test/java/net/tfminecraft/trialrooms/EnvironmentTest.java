@@ -150,8 +150,12 @@ class EnvironmentTest extends TrialTestSupport {
       doThrow(new IllegalStateException()).when(h).refresh(plugin);
       chest.setLocation(chest.getLocation());
       chest.spawnHologram();
+      chest.disposeHologram();
+      verify(h).dispose(plugin);
       doThrow(new IllegalStateException()).when(h).remove(plugin);
       chest.removeHologram();
+      doThrow(new IllegalStateException()).when(h).dispose(plugin);
+      chest.disposeHologram();
       when(block.getType()).thenReturn(Material.STONE);
       chest.hide(false);
       var invalid = new LootChest(null, null);
@@ -218,6 +222,8 @@ class EnvironmentTest extends TrialTestSupport {
       entrance.refreshHolograms(plugin);
       entrance.tick();
       entrance.removeHolograms(plugin);
+      entrance.disposeHolograms(plugin);
+      for (var h : holo.constructed()) verify(h).dispose(plugin);
       var restored = Entrance.fromRecord(entrance.toRecord());
       assertEquals(entrance.getDestination(), restored.getDestination());
       assertEquals(entrance.getExitLoc(), restored.getExitLoc());
@@ -236,10 +242,12 @@ class EnvironmentTest extends TrialTestSupport {
         doThrow(new IllegalStateException()).when(h).spawn(plugin);
         doThrow(new IllegalStateException()).when(h).refresh(plugin);
         doThrow(new IllegalStateException()).when(h).remove(plugin);
+        doThrow(new IllegalStateException()).when(h).dispose(plugin);
       }
       entrance.spawnHolograms(plugin);
       entrance.refreshHolograms(plugin);
       entrance.removeHolograms(plugin);
+      entrance.disposeHolograms(plugin);
       entrance.setExitLoc(new Location(world, 0, 0, 0));
       entrance.spawnHolograms(plugin);
       entrance.refreshHolograms(plugin);

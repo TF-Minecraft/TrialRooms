@@ -16,7 +16,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 /**
  * A floating TextDisplay label above a TrialRooms block.
@@ -34,6 +36,8 @@ public class Hologram {
 
     private final Supplier<Location> locationSupplier; // where to place it
     private final Supplier<String>   nameSupplier;     // what to display
+    // recognises this label's plain text on displays saved by older versions
+    private final Predicate<String>  legacyText;
 
     private UUID entityId;
     private double yOffset = 1.0; // height above block center
@@ -41,9 +45,25 @@ public class Hologram {
     // view radius squared (occlusion is handled by the engine; we keep radius for perf)
     private static final double VIEW_RADIUS_SQ = 96 * 96;
 
+    private static final Pattern COLOR_CODES = Pattern.compile("(?i)§[0-9A-FK-ORX]");
+
+    /** A live label: where it sits and which plain texts an old saved copy of it may show. */
+    record Label(Location position, Predicate<String> legacyText) {}
+
+    /** A label whose old saved copies show exactly the text it shows now. */
     public Hologram(Supplier<Location> locationSupplier, Supplier<String> nameSupplier) {
+        this(locationSupplier, nameSupplier, null);
+    }
+
+    /**
+     * @param legacyText matches the plain (uncoloured) text an old saved copy of this label
+     *                   may show; null means "exactly the current text"
+     */
+    public Hologram(Supplier<Location> locationSupplier, Supplier<String> nameSupplier,
+                    Predicate<String> legacyText) {
         this.locationSupplier = locationSupplier;
         this.nameSupplier = nameSupplier;
+        this.legacyText = legacyText != null ? legacyText : this::showsCurrentText;
         REGISTRY.add(this);
     }
 
@@ -65,6 +85,12 @@ public class Hologram {
         runSync(plugin, this::removeCurrent);
     }
 
+    /** Permanently retires the label: removes its display and stops LabelCleanup treating its spot as live. */
+    public void dispose(JavaPlugin plugin) {
+        REGISTRY.remove(this);
+        remove(plugin);
+    }
+
     /** Distance-based lifecycle (spawn near players, despawn when nobody nearby). */
     public void tick() {
         Location pos = position();
@@ -75,7 +101,8 @@ public class Hologram {
             if (td == null) {
                 create(pos);
             } else {
-                // keep text up to date in case suppliers change frequently
+                // follow a moved label, and keep text up to date in case suppliers change frequently
+                if (!LabelCleanup.samePosition(td.getLocation(), pos)) td.teleport(pos);
                 applyText(td);
             }
         } else if (td != null) {
@@ -85,19 +112,19 @@ public class Hologram {
 
     // ===== Registry (used by LabelCleanup) =====
 
-    /** Current label positions of all live holograms (null positions skipped). */
-    static List<Location> labelPositions() {
-        List<Location> out = new ArrayList<>();
+    /** All live labels with a position (labels without one, or in an unloaded world, are skipped). */
+    static List<Label> labels() {
+        List<Label> out = new ArrayList<>();
         for (Hologram h : new ArrayList<>(REGISTRY)) {
-            Location pos;
-            try {
-                pos = h.position();
-            } catch (IllegalArgumentException worldUnloaded) {
-                continue; // Location#getWorld throws once its world was unloaded
-            }
-            if (pos != null) out.add(pos);
+            Location pos = h.position();
+            if (pos != null) out.add(new Label(pos, h.legacyText));
         }
         return out;
+    }
+
+    /** {@code text} without legacy colour and format codes. */
+    static String plain(String text) {
+        return text == null ? "" : COLOR_CODES.matcher(text).replaceAll("");
     }
 
     /** UUIDs of the displays the live holograms currently own. */
@@ -165,8 +192,17 @@ public class Hologram {
 
     private Location position() {
         Location base = locationSupplier.get();
-        if (base == null || base.getWorld() == null) return null;
+        if (base == null) return null;
+        try {
+            if (base.getWorld() == null) return null;
+        } catch (IllegalArgumentException worldUnloaded) {
+            return null; // Location#getWorld throws once its world was unloaded
+        }
         return base.clone().add(0.5, yOffset, 0.5);
+    }
+
+    private boolean showsCurrentText(String plainText) {
+        return plainText.equals(plain(nameSupplier.get()));
     }
 
     private static boolean isChunkLoaded(Location pos) {

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 import java.util.function.Consumer;
+import net.kyori.adventure.text.Component;
 import net.tfminecraft.trialrooms.TrialTestSupport;
 import org.bukkit.*;
 import org.bukkit.entity.*;
@@ -33,8 +34,9 @@ class LabelCleanupTest extends TrialTestSupport {
     block = new Location(world, 4126, 278, 2533);
     levelPos = block.clone().add(.5, 1, .5);
     statusPos = block.clone().add(.5, 1.5, .5);
-    level = new Hologram(() -> block, () -> "[LVL: 1]");
-    status = new Hologram(() -> block, () -> "Cooldown 18m 10s");
+    // Same wiring as ActiveSpawner.
+    level = new Hologram(() -> block, () -> "§7[§eLVL: 3§7]", LegacyLabelTexts::spawnerLevel);
+    status = new Hologram(() -> block, () -> "§7Skeleton Wizard: §f2", LegacyLabelTexts::spawnerStatus);
     status.setYOffset(1.5);
   }
 
@@ -44,8 +46,8 @@ class LabelCleanupTest extends TrialTestSupport {
     reset(world);
   }
 
-  /** A display loaded from disk the way older versions saved it. */
-  private TextDisplay legacy(Location at) {
+  /** A display loaded from disk the way older versions saved it, showing {@code text}. */
+  private TextDisplay legacy(Location at, String text) {
     var td = mock(TextDisplay.class);
     var pdc = mock(PersistentDataContainer.class);
     when(td.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -54,11 +56,14 @@ class LabelCleanupTest extends TrialTestSupport {
     when(td.isPersistent()).thenReturn(true);
     when(pdc.isEmpty()).thenReturn(true);
     when(td.getScoreboardTags()).thenReturn(Set.of());
+    when(td.getBillboard()).thenReturn(Display.Billboard.CENTER);
+    when(td.isShadowed()).thenReturn(true);
+    when(td.text()).thenReturn(Component.text(text));
     return td;
   }
 
   private TextDisplay tagged(Location at) {
-    var td = legacy(at);
+    var td = legacy(at, "anything");
     when(td.isPersistent()).thenReturn(false);
     when(td.getPersistentDataContainer().isEmpty()).thenReturn(false);
     when(td.getPersistentDataContainer().has(Hologram.LABEL_KEY, PersistentDataType.BYTE))
@@ -77,9 +82,10 @@ class LabelCleanupTest extends TrialTestSupport {
   @Test
   void entitiesLoadRemovesEveryStackedLegacyCopyAtTheLabelPositions() {
     var copies = new ArrayList<Entity>();
+    // Texts as found on Main: frozen when saved, so they differ from the current text.
     for (int i = 0; i < 659; i++) {
-      copies.add(legacy(levelPos));
-      copies.add(legacy(statusPos));
+      copies.add(legacy(levelPos, "[LVL: 1]"));
+      copies.add(legacy(statusPos, i % 2 == 0 ? "Cooldown 18m 10s" : "Skeleton Wizard: 2"));
     }
     copies.add(mock(Zombie.class));
     new LabelCleanup().onEntitiesLoad(new EntitiesLoadEvent(chunk(cx, cz), copies));
@@ -108,32 +114,53 @@ class LabelCleanupTest extends TrialTestSupport {
     }
     assertTrue(Hologram.ownedDisplayIds().contains(currentId));
 
-    var withOtherPdc = legacy(levelPos);
+    var keep = new ArrayList<TextDisplay>();
+    keep.add(current);
+    var withOtherPdc = legacy(levelPos, "[LVL: 1]");
     when(withOtherPdc.getPersistentDataContainer().isEmpty()).thenReturn(false);
-    var withTag = legacy(levelPos);
+    keep.add(withOtherPdc);
+    var withTag = legacy(levelPos, "[LVL: 1]");
     when(withTag.getScoreboardTags()).thenReturn(Set.of("speech"));
-    var runtimeOnly = legacy(levelPos);
+    keep.add(withTag);
+    var runtimeOnly = legacy(levelPos, "[LVL: 1]");
     when(runtimeOnly.isPersistent()).thenReturn(false);
-    var riding = legacy(levelPos);
+    keep.add(runtimeOnly);
+    var fixed = legacy(levelPos, "[LVL: 1]");
+    when(fixed.getBillboard()).thenReturn(Display.Billboard.FIXED);
+    keep.add(fixed);
+    var unshadowed = legacy(levelPos, "[LVL: 1]");
+    when(unshadowed.isShadowed()).thenReturn(false);
+    keep.add(unshadowed);
+    var seeThrough = legacy(levelPos, "[LVL: 1]");
+    when(seeThrough.isSeeThrough()).thenReturn(true);
+    keep.add(seeThrough);
+    var background = legacy(levelPos, "[LVL: 1]");
+    when(background.isDefaultBackground()).thenReturn(true);
+    keep.add(background);
+    // Exactly like an old label, at the label position, but showing someone else's text.
+    keep.add(legacy(levelPos, "Welcome to the dungeon"));
+    keep.add(legacy(statusPos, "Speech: hello"));
+    var noText = legacy(levelPos, "");
+    when(noText.text()).thenReturn(null);
+    keep.add(noText);
+    var riding = legacy(levelPos, "[LVL: 1]");
     when(riding.getVehicle()).thenReturn(mock(Player.class));
-    var dead = legacy(levelPos);
+    keep.add(riding);
+    var dead = legacy(levelPos, "[LVL: 1]");
     when(dead.isDead()).thenReturn(true);
-    var offX = legacy(levelPos.clone().add(.01, 0, 0));
-    var offY = legacy(levelPos.clone().add(0, .01, 0));
-    var offZ = legacy(levelPos.clone().add(0, 0, .01));
-    var between = legacy(levelPos.clone().add(0, .25, 0));
-    var otherWorldCopy = legacy(new Location(otherWorld, 4126.5, 279, 2533.5));
-    var noWorld = legacy(new Location(null, 4126.5, 279, 2533.5));
-    var keep =
-        List.<Entity>of(
-            current, withOtherPdc, withTag, runtimeOnly, riding, dead, offX, offY, offZ, between,
-            otherWorldCopy, noWorld);
+    keep.add(dead);
+    keep.add(legacy(levelPos.clone().add(.01, 0, 0), "[LVL: 1]"));
+    keep.add(legacy(levelPos.clone().add(0, .01, 0), "[LVL: 1]"));
+    keep.add(legacy(levelPos.clone().add(0, 0, .01), "[LVL: 1]"));
+    keep.add(legacy(levelPos.clone().add(0, .25, 0), "[LVL: 1]"));
+    keep.add(legacy(new Location(otherWorld, 4126.5, 279, 2533.5), "[LVL: 1]"));
+    keep.add(legacy(new Location(null, 4126.5, 279, 2533.5), "[LVL: 1]"));
 
     assertEquals(0, LabelCleanup.removeLeftovers(world, cx, cz, keep));
     for (var e : keep) verify(e, never()).remove();
 
     // Tiny floating point noise still counts as the label position.
-    var noisy = legacy(levelPos.clone().add(1e-6, -1e-6, 1e-6));
+    var noisy = legacy(levelPos.clone().add(1e-6, -1e-6, 1e-6), "[LVL: 1]");
     var lostTagged = tagged(statusPos);
     assertEquals(2, LabelCleanup.removeLeftovers(world, cx, cz, List.of(current, noisy, lostTagged)));
     verify(noisy).remove();
@@ -142,8 +169,16 @@ class LabelCleanupTest extends TrialTestSupport {
   }
 
   @Test
+  void disposedLabelsNoLongerClaimTheirPosition() {
+    var gone = legacy(levelPos, "[LVL: 1]");
+    level.dispose(plugin);
+    assertEquals(0, LabelCleanup.removeLeftovers(world, cx, cz, List.of(gone)));
+    verify(gone, never()).remove();
+  }
+
+  @Test
   void chunksWithoutLabelsOrDisplaysAreSkippedCheaply() {
-    var copy = legacy(levelPos);
+    var copy = legacy(levelPos, "[LVL: 1]");
     assertEquals(0, LabelCleanup.removeLeftovers(world, cx, cz, List.of(mock(Zombie.class))));
     assertEquals(0, LabelCleanup.removeLeftovers(world, cx, cz, List.of()));
     // Same entity list, but the event's chunk/world holds no TrialRooms label.
@@ -162,14 +197,21 @@ class LabelCleanupTest extends TrialTestSupport {
     var waiting = new Hologram(() -> waitingBlock, () -> "waiting");
     var loaded = chunk(cx, cz);
     var stillLoading = chunk(200 >> 4, 200 >> 4);
-    var copy = legacy(levelPos);
-    var copy2 = legacy(statusPos);
+    var emptyBlock = new Location(world, 300, 64, 300);
+    var empty = new Hologram(() -> emptyBlock, () -> "empty");
+    var noDisplays = chunk(300 >> 4, 300 >> 4);
+    var copy = legacy(levelPos, "[LVL: 1]");
+    var copy2 = legacy(statusPos, "Cooldown 18m 10s");
     when(loaded.isEntitiesLoaded()).thenReturn(true);
     when(loaded.getEntities()).thenReturn(new Entity[] {copy, copy2});
+    when(noDisplays.isEntitiesLoaded()).thenReturn(true);
+    when(noDisplays.getEntities()).thenReturn(new Entity[] {mock(Zombie.class)});
     when(world.isChunkLoaded(cx, cz)).thenReturn(true);
     when(world.isChunkLoaded(200 >> 4, 200 >> 4)).thenReturn(true);
+    when(world.isChunkLoaded(300 >> 4, 300 >> 4)).thenReturn(true);
     when(world.getChunkAt(cx, cz)).thenReturn(loaded);
     when(world.getChunkAt(200 >> 4, 200 >> 4)).thenReturn(stillLoading);
+    when(world.getChunkAt(300 >> 4, 300 >> 4)).thenReturn(noDisplays);
 
     assertEquals(2, LabelCleanup.sweepLoadedChunks());
     verify(copy).remove();
@@ -180,6 +222,31 @@ class LabelCleanupTest extends TrialTestSupport {
     verify(world, never()).getChunkAt(100 >> 4, 100 >> 4);
     assertNotNull(far);
     assertNotNull(waiting);
+    assertNotNull(empty);
+  }
+
+  @Test
+  void legacyTextsCoverEveryTextTheOwnersProduce() {
+    assertTrue(LegacyLabelTexts.spawnerLevel("[LVL: 1]"));
+    assertTrue(LegacyLabelTexts.spawnerLevel("[LVL: 100]"));
+    assertFalse(LegacyLabelTexts.spawnerLevel("[LVL: ]"));
+    assertFalse(LegacyLabelTexts.spawnerLevel("Level 1"));
+    for (var s :
+        List.of(
+            "Skeleton Wizard: 2",
+            "rpg_skeleton: 1",
+            "Unlocking…",
+            "Cooldown 18m 10s",
+            "Cooldown 0s",
+            "Enemies Alive: 3 (Queued: 0)",
+            "Enemies Alive: 0",
+            "Spawning… (Queued: 2)"))
+      assertTrue(LegacyLabelTexts.spawnerStatus(s), s);
+    assertFalse(LegacyLabelTexts.spawnerStatus("Welcome"));
+    assertFalse(LegacyLabelTexts.spawnerStatus("Cooldown"));
+    assertTrue(LegacyLabelTexts.entrance("Right-Click with a Key\nto enter"));
+    assertFalse(LegacyLabelTexts.entrance("Right-Click with a Key"));
+    assertFalse(LegacyLabelTexts.entrance("Click to enter"));
   }
 
   @Test

@@ -2,14 +2,16 @@ package net.tfminecraft.trialrooms.environment.spawner;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
@@ -18,7 +20,10 @@ import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.tfminecraft.trialrooms.TrialRooms;
+import net.tfminecraft.trialrooms.environment.spawner.Hologram.Label;
 
 /**
  * Removes TrialRooms label displays that are not the current one of their label.
@@ -31,13 +36,17 @@ import net.tfminecraft.trialrooms.TrialRooms;
  *   <li>it sits exactly (within {@link #POSITION_EPSILON}) on the position of a live
  *       TrialRooms label in the same world and chunk;</li>
  *   <li>no live label currently owns it;</li>
- *   <li>it carries {@link Hologram#LABEL_KEY}, or it is a legacy label: persistent, with
- *       an empty PersistentDataContainer and no scoreboard tags.</li>
+ *   <li>it carries {@link Hologram#LABEL_KEY}, or it is a legacy copy of that label: saved
+ *       exactly the way older TrialRooms versions spawned labels (persistent, empty
+ *       PersistentDataContainer, no scoreboard tags, centre billboard, shadowed, not
+ *       see-through, no default background) and showing a text that label produces.</li>
  * </ul>
  */
 public final class LabelCleanup implements Listener {
 
     private record ChunkKey(World world, int x, int z) {}
+
+    private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
 
     /** Largest coordinate difference still counted as "the label position". */
     static final double POSITION_EPSILON = 1.0e-3;
@@ -57,16 +66,20 @@ public final class LabelCleanup implements Listener {
      * @return the number of displays removed
      */
     public static int sweepLoadedChunks() {
-        Set<ChunkKey> chunks = new LinkedHashSet<>();
-        for (Location pos : Hologram.labelPositions()) {
-            chunks.add(new ChunkKey(pos.getWorld(), pos.getBlockX() >> 4, pos.getBlockZ() >> 4));
+        // Read every label once and group it by chunk.
+        Map<ChunkKey, List<Label>> chunks = new LinkedHashMap<>();
+        for (Label label : Hologram.labels()) {
+            Location pos = label.position();
+            chunks.computeIfAbsent(new ChunkKey(pos.getWorld(), pos.getBlockX() >> 4, pos.getBlockZ() >> 4),
+                    k -> new ArrayList<>()).add(label);
         }
         int removed = 0;
-        for (ChunkKey key : chunks) {
+        for (Map.Entry<ChunkKey, List<Label>> entry : chunks.entrySet()) {
+            ChunkKey key = entry.getKey();
             if (!key.world().isChunkLoaded(key.x(), key.z())) continue;
             Chunk chunk = key.world().getChunkAt(key.x(), key.z());
             if (!chunk.isEntitiesLoaded()) continue;
-            removed += removeLeftovers(key.world(), key.x(), key.z(), List.of(chunk.getEntities()));
+            removed += removeLeftovers(key.world(), key.x(), key.z(), List.of(chunk.getEntities()), entry.getValue());
         }
         return removed;
     }
@@ -78,19 +91,35 @@ public final class LabelCleanup implements Listener {
      * @return the number of displays removed
      */
     static int removeLeftovers(World world, int cx, int cz, Collection<? extends Entity> entities) {
+        List<TextDisplay> displays = textDisplays(entities);
+        if (displays.isEmpty()) return 0;
+
+        List<Label> labels = new ArrayList<>();
+        for (Label label : Hologram.labels()) {
+            Location pos = label.position();
+            if (world.equals(pos.getWorld()) && (pos.getBlockX() >> 4) == cx && (pos.getBlockZ() >> 4) == cz) {
+                labels.add(label);
+            }
+        }
+        return removeFrom(world, cx, cz, displays, labels);
+    }
+
+    /** Same as {@link #removeLeftovers(World, int, int, Collection)} with the chunk's labels already known. */
+    private static int removeLeftovers(World world, int cx, int cz, Collection<? extends Entity> entities,
+                                       List<Label> labels) {
+        return removeFrom(world, cx, cz, textDisplays(entities), labels);
+    }
+
+    private static List<TextDisplay> textDisplays(Collection<? extends Entity> entities) {
         List<TextDisplay> displays = new ArrayList<>();
         for (Entity entity : entities) {
             if (entity instanceof TextDisplay td) displays.add(td);
         }
-        if (displays.isEmpty()) return 0;
+        return displays;
+    }
 
-        List<Location> labels = new ArrayList<>();
-        for (Location pos : Hologram.labelPositions()) {
-            if (world.equals(pos.getWorld()) && (pos.getBlockX() >> 4) == cx && (pos.getBlockZ() >> 4) == cz) {
-                labels.add(pos);
-            }
-        }
-        if (labels.isEmpty()) return 0;
+    private static int removeFrom(World world, int cx, int cz, List<TextDisplay> displays, List<Label> labels) {
+        if (displays.isEmpty() || labels.isEmpty()) return 0;
 
         Set<UUID> owned = Hologram.ownedDisplayIds();
         int removed = 0;
@@ -108,19 +137,29 @@ public final class LabelCleanup implements Listener {
     }
 
     /** Whether {@code td} is a TrialRooms label display sitting on one of {@code labels}. */
-    static boolean isLeftoverLabel(TextDisplay td, List<Location> labels) {
+    static boolean isLeftoverLabel(TextDisplay td, List<Label> labels) {
         if (td.isDead() || td.getVehicle() != null) return false;
         PersistentDataContainer pdc = td.getPersistentDataContainer();
-        if (!pdc.has(Hologram.LABEL_KEY, PersistentDataType.BYTE) && !isLegacyLabel(td, pdc)) return false;
+        boolean tagged = pdc.has(Hologram.LABEL_KEY, PersistentDataType.BYTE);
+        if (!tagged && !looksLikeLegacyLabel(td, pdc)) return false;
         Location at = td.getLocation();
-        for (Location label : labels) {
-            if (samePosition(at, label)) return true;
+        for (Label label : labels) {
+            if (!samePosition(at, label.position())) continue;
+            if (tagged || label.legacyText().test(plainText(td))) return true;
         }
         return false;
     }
 
-    private static boolean isLegacyLabel(TextDisplay td, PersistentDataContainer pdc) {
-        return td.isPersistent() && pdc.isEmpty() && td.getScoreboardTags().isEmpty();
+    /** The exact entity setup older TrialRooms versions saved for every label. */
+    private static boolean looksLikeLegacyLabel(TextDisplay td, PersistentDataContainer pdc) {
+        return td.isPersistent() && pdc.isEmpty() && td.getScoreboardTags().isEmpty()
+                && td.getBillboard() == Display.Billboard.CENTER
+                && td.isShadowed() && !td.isSeeThrough() && !td.isDefaultBackground();
+    }
+
+    private static String plainText(TextDisplay td) {
+        Component text = td.text();
+        return text == null ? "" : PLAIN.serialize(text);
     }
 
     static boolean samePosition(Location a, Location b) {

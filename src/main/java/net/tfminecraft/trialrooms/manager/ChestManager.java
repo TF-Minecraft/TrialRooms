@@ -170,7 +170,7 @@ public final class ChestManager implements Listener {
 
     public static void remove(LootChest chest) {
         chest.getLocation().getBlock().setType(Material.AIR);
-        chest.removeHologram();
+        chest.disposeHologram();
         chests.remove(chest.getLocation());
         chest.getLocation().getWorld().playSound(chest.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.7f, 1.3f);
     }

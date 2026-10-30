@@ -3,6 +3,7 @@ package net.tfminecraft.trialrooms.environment.entrance;
 import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.trialrooms.TrialRooms;
 import net.tfminecraft.trialrooms.environment.spawner.Hologram;
+import net.tfminecraft.trialrooms.environment.spawner.LegacyLabelTexts;
 import net.tfminecraft.trialrooms.persist.Database;
 
 import org.bukkit.ChatColor;
@@ -39,7 +40,8 @@ public final class Entrance {
 
         this.entranceHolo = new Hologram(
                 () -> this.entranceLoc,
-                this::buildEntranceText
+                this::buildEntranceText,
+                LegacyLabelTexts::entrance
         );
         this.entranceHolo.setYOffset(1.55);
 
@@ -87,6 +89,12 @@ public final class Entrance {
     public void removeHolograms(JavaPlugin plugin) {
         try { entranceHolo.remove(plugin); } catch (Exception ignored) {}
         try { exitHolo.remove(plugin); } catch (Exception ignored) {}
+    }
+
+    /** The entrance was deleted: remove its labels for good. */
+    public void disposeHolograms(JavaPlugin plugin) {
+        try { entranceHolo.dispose(plugin); } catch (Exception ignored) {}
+        try { exitHolo.dispose(plugin); } catch (Exception ignored) {}
     }
 
     public void refreshHolograms(JavaPlugin plugin) {

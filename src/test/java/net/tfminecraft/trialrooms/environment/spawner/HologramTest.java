@@ -31,9 +31,14 @@ class HologramTest extends TrialTestSupport {
     id = UUID.randomUUID();
     when(display.getUniqueId()).thenReturn(id);
     when(display.getPersistentDataContainer()).thenReturn(pdc);
+    // The display reports the position it was spawned at or last teleported to.
+    var at = new AtomicReference<Location>();
+    when(display.getLocation()).thenAnswer(a -> at.get().clone());
+    doAnswer(a -> { at.set(a.getArgument(0)); return true; }).when(display).teleport(any(Location.class));
     when(world.spawn(any(Location.class), eq(TextDisplay.class), any(Consumer.class)))
         .thenAnswer(
             a -> {
+              at.set(((Location) a.getArgument(0)).clone());
               ((Consumer<TextDisplay>) a.getArgument(2)).accept(display);
               return display;
             });
@@ -49,6 +54,10 @@ class HologramTest extends TrialTestSupport {
     bukkit.close();
     // Holograms stay registered until collected; make their world look unloaded to later tests.
     reset(world);
+  }
+
+  private static boolean labelAt(Location pos) {
+    return Hologram.labels().stream().anyMatch(l -> l.position().equals(pos));
   }
 
   private void spawns(int times) {
@@ -87,7 +96,7 @@ class HologramTest extends TrialTestSupport {
     verify(display, times(2)).teleport(pos);
     verify(display, times(2)).setText("");
     assertTrue(Hologram.ownedDisplayIds().contains(id));
-    assertTrue(Hologram.labelPositions().contains(pos));
+    assertTrue(labelAt(pos));
 
     h.remove(plugin);
     verify(display).remove();
@@ -185,13 +194,58 @@ class HologramTest extends TrialTestSupport {
     current.set(new Location(null, 0, 0, 0));
     h.tick();
     h.spawn(plugin);
-    assertFalse(Hologram.labelPositions().contains(null));
+    assertTrue(Hologram.labels().stream().noneMatch(l -> l.position() == null));
     spawns(0);
-    var unloaded = new Hologram(() -> {
-      throw new IllegalArgumentException("World unloaded");
-    }, () -> "text");
-    assertDoesNotThrow(Hologram::labelPositions);
-    unloaded.setYOffset(1);
+    // Location#getWorld throws once the world was unloaded: the label is skipped, not fatal.
+    var gone = mock(Location.class);
+    when(gone.getWorld()).thenThrow(new IllegalArgumentException("World unloaded"));
+    var unloaded = new Hologram(() -> gone, () -> "text");
+    assertDoesNotThrow(Hologram::labels);
+    assertDoesNotThrow(unloaded::tick);
+    assertDoesNotThrow(() -> unloaded.refresh(plugin));
+    spawns(0);
+  }
+
+  @Test
+  void movedLabelFollowsInTickAndDisposedLabelsAreNoLongerLive() {
+    var block = new AtomicReference<Location>(new Location(world, 0, 64, 0));
+    when(player.getLocation()).thenReturn(block.get());
+    var h = new Hologram(block::get, () -> "text");
+    h.tick();
+    h.tick();
+    verify(display, never()).teleport(any(Location.class));
+    block.set(new Location(world, 2, 64, 0));
+    h.tick();
+    var moved = new Location(world, 2.5, 65, 0.5);
+    verify(display).teleport(moved);
+    h.tick();
+    verify(display, times(1)).teleport(any(Location.class));
+    spawns(1);
+
+    assertTrue(labelAt(moved));
+    h.dispose(plugin);
+    verify(display).remove();
+    assertFalse(labelAt(moved));
+    assertFalse(Hologram.ownedDisplayIds().contains(id));
+  }
+
+  @Test
+  void defaultLegacyTextIsTheCurrentPlainText() {
+    var text = new AtomicReference<String>("§e§lRight-Click §7with a §6§lKey §7to open");
+    var loc = new Location(world, 7, 64, 7);
+    var h = new Hologram(() -> loc, text::get);
+    var label =
+        Hologram.labels().stream()
+            .filter(l -> l.position().equals(loc.clone().add(.5, 1, .5)))
+            .findFirst()
+            .orElseThrow();
+    assertTrue(label.legacyText().test("Right-Click with a Key to open"));
+    assertFalse(label.legacyText().test("Right-Click with a Key to open!"));
+    text.set(null);
+    assertTrue(label.legacyText().test(""));
+    assertEquals("[LVL: 1]", Hologram.plain("§7[§eLVL: §x§f§7§e§c§8§81§7]"));
+    assertEquals("", Hologram.plain(null));
+    assertNotNull(h); // keep the weakly registered label alive until here
   }
 
   @Test

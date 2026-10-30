@@ -148,6 +148,13 @@ public final class LootChest {
         } catch (Exception ignored) {}
     }
 
+    /** The chest was deleted: remove its label for good. */
+    public void disposeHologram() {
+        try {
+            hologram.dispose(TrialRooms.getInstance());
+        } catch (Exception ignored) {}
+    }
+
     private Location normalize(Location in) {
         if (in == null) return null;
         return new Location(in.getWorld(), in.getBlockX(), in.getBlockY(), in.getBlockZ());

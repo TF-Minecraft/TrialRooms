@@ -136,7 +136,7 @@ public final class EntranceManager implements Listener {
     public void remove(Location lodestoneBlockLoc) {
         Entrance removed = entrances.remove(Entrance.normalizeBlock(lodestoneBlockLoc));
         if (removed != null) {
-            removed.removeHolograms(TrialRooms.getInstance());
+            removed.disposeHolograms(TrialRooms.getInstance());
             markDirty();
         }
     }
@@ -320,7 +320,7 @@ public final class EntranceManager implements Listener {
         // 1) Exact entrance block? → remove the entrance entirely
         Entrance ent = entrances.remove(broken);
         if (ent != null) {
-            try { ent.removeHolograms(TrialRooms.getInstance()); } catch (Exception ignored) {}
+            try { ent.disposeHolograms(TrialRooms.getInstance()); } catch (Exception ignored) {}
             markDirty();
             p.sendMessage(ChatColor.YELLOW + "Entrance removed.");
             return;
