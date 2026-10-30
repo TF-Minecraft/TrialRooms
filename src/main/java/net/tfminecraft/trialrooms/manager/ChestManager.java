@@ -87,6 +87,9 @@ public final class ChestManager implements Listener {
         LootChest chest = new LootChest(key, spawner);
         // visible only during COOLDOWN; hidden otherwise
         chest.setDesiredVisible(spawner.getState() == ActiveSpawner.State.COOLDOWN);
+        // Rebinding replaces the chest at this block: retire the old one's label first.
+        LootChest replaced = chests.get(key);
+        if (replaced != null) replaced.disposeHologram();
         chests.put(key, chest);
         if (chest.isInLoadedChunk()) chest.enforceNow();
         return chest;

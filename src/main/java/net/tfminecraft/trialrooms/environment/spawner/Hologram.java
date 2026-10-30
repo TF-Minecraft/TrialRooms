@@ -40,6 +40,7 @@ public class Hologram {
     private final Predicate<String>  legacyText;
 
     private UUID entityId;
+    private boolean disposed; // owner deleted: never show this label again
     private double yOffset = 1.0; // height above block center
 
     // view radius squared (occlusion is handled by the engine; we keep radius for perf)
@@ -87,12 +88,17 @@ public class Hologram {
 
     /** Permanently retires the label: removes its display and stops LabelCleanup treating its spot as live. */
     public void dispose(JavaPlugin plugin) {
+        disposed = true;
         REGISTRY.remove(this);
         remove(plugin);
     }
 
     /** Distance-based lifecycle (spawn near players, despawn when nobody nearby). */
     public void tick() {
+        if (disposed) {
+            removeCurrent();
+            return;
+        }
         Location pos = position();
         if (pos == null) return;
 
@@ -139,6 +145,10 @@ public class Hologram {
     // ===== Internals =====
 
     private void update() {
+        if (disposed) {
+            removeCurrent(); // e.g. an editor still open on a deleted spawner
+            return;
+        }
         Location pos = position();
         if (pos == null) return;
         if (!isChunkLoaded(pos)) {

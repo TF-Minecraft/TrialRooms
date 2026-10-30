@@ -227,6 +227,30 @@ class HologramTest extends TrialTestSupport {
     verify(display).remove();
     assertFalse(labelAt(moved));
     assertFalse(Hologram.ownedDisplayIds().contains(id));
+    // An editor still open on the deleted owner keeps calling refresh/spawn: nothing comes back.
+    h.refresh(plugin);
+    h.spawn(plugin);
+    h.tick();
+    spawns(1);
+    verify(display, times(1)).remove();
+  }
+
+  @Test
+  void disposeOffThreadStillStopsAnUpdateQueuedBeforeIt() {
+    var loc = new Location(world, 0, 64, 0);
+    when(player.getLocation()).thenReturn(loc);
+    var h = new Hologram(() -> loc, () -> "text");
+    h.tick();
+    spawns(1);
+    bukkit.when(Bukkit::isPrimaryThread).thenReturn(false);
+    h.refresh(plugin);
+    h.dispose(plugin);
+    bukkit.when(Bukkit::isPrimaryThread).thenReturn(true);
+    // A display that somehow survived is removed by the next tick.
+    h.tick();
+    verify(display).remove();
+    server.getScheduler().performOneTick();
+    spawns(1);
   }
 
   @Test
