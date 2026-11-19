@@ -4,8 +4,10 @@ import java.io.File;
 import java.util.List;
 
 import org.bukkit.Bukkit;
+import org.bukkit.WorldCreator;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import net.tfminecraft.trialrooms.dungeon.DungeonModule;
 import net.tfminecraft.trialrooms.environment.entrance.ui.EntranceEditor;
 import net.tfminecraft.trialrooms.environment.spawner.LabelCleanup;
 import net.tfminecraft.trialrooms.environment.spawner.ui.ActiveSpawnerEditor;
@@ -23,6 +25,7 @@ import net.tfminecraft.trialrooms.persist.Database;
 public class TrialRooms extends JavaPlugin{
     private static TrialRooms instance;
     private SpawnerManager spawnerManager;
+    private DungeonModule dungeons;
     private boolean persistenceReady;
     private final ConfigLoader configLoader = new ConfigLoader();
     private final SpawnerLoader spawnerLoader = new SpawnerLoader();
@@ -61,11 +64,16 @@ public class TrialRooms extends JavaPlugin{
         LabelCleanup.sweepLoadedChunks();
         persistenceReady = true;
         spawnerManager.start();
+        dungeons = new DungeonModule(this, WorldCreator::createWorld);
+        dungeons.enable();
         getLogger().info("TrialRooms Plugin Enabled!");
         }
 
     @Override
     public void onDisable() {
+        if (dungeons != null) {
+            dungeons.disable();
+        }
         if (spawnerManager == null) return;
         // Incomplete hydration must never prune records that were not loaded.
         if (persistenceReady) {
@@ -87,6 +95,10 @@ public class TrialRooms extends JavaPlugin{
 
     public SpawnerManager getSpawnerManager() {
         return spawnerManager;
+    }
+
+    public DungeonModule getDungeons() {
+        return dungeons;
     }
 
     public void createConfigs() {

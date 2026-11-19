@@ -21,7 +21,8 @@ class LifecycleTest extends TrialTestSupport {
         var db = mockStatic(Database.class);
         var chests = mockStatic(ChestManager.class);
         var entrances = mockStatic(EntranceManager.class);
-        var cleanup = mockStatic(LabelCleanup.class)) {
+        var cleanup = mockStatic(LabelCleanup.class);
+        var dungeons = mockConstruction(net.tfminecraft.trialrooms.dungeon.DungeonModule.class)) {
       var cm = mock(ChestManager.class);
       var em = mock(EntranceManager.class);
       chests.when(ChestManager::get).thenReturn(cm);
@@ -36,7 +37,10 @@ class LifecycleTest extends TrialTestSupport {
       verify(em).loadAllFromDisk();
       loaded.createConfigs();
       loaded.loadConfigs();
+      assertSame(dungeons.constructed().getFirst(), loaded.getDungeons());
+      verify(loaded.getDungeons()).enable();
       loaded.onDisable();
+      verify(loaded.getDungeons()).disable();
       verify(em).saveAllNow();
       verify(cm).removeAllHolograms();
       verify(loaded.getSpawnerManager()).removeAllHolograms();
