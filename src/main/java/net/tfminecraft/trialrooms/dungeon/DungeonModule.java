@@ -101,8 +101,12 @@ public final class DungeonModule {
 
     /** Starts dungeon runs with the given plugin bridges and registers their events. */
     public void startRuns(Ports.Characters characters, Ports.Keys keys, Ports.Mobs mobs) {
+        startRuns(characters, keys, mobs, Ports.Fx.NONE);
+    }
+
+    public void startRuns(Ports.Characters characters, Ports.Keys keys, Ports.Mobs mobs, Ports.Fx fx) {
         Path root = plugin.getDataFolder().toPath().resolve("dungeons");
-        runs = new RunManager(plugin, this, characters, keys, mobs, new RunFiles(root, plugin.getLogger()),
+        runs = new RunManager(plugin, this, characters, keys, mobs, fx, new RunFiles(root, plugin.getLogger()),
                 new GateStore(root.resolve("gates.yml").toFile(), plugin.getLogger()), System::currentTimeMillis);
         runs.start();
         plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs), plugin);

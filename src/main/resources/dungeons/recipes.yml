@@ -7,12 +7,16 @@
 # players: how many players a gate lets in, as N or MIN-MAX.
 # key: TLibs item path the gate takes from the leader (blank for none).
 # lives: shared lives; each bleed-out spends one, then a player is out.
-# mob-level / health-per-extra-player: enemy level, and extra enemy health per player after the first.
+# mob-level / health-per-extra-player: enemy level, and extra enemy health per player after the first
+#   (party size changes nothing else: not damage, not how many enemies).
+# tier: difficulty from 1: bigger fights (the kit's tier-factors) and harder boss mechanics.
+# boss: which of the kit's bosses ends the dungeon (blank for the kit's first).
 delve_greybox:
   kit: greybox
   trunk: 3-5
   trunk-pool:
     combat: 3
+    elite: 1
     corridor: 1
   rest-before-boss: true
   vault: true
@@ -27,4 +31,6 @@ delve_greybox:
   key: m.loot.trial_key
   lives: 3
   mob-level: 1
-  health-per-extra-player: 0.5
+  health-per-extra-player: 0.8
+  tier: 1
+  boss: bone_warden

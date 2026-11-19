@@ -89,6 +89,35 @@ public final class Adapters {
         }
     }
 
+    /** Fight warnings as vanilla particles, kept few so a room of them stays cheap. */
+    public static final class BukkitFx implements Ports.Fx {
+        @Override
+        public void ring(org.bukkit.World world, double x, double y, double z, double radius) {
+            int points = Math.max(12, (int) (radius * 6));
+            for (int i = 0; i < points; i++) {
+                double a = 2 * Math.PI * i / points;
+                world.spawnParticle(org.bukkit.Particle.FLAME, x + Math.cos(a) * radius, y + 0.15,
+                        z + Math.sin(a) * radius, 1, 0, 0, 0, 0);
+            }
+        }
+
+        @Override
+        public void hurt(Player player, double amount, Entity source) {
+            org.bukkit.damage.DamageSource.Builder b = org.bukkit.damage.DamageSource.builder(
+                    org.bukkit.damage.DamageType.MAGIC);
+            if (source != null) {
+                b.withCausingEntity(source).withDirectEntity(source);
+            }
+            player.damage(amount, b.build());
+        }
+
+        @Override
+        public void burst(Location at) {
+            at.getWorld().spawnParticle(org.bukkit.Particle.ENCHANT, at.getX(), at.getY() + 1, at.getZ(), 8, 0.4, 0.6,
+                    0.4, 0.2);
+        }
+    }
+
     public static final class MythicMobsAdapter implements Ports.Mobs {
         @Override
         public Entity spawn(String type, Location at, int level) {

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
@@ -43,5 +44,32 @@ public final class Ports {
 
         /** Removes a spawned mob and everything its plugin keeps for it. */
         void remove(Entity mob);
+    }
+
+    /** What fights do to the world: particles that show warnings, and the damage mechanics deal. */
+    public interface Fx {
+        /** No particles and plain damage; for tests. */
+        Fx NONE = new Fx() {
+        };
+
+        /**
+         * Mechanic damage: a share of max health that armour should not soak (the server adapter
+         * uses magic damage). By default plain damage, from the source when there is one.
+         */
+        default void hurt(Player player, double amount, Entity source) {
+            if (source == null) {
+                player.damage(amount);
+            } else {
+                player.damage(amount, source);
+            }
+        }
+
+        /** A ring on the ground marking a warned area. */
+        default void ring(World world, double x, double y, double z, double radius) {
+        }
+
+        /** A short burst at an enemy: a shield holding, a rally. */
+        default void burst(Location at) {
+        }
     }
 }

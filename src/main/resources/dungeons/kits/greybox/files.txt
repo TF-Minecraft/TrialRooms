@@ -11,6 +11,8 @@ rooms/combat_dais.yml
 rooms/combat_dais.nbt
 rooms/combat_long.yml
 rooms/combat_long.nbt
+rooms/elite_court.yml
+rooms/elite_court.nbt
 rooms/rest_camp.yml
 rooms/rest_camp.nbt
 rooms/treasure_nook.yml

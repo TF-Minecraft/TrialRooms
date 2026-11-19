@@ -257,5 +257,25 @@ public class RunCoreTest {
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", -1, 1, 0));
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 0, 0));
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, -1));
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 0, ""));
+    assertEquals("", new RunRules(1, 1, "", 1, 1, 0, 2, null).boss());
+    assertEquals("warden", new RunRules(1, 1, "", 1, 1, 0, 2, " warden ").boss());
+    assertEquals(1, r.tier());
+  }
+
+  @Test
+  void actionBarsKeepWarningsOnTop() {
+    org.mockbukkit.mockbukkit.ServerMock server = org.mockbukkit.mockbukkit.MockBukkit.mock();
+    try {
+      var p = server.addPlayer();
+      ActionBars bars = new ActionBars();
+      assertTrue(bars.send(p, ActionBars.Level.WARNING, "move", 0, 1000));
+      assertFalse(bars.send(p, ActionBars.Level.INFO, "info", 500, 1000), "a warning holds the bar");
+      assertTrue(bars.send(p, ActionBars.Level.WARNING, "again", 600, 1000), "the same level may replace it");
+      assertTrue(bars.send(p, ActionBars.Level.INFO, "info", 1700, 1000), "once the hold runs out");
+      assertTrue(bars.send(p, ActionBars.Level.DOWNED, "down", 1800, 1000), "a higher level goes over a lower one");
+    } finally {
+      org.mockbukkit.mockbukkit.MockBukkit.unmock();
+    }
   }
 }

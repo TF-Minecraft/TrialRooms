@@ -32,7 +32,9 @@ public class GreyboxKitTest {
   @Test
   void bundledKitAndRecipeGenerateValidLayouts() {
     DungeonKit kit = kit();
-    assertEquals(10, kit.catalog().templates().size());
+    assertEquals(11, kit.catalog().templates().size());
+    assertNotNull(kit.fights());
+    assertEquals("The Bone Warden", kit.fights().boss("").name());
     List<String> problems = new ArrayList<>();
     var recipes = RecipeLoader.load(new File(RES, "recipes.yml"), problems);
     assertEquals(List.of(), problems);

@@ -60,6 +60,9 @@ public final class RunManager {
     private final Ports.Characters characters;
     private final Ports.Keys keys;
     private final Ports.Mobs mobs;
+    private final Fights fights;
+    /** One action bar line per player, warnings first. */
+    final ActionBars bars = new ActionBars();
     private final RunFiles files;
     private final GateStore gates;
     private final LongSupplier clock;
@@ -96,6 +99,12 @@ public final class RunManager {
         final Map<Integer, Set<Entity>> roomMobs = new HashMap<>();
         final Map<UUID, double[]> mobHome = new HashMap<>();
         final Map<UUID, Location> downedAt = new HashMap<>();
+        /** Fights of kits with a roster, by room. */
+        final Map<Integer, Fights.Encounter> encounters = new HashMap<>();
+        /** Things that spawned in the run outside a fight (summons): removed when the run ends. */
+        final Set<Entity> extras = new HashSet<>();
+        /** Damage each player dealt to the run's enemies, for the run log. */
+        final Map<UUID, Double> damage = new HashMap<>();
         double healthFactor = 1;
         long finishAtMs = -1;
 
@@ -122,11 +131,17 @@ public final class RunManager {
 
     public RunManager(JavaPlugin plugin, DungeonModule module, Ports.Characters characters, Ports.Keys keys,
             Ports.Mobs mobs, RunFiles files, GateStore gates, LongSupplier clock) {
+        this(plugin, module, characters, keys, mobs, Ports.Fx.NONE, files, gates, clock);
+    }
+
+    public RunManager(JavaPlugin plugin, DungeonModule module, Ports.Characters characters, Ports.Keys keys,
+            Ports.Mobs mobs, Ports.Fx fx, RunFiles files, GateStore gates, LongSupplier clock) {
         this.plugin = plugin;
         this.module = module;
         this.characters = characters;
         this.keys = keys;
         this.mobs = mobs;
+        this.fights = new Fights(this, plugin, mobs, fx, clock);
         this.files = files;
         this.gates = gates;
         this.clock = clock;
@@ -164,8 +179,16 @@ public final class RunManager {
         return new ArrayList<>(runs.values());
     }
 
-    private RunSettings settings() {
+    RunSettings settings() {
         return module.settings();
+    }
+
+    World world() {
+        return module.world();
+    }
+
+    Fights fights() {
+        return fights;
     }
 
     // ------------------------------------------------------------------ queries
@@ -511,7 +534,8 @@ public final class RunManager {
         } else if (type == RoomType.VAULT && ar.run.bossDefeated() && ar.run.state() == DungeonRun.State.RUNNING) {
             complete(ar);
         } else if (type == RoomType.TREASURE) {
-            p.sendActionBar(Component.text("A treasure room (treasure comes in a later update)."));
+            bars.send(p, ActionBars.Level.INFO, "A treasure room (treasure comes in a later update).", clock.getAsLong(),
+                    2000);
         }
     }
 
@@ -521,7 +545,8 @@ public final class RunManager {
         }
         for (Player p : online(ar)) {
             if (ar.run.member(p.getUniqueId()).room() == c.room()) {
-                p.sendActionBar(Component.text("The doors close in " + c.stepsLeft() / 2 + "..."));
+                bars.send(p, ActionBars.Level.INFO, "The doors close in " + c.stepsLeft() / 2 + "...", clock.getAsLong(),
+                        900);
                 p.playSound(p.getLocation(), "minecraft:block.note_block.hat", 1f, 1f);
             }
         }
@@ -534,6 +559,13 @@ public final class RunManager {
             holdIn(ar, room, SEAL_MARGIN);
         }
         setDoors(ar, room, false, true);
+        if (ar.kit.fights() != null) {
+            for (Player p : online(ar)) {
+                p.playSound(p.getLocation(), "minecraft:block.iron_door.close", 1f, 0.8f);
+            }
+            fights.start(ar, room);
+            return;
+        }
         int spawned = spawn(ar, room);
         for (Player p : online(ar)) {
             p.playSound(p.getLocation(), "minecraft:block.iron_door.close", 1f, 0.8f);
@@ -544,6 +576,17 @@ public final class RunManager {
         if (spawned == 0) {
             clear(ar, room);
         }
+    }
+
+    /** Files a mob as one of the run's: marked, tracked, and sent back home if it strays. */
+    void register(ActiveRun ar, Entity mob, double[] home) {
+        mob.getPersistentDataContainer().set(mobKey, PersistentDataType.STRING, ar.run.id().toString());
+        byMob.put(mob.getUniqueId(), ar);
+        ar.mobHome.put(mob.getUniqueId(), home);
+    }
+
+    void forget(Entity mob) {
+        byMob.remove(mob.getUniqueId());
     }
 
     private int spawn(ActiveRun ar, int room) {
@@ -559,17 +602,9 @@ public final class RunManager {
                 plugin.getLogger().warning("[dungeons] no mob for spawn tag '" + tags.get(i) + "' in kit " + ar.kit.id());
                 continue;
             }
-            mob.getPersistentDataContainer().set(mobKey, PersistentDataType.STRING, ar.run.id().toString());
-            if (mob instanceof LivingEntity living) {
-                AttributeInstance max = living.getAttribute(Attribute.MAX_HEALTH);
-                if (max != null) {
-                    max.setBaseValue(max.getBaseValue() * ar.healthFactor);
-                    living.setHealth(max.getValue());
-                }
-            }
+            register(ar, mob, at);
+            fights.scale(mob, ar.healthFactor);
             alive.add(mob);
-            byMob.put(mob.getUniqueId(), ar);
-            ar.mobHome.put(mob.getUniqueId(), at);
         }
         ar.roomMobs.put(room, alive);
         return alive.size();
@@ -624,6 +659,25 @@ public final class RunManager {
         if (holdsTheParty(ar, room)) {
             holdIn(ar, room, 0);
         }
+        Fights.Encounter enc = ar.encounters.get(room);
+        if (enc != null) {
+            List<Entity> all = new ArrayList<>(enc.alive);
+            all.addAll(enc.adds);
+            if (enc.bossMob != null) {
+                all.add(enc.bossMob);
+            }
+            for (Entity mob : all) {
+                Location l = mob.getLocation();
+                double[] home = ar.mobHome.get(mob.getUniqueId());
+                if (mob.isValid() && ar.geo.roomAt(l.getX(), l.getZ()) != room) {
+                    mob.teleport(new Location(module.world(), home[0], home[1], home[2]));
+                }
+            }
+            if (fights.step(ar, room)) {
+                clear(ar, room);
+            }
+            return;
+        }
         Set<Entity> alive = ar.roomMobs.getOrDefault(room, new HashSet<>());
         Iterator<Entity> it = alive.iterator();
         while (it.hasNext()) {
@@ -645,6 +699,7 @@ public final class RunManager {
     }
 
     private void clear(ActiveRun ar, int room) {
+        fights.cleared(ar, room);
         ar.run.clearRoom(room);
         ar.roomMobs.remove(room);
         setDoors(ar, room, false, false);
@@ -660,7 +715,7 @@ public final class RunManager {
             if (m.room() == room) {
                 String next = nextDoor(ar, room, p);
                 if (next != null) {
-                    p.sendActionBar(Component.text("Next door: " + next));
+                    bars.send(p, ActionBars.Level.INFO, "Next door: " + next, clock.getAsLong(), 3000);
                 }
             }
         }
@@ -753,8 +808,8 @@ public final class RunManager {
                     event(ar, reviver.getName() + " revived " + d.getName());
                 } else {
                     int pct = (int) (100 * ar.run.member(m.id()).reviveMs() / needed);
-                    reviver.sendActionBar(Component.text("Reviving " + d.getName() + "... " + pct + "%"));
-                    d.sendActionBar(Component.text(reviver.getName() + " is reviving you... " + pct + "%"));
+                    bars.send(reviver, ActionBars.Level.DOWNED, "Reviving " + d.getName() + "... " + pct + "%", now, 600);
+                    bars.send(d, ActionBars.Level.DOWNED, reviver.getName() + " is reviving you... " + pct + "%", now, 600);
                 }
                 continue;
             }
@@ -764,12 +819,13 @@ public final class RunManager {
                 bleedOut(ar, d);
                 continue;
             }
-            d.sendActionBar(Component.text("You are down: " + (left + 999) / 1000 + "s. Lives left: " + ar.run.lives()));
+            bars.send(d, ActionBars.Level.DOWNED, "You are down: " + (left + 999) / 1000 + "s. Lives left: "
+                    + ar.run.lives(), now, 600);
             for (Player a : online(ar)) {
                 if (ar.run.member(a.getUniqueId()).playing()) {
                     Location l = a.getLocation();
-                    a.sendActionBar(Component.text(d.getName() + " is down, " + RunGeometry.direction(l.getX(), l.getZ(),
-                            l.getYaw(), d.getLocation().getX(), d.getLocation().getZ())));
+                    bars.send(a, ActionBars.Level.DOWNED, d.getName() + " is down, " + RunGeometry.direction(l.getX(),
+                            l.getZ(), l.getYaw(), d.getLocation().getX(), d.getLocation().getZ()), now, 600);
                 }
             }
         }
@@ -956,6 +1012,7 @@ public final class RunManager {
         }
         boolean here = inDungeonWorld(p) && isPlayingMember(ar, p);
         ar.run.leave(p.getUniqueId());
+        fights.left(ar, p);
         if (here) {
             clearDowned(ar, p);
             sendBack(p, ar.run.member(p.getUniqueId()).characterId());
@@ -1039,6 +1096,7 @@ public final class RunManager {
             }
         }
         ar.roomMobs.clear();
+        fights.ended(ar);
         ar.placer.release();
         files.clearActive(ar.run.id());
         if (fault && !ar.keyPath.isBlank()) {
@@ -1053,22 +1111,78 @@ public final class RunManager {
 
     /** A mob died: forget it right away (the step also catches mobs that vanish other ways). */
     public void mobDied(Entity mob) {
-        byMob.remove(mob.getUniqueId());
+        ActiveRun ar = byMob.remove(mob.getUniqueId());
+        if (ar != null) {
+            fights.died(ar, mob);
+        }
+    }
+
+    // ------------------------------------------------------------------ fight hooks
+
+    /** How hard a hit from this entity on a run player lands: run mobs may be rallied, enraged or charging. */
+    public double outgoingFactor(Entity source) {
+        ActiveRun ar = byMob.get(source.getUniqueId());
+        return ar == null ? 1 : fights.outgoing(ar, source);
+    }
+
+    /** How much of a hit a run mob takes (a boss between phases none, a shielded elite less). */
+    public double incomingFactor(Entity mob) {
+        ActiveRun ar = byMob.get(mob.getUniqueId());
+        return ar == null ? 1 : fights.incoming(ar, mob);
+    }
+
+    /** Most damage one hit may deal to a run mob: a boss can't be hit past its next phase. */
+    public double damageCap(Entity mob) {
+        ActiveRun ar = byMob.get(mob.getUniqueId());
+        return ar == null ? Double.POSITIVE_INFINITY : fights.cap(ar, mob);
+    }
+
+    /** A run mob took damage (from a player, when {@code by} is set). */
+    public void mobHurt(Entity mob, Player by, double amount) {
+        ActiveRun ar = byMob.get(mob.getUniqueId());
+        if (ar == null || by == null) {
+            return;
+        }
+        ar.damage.merge(by.getUniqueId(), amount, Double::sum);
+        fights.hit(ar, mob);
+    }
+
+    /** Something spawned in the dungeon world: inside a run, it is that run's to clean up. */
+    public void spawned(Entity e) {
+        if (byMob.containsKey(e.getUniqueId())) {
+            return;
+        }
+        Location l = e.getLocation();
+        for (ActiveRun ar : runs.values()) {
+            if (ar.geo.roomAt(l.getX(), l.getZ()) >= 0) {
+                fights.adopt(ar, e);
+                return;
+            }
+        }
     }
 
     /** One console line per notable run event, for staff and for tuning. */
-    private void event(ActiveRun ar, String what) {
+    void event(ActiveRun ar, String what) {
         plugin.getLogger().info("[dungeons] run " + ar.run.id().toString().substring(0, 8) + ": " + what);
     }
 
-    private void tell(ActiveRun ar, String message) {
+    void tell(ActiveRun ar, String message) {
         for (Player p : online(ar)) {
             p.sendMessage(message);
         }
     }
 
+    /** Tells the online members standing in a room. */
+    void tellRoom(ActiveRun ar, int room, String message) {
+        for (Player p : online(ar)) {
+            if (ar.run.member(p.getUniqueId()).room() == room) {
+                p.sendMessage(message);
+            }
+        }
+    }
+
     /** Online members still in the run. */
-    private List<Player> online(ActiveRun ar) {
+    List<Player> online(ActiveRun ar) {
         List<Player> out = new ArrayList<>();
         for (Member m : ar.run.present()) {
             Player p = m.online() ? Bukkit.getPlayer(m.id()) : null;
@@ -1091,7 +1205,8 @@ public final class RunManager {
         String sep = "";
         for (Member m : r.members()) {
             b.append(sep).append("{\"player\":\"").append(m.id()).append("\",\"character\":\"")
-                    .append(esc(m.characterId())).append("\",\"status\":\"").append(m.status()).append("\"}");
+                    .append(esc(m.characterId())).append("\",\"status\":\"").append(m.status())
+                    .append("\",\"damage\":").append(Math.round(ar.damage.getOrDefault(m.id(), 0.0))).append("}");
             sep = ",";
         }
         return b.append("]}").toString();

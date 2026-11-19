@@ -3,6 +3,7 @@ package net.tfminecraft.trialrooms.dungeon.load;
 import java.io.File;
 import java.util.Map;
 
+import net.tfminecraft.trialrooms.dungeon.fight.FightKit;
 import net.tfminecraft.trialrooms.dungeon.template.RoomCatalog;
 
 /**
@@ -14,10 +15,17 @@ import net.tfminecraft.trialrooms.dungeon.template.RoomCatalog;
  * @param doorHeight doorway height in blocks, from one block above the floor
  * @param sealBlock  block data used to wall up unused doorways
  * @param doorBlock  block data that shuts a doorway while a fight runs or until a room is cleared
- * @param mobs       MythicMobs type per spawn marker tag (such as melee, ranged, boss)
+ * @param mobs       MythicMobs type per spawn marker tag (such as melee, ranged, boss), for kits
+ *                   without a roster: one enemy per marker
+ * @param fights     roster, packs, bosses and fight numbers; null for a kit that only has {@code mobs}
  */
 public record DungeonKit(String id, RoomCatalog catalog, Map<String, File> structures, int doorHeight,
-        String sealBlock, String doorBlock, Map<String, String> mobs) {
+        String sealBlock, String doorBlock, Map<String, String> mobs, FightKit fights) {
+
+    public DungeonKit(String id, RoomCatalog catalog, Map<String, File> structures, int doorHeight, String sealBlock,
+            String doorBlock, Map<String, String> mobs) {
+        this(id, catalog, structures, doorHeight, sealBlock, doorBlock, mobs, null);
+    }
 
     public DungeonKit {
         structures = Map.copyOf(structures);

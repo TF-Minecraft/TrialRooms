@@ -85,7 +85,11 @@ class RunManagerTest {
     when(plugin.namespace()).thenReturn("trialrooms");
     when(plugin.isEnabled()).thenReturn(true);
     when(plugin.getLogger()).thenReturn(Logger.getLogger("runs-test"));
-    kit = GreyboxKitTest.kit();
+    // These tests cover a kit without a roster: one enemy per spawn marker (FightsTest covers rosters).
+    DungeonKit bundled = GreyboxKitTest.kit();
+    kit = new DungeonKit(bundled.id(), bundled.catalog(), bundled.structures(), bundled.doorHeight(),
+        bundled.sealBlock(), bundled.doorBlock(), Map.of("melee", "dSkeleton_footman_em", "ranged",
+        "dSkeleton_Archer_em", "elite", "dSkeleton_Halberdier_em", "boss", "dSkeleton_Tank_em"));
     DungeonRecipe recipe = new DungeonRecipe("delve", 1, 1, Map.of(RoomType.COMBAT, 1), true, true, 1, 1, 1, 1,
         null, 20, 20000);
     layout = DungeonGenerator.generate(kit.catalog(), recipe, 4);

@@ -106,6 +106,82 @@ class RunListenerTest {
   }
 
   @Test
+  void runEnemiesHitAndTakeHitsAsTheirFightSays() {
+    Player p = player();
+    LivingEntity mob = mock(LivingEntity.class);
+    // the source of a hit: whoever caused it, the shooter, or the damager
+    assertSame(mob, RunListener.source(damage(p, mob, DamageCause.ENTITY_ATTACK, 1)));
+    Arrow arrow = mock(Arrow.class);
+    when(arrow.getShooter()).thenReturn(mob);
+    assertSame(mob, RunListener.source(damage(p, arrow, DamageCause.PROJECTILE, 1)));
+    Arrow stray = mock(Arrow.class);
+    when(stray.getShooter()).thenReturn(mock(ProjectileSource.class));
+    assertSame(stray, RunListener.source(damage(p, stray, DamageCause.PROJECTILE, 1)));
+    Arrow plain = mock(Arrow.class);
+    assertSame(plain, RunListener.source(damage(p, plain, DamageCause.PROJECTILE, 1)));
+    assertNull(RunListener.source(damage(p, null, DamageCause.FALL, 1)));
+    DamageSource caused = mock(DamageSource.class);
+    when(caused.getCausingEntity()).thenReturn(mob);
+    assertSame(mob, RunListener.source(new EntityDamageEvent(p, DamageCause.MAGIC, caused, 1)));
+    // outgoing: only on players in the dungeon world, scaled when the fight says so
+    when(runs.inDungeonWorld(p)).thenReturn(true);
+    when(runs.outgoingFactor(mob)).thenReturn(1.2);
+    EntityDamageEvent rallied = damage(p, mob, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHit(rallied);
+    assertEquals(12, rallied.getDamage(), 1e-9);
+    LivingEntity calm = mock(LivingEntity.class);
+    when(runs.outgoingFactor(calm)).thenReturn(1.0);
+    EntityDamageEvent normal = damage(p, calm, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHit(normal);
+    assertEquals(10, normal.getDamage());
+    EntityDamageEvent fall = damage(p, null, DamageCause.FALL, 10);
+    l.onEnemyHit(fall);
+    assertEquals(10, fall.getDamage());
+    EntityDamageEvent onMob = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHit(onMob);
+    Player outside = player();
+    EntityDamageEvent elsewhere = damage(outside, mob, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHit(elsewhere);
+    assertEquals(10, elsewhere.getDamage());
+    // incoming: not run mobs are left alone; immune bosses take nothing; shields soften; phases cap
+    EntityDamageEvent stranger = damage(calm, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHurt(stranger);
+    assertEquals(10, stranger.getDamage());
+    when(runs.isRunMob(mob)).thenReturn(true);
+    when(runs.incomingFactor(mob)).thenReturn(0.0);
+    EntityDamageEvent immune = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHurt(immune);
+    assertTrue(immune.isCancelled());
+    when(runs.incomingFactor(mob)).thenReturn(0.4);
+    when(runs.damageCap(mob)).thenReturn(Double.POSITIVE_INFINITY);
+    EntityDamageEvent shielded = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHurt(shielded);
+    assertEquals(4, shielded.getDamage(), 1e-9);
+    when(runs.incomingFactor(mob)).thenReturn(1.0);
+    when(runs.damageCap(mob)).thenReturn(5.0);
+    EntityDamageEvent capped = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHurt(capped);
+    assertEquals(5, capped.getDamage(), 1e-9);
+    when(runs.damageCap(mob)).thenReturn(0.0);
+    EntityDamageEvent none = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHurt(none);
+    assertTrue(none.isCancelled());
+    // what lands is counted; spawns in the dungeon world are reported
+    EntityDamageEvent done = damage(mob, p, DamageCause.ENTITY_ATTACK, 3);
+    l.onEnemyHurtDone(done);
+    verify(runs).mobHurt(mob, p, 3);
+    l.onEnemyHurtDone(damage(calm, p, DamageCause.ENTITY_ATTACK, 3));
+    verify(runs, never()).mobHurt(eq(calm), any(), anyDouble());
+    org.bukkit.event.entity.CreatureSpawnEvent spawn = mock(org.bukkit.event.entity.CreatureSpawnEvent.class);
+    when(spawn.getEntity()).thenReturn(mob);
+    l.onSpawn(spawn);
+    verify(runs, never()).spawned(mob);
+    when(runs.inDungeonWorld(mob)).thenReturn(true);
+    l.onSpawn(spawn);
+    verify(runs).spawned(mob);
+  }
+
+  @Test
   void noFriendlyFireAndDownedPlayersAreUntouchable() {
     Player a = player();
     Player b = player();
