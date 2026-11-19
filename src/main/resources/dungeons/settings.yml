@@ -23,6 +23,6 @@ queue-hold-seconds: 60
 # harmful-auras: statuses players never put on each other here.
 harmful-auras: [Slowed, Weakened, Wounded, Silenced, Silence_Struck, Burnt, Frozen, Stun_Aura, Vine_Wave_Stun, TFMC_Guard_Vibrative_Strike_STUN, Sanguine_Chain_Lock, Glacial_Quills_Stack]
 # helpful-auras: buffs players never put on mobs here.
-helpful-auras: [guardian_angel, Rhapsody_aura, Angelic_Serenade_aura, TFMC_Guard_Restoration]
+helpful-auras: [guardian_angel, Guardian_Angel_Ward, TFMC_Guard_Shield_Wall_Ward, Rhapsody_aura, Angelic_Serenade_aura, TFMC_Guard_Restoration]
 # Commands players can't use inside the dungeon world (staff can).
 blocked-commands: [home, homes, sethome, spawn, warp, tpa, tpahere, tpaccept, back, rtp]

@@ -363,7 +363,9 @@ public final class RunManager {
             queue.add(new Waiting(leader.getUniqueId(), recipeId));
             at = queue.size() - 1;
         }
-        leader.sendMessage("§eEvery dungeon is taken right now. Your party is number " + (at + 1)
+        boolean full = runs.size() + pendingStarts >= settings().maxRuns();
+        leader.sendMessage((full ? "§eEvery dungeon is taken right now." : "§eOther parties are waiting for a dungeon.")
+                + " Your party is number " + (at + 1)
                 + " in line; you will be told when one is free. §7(/tr dungeon leave to stop waiting)");
     }
 
