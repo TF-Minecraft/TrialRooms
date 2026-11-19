@@ -73,6 +73,15 @@ public final class RunManager {
     private final Set<UUID> diedInRun = new HashSet<>();
     private int pendingStarts;
     private BukkitTask task;
+    /** Parties waiting for a free dungeon, first in line first. */
+    private final List<Waiting> queue = new ArrayList<>();
+    /** The leader a freed dungeon is held for, until {@link #heldUntilMs}. */
+    private UUID heldFor;
+    private long heldUntilMs;
+
+    /** A party leader waiting for a dungeon of a recipe. */
+    record Waiting(UUID leader, String recipe) {
+    }
 
     /** A run with what it needs in the world. */
     public static final class ActiveRun {
@@ -239,8 +248,13 @@ public final class RunManager {
             p.sendMessage("§cThe gate needs a key in your hand.");
             return;
         }
-        if (runs.size() + pendingStarts >= settings().maxRuns()) {
-            p.sendMessage("§cEvery dungeon is taken right now. Try again in a little while.");
+        // Parties already waiting go first: a newcomer joins the line even when a dungeon is free,
+        // and the next step offers that dungeon to the front of the line.
+        boolean held = p.getUniqueId().equals(heldFor);
+        boolean holdForOther = heldFor != null && !held;
+        if (!held && !queue.isEmpty()
+                || runs.size() + pendingStarts + (holdForOther ? 1 : 0) >= settings().maxRuns()) {
+            enqueue(p, recipeId);
             return;
         }
         begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "");
@@ -273,6 +287,9 @@ public final class RunManager {
         } catch (RuntimeException e) {
             leader.sendMessage("§cThe gate will not open: " + e.getMessage());
             return;
+        }
+        if (leader.getUniqueId().equals(heldFor)) {
+            heldFor = null; // the dungeon held for this party is now theirs
         }
         Map<UUID, String> chosen = new LinkedHashMap<>();
         for (Player m : group) {
@@ -338,10 +355,91 @@ public final class RunManager {
         });
     }
 
+    // ------------------------------------------------------------------ the queue
+
+    private void enqueue(Player leader, String recipeId) {
+        int at = position(leader.getUniqueId());
+        if (at < 0) {
+            queue.add(new Waiting(leader.getUniqueId(), recipeId));
+            at = queue.size() - 1;
+        }
+        boolean full = runs.size() + pendingStarts >= settings().maxRuns();
+        leader.sendMessage((full ? "§eEvery dungeon is taken right now." : "§eOther parties are waiting for a dungeon.")
+                + " Your party is number " + (at + 1)
+                + " in line; you will be told when one is free. §7(/tr dungeon leave to stop waiting)");
+    }
+
+    private int position(UUID leader) {
+        for (int i = 0; i < queue.size(); i++) {
+            if (queue.get(i).leader().equals(leader)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Whether a player's party is waiting in line. */
+    public boolean queued(Player p) {
+        return position(p.getUniqueId()) >= 0 || p.getUniqueId().equals(heldFor);
+    }
+
+    /** Takes a player's party out of the line (and gives up a dungeon held for them). */
+    public boolean unqueue(Player p) {
+        boolean removed = queue.removeIf(w -> w.leader().equals(p.getUniqueId()));
+        if (p.getUniqueId().equals(heldFor)) {
+            heldFor = null;
+            offerNext();
+            return true;
+        }
+        if (removed) {
+            announcePlaces();
+        }
+        return removed;
+    }
+
+    /** Holds the freed dungeon for the next leader in line who is online, and tells them. */
+    private void offerNext() {
+        if (heldFor != null || runs.size() + pendingStarts >= settings().maxRuns()) {
+            return;
+        }
+        while (!queue.isEmpty()) {
+            Waiting w = queue.remove(0);
+            Player leader = Bukkit.getPlayer(w.leader());
+            if (leader == null) {
+                continue;
+            }
+            heldFor = w.leader();
+            heldUntilMs = clock.getAsLong() + settings().holdSeconds() * 1000L;
+            leader.sendMessage("§aA dungeon is free for your party: open the gate within " + settings().holdSeconds()
+                    + " seconds.");
+            leader.playSound(leader.getLocation(), "minecraft:block.note_block.bell", 1f, 1.2f);
+            announcePlaces();
+            return;
+        }
+    }
+
+    private void announcePlaces() {
+        for (int i = 0; i < queue.size(); i++) {
+            tell(queue.get(i).leader(), "§7Your party is now number " + (i + 1) + " in line for a dungeon.");
+        }
+    }
+
+    private static void tell(UUID id, String message) {
+        Player p = Bukkit.getPlayer(id);
+        if (p != null) {
+            p.sendMessage(message);
+        }
+    }
+
     // ------------------------------------------------------------------ the half-second step
 
     void tick() {
         long now = clock.getAsLong();
+        if (heldFor != null && now >= heldUntilMs) {
+            tell(heldFor, "§cThe dungeon held for your party was given to the next in line.");
+            heldFor = null;
+        }
+        offerNext();
         for (ActiveRun ar : new ArrayList<>(runs.values())) {
             // A won run keeps its fights and downed players going until everyone is sent back.
             if (ar.run.state() != DungeonRun.State.FAILED) {
@@ -430,20 +528,12 @@ public final class RunManager {
     }
 
     private void seal(ActiveRun ar, int room) {
-        setDoors(ar, room, false, true);
-        double[] e = ar.geo.entry(room);
-        for (Member m : ar.run.present()) {
-            Player p = Bukkit.getPlayer(m.id());
-            if (p == null || !m.online() || m.status() == Status.OUT || m.room() == room) {
-                continue;
-            }
-            Location to = new Location(module.world(), e[0], e[1], e[2]);
-            p.teleport(to);
-            m.room(room);
-            if (m.status() == Status.DOWNED) {
-                ar.downedAt.put(m.id(), to);
-            }
+        // Pull everyone first, by where they stand now (not where the last step saw them), then
+        // close the doors: nobody is left outside or caught in a doorway.
+        if (holdsTheParty(ar, room)) {
+            holdIn(ar, room, SEAL_MARGIN);
         }
+        setDoors(ar, room, false, true);
         int spawned = spawn(ar, room);
         for (Player p : online(ar)) {
             p.playSound(p.getLocation(), "minecraft:block.iron_door.close", 1f, 0.8f);
@@ -485,8 +575,55 @@ public final class RunManager {
         return alive.size();
     }
 
+    /** Blocks from a wall to another room that count as the doorway when a room seals. */
+    static final int SEAL_MARGIN = 2;
+
+    /**
+     * Whether this active room is the fight that holds the party: the first active room. A party
+     * split across two rooms that seal at once fights them one after the other instead of being
+     * pulled back and forth.
+     */
+    private static boolean holdsTheParty(ActiveRun ar, int room) {
+        for (int r = 0; r < room; r++) {
+            if (ar.run.room(r) == DungeonRun.Room.ACTIVE) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Puts every member who is playing or downed (and online) inside a fight room: anyone outside
+     * it is moved to its entrance. At the seal, standing within {@code margin} blocks of a way out
+     * (a doorway) counts as outside; during the fight only leaving the room does, so lag or a stray
+     * teleport never leaves someone outside a sealed fight.
+     */
+    private void holdIn(ActiveRun ar, int room, int margin) {
+        double[] e = ar.geo.entry(room);
+        for (Member m : ar.run.present()) {
+            // Members outside the dungeon world were marked away by this step already.
+            Player p = m.online() ? Bukkit.getPlayer(m.id()) : null;
+            if (p == null || m.status() == Status.OUT) {
+                continue;
+            }
+            // Where they stand now, downed or not (a downed player can still be moved).
+            Location here = p.getLocation();
+            if (!ar.geo.safelyInside(room, here.getX(), here.getZ(), margin)) {
+                Location to = new Location(module.world(), e[0], e[1], e[2], here.getYaw(), here.getPitch());
+                p.teleport(to);
+                if (m.status() == Status.DOWNED) {
+                    ar.downedAt.put(m.id(), to);
+                }
+            }
+            m.room(room);
+        }
+    }
+
     /** Drops dead mobs, brings strays back, and clears the room when none are left. */
     private void fight(ActiveRun ar, int room) {
+        if (holdsTheParty(ar, room)) {
+            holdIn(ar, room, 0);
+        }
         Set<Entity> alive = ar.roomMobs.getOrDefault(room, new HashSet<>());
         Iterator<Entity> it = alive.iterator();
         while (it.hasNext()) {
@@ -733,6 +870,7 @@ public final class RunManager {
     // ------------------------------------------------------------------ leaving and coming back
 
     public void quit(Player p) {
+        unqueue(p);
         ActiveRun ar = byPlayer.get(p.getUniqueId());
         if (ar == null) {
             return;

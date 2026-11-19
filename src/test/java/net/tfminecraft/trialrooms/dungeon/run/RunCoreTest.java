@@ -184,11 +184,45 @@ public class RunCoreTest {
     }
     double[] c = g.centre(fight);
     assertEquals(fight, g.roomAt(c[0], c[2]));
+    assertTrue(g.safelyInside(fight, c[0], c[2], 2));
+    assertFalse(g.safelyInside(0, c[0], c[2], 2));
+    // next to each outer wall of the start room is not safely inside; next to an inner join is
+    double[] s0 = g.centre(0);
+    for (double[] d : new double[][] {{-15, 0}, {14, 0}, {0, -15}, {0, 14}}) {
+      double x = s0[0] + d[0];
+      double z = s0[2] + d[1];
+      assertEquals(0, g.roomAt(x, z));
+      assertFalse(g.safelyInside(0, x, z, 2), d[0] + "," + d[1]);
+    }
     // facing south (yaw 0)
     assertEquals("5 blocks ahead", RunGeometry.direction(0, 0, 0f, 0, 5));
     assertEquals("1 block behind you", RunGeometry.direction(0, 0, 0f, 0, -1));
     assertEquals("3 blocks to your right", RunGeometry.direction(0, 0, 0f, -3, 0));
     assertEquals("3 blocks to your left", RunGeometry.direction(0, 0, 0f, 3, 0));
+  }
+
+  @Test
+  void theJoinInsideAWideRoomIsSafe() {
+    var wide = new net.tfminecraft.trialrooms.dungeon.template.RoomTemplate("s", RoomType.START, 2, 1,
+        List.of(new Doorway(0, 0, Side.NORTH, 4)), List.of(), 1, 0, 0, 0, java.util.Set.of());
+    var boss = new net.tfminecraft.trialrooms.dungeon.template.RoomTemplate("b", RoomType.BOSS, 1, 1,
+        List.of(new Doorway(0, 0, Side.SOUTH, 4)), List.of(), 1, 0, 0, 0, java.util.Set.of());
+    var cat = new net.tfminecraft.trialrooms.dungeon.template.RoomCatalog(32, 24, List.of(wide, boss));
+    var r = new DungeonRecipe("w", 0, 0, null, false, false, 0, 0, 1, 1, null, 5, 1000);
+    DungeonLayout l = DungeonGenerator.generate(cat, r, 1);
+    RunGeometry g = new RunGeometry(l, 32, 4, 0, 64, 0);
+    var start = l.rooms().getFirst();
+    // the boundary between the wide room's two cells
+    double x;
+    double z;
+    if (start.widthCells() == 2) {
+      x = (start.originX() + 1) * 32 + 0.5;
+      z = start.originZ() * 32 + 16;
+    } else {
+      x = start.originX() * 32 + 16;
+      z = (start.originZ() + 1) * 32 + 0.5;
+    }
+    assertTrue(g.safelyInside(0, x, z, 2));
   }
 
   @Test
@@ -201,8 +235,15 @@ public class RunCoreTest {
     YamlConfiguration y = new YamlConfiguration();
     y.set("max-runs", 0);
     y.set("blocked-commands", List.of("Fly"));
+    y.set("harmful-auras", List.of("Nasty"));
+    y.set("helpful-auras", List.of("Nice"));
+    y.set("queue-hold-seconds", 3);
     RunSettings s = RunSettings.from(y);
     assertEquals(1, s.maxRuns());
+    assertEquals(java.util.Set.of("nasty"), s.harmfulAuras());
+    assertEquals(java.util.Set.of("nice"), s.helpfulAuras());
+    assertEquals(10, s.holdSeconds());
+    assertTrue(RunSettings.from(new YamlConfiguration()).harmfulAuras().contains("slowed"));
     assertTrue(s.blocks("/fly"));
     assertEquals(d.bleedOutSeconds(), s.bleedOutSeconds());
     assertEquals(d.blockedCommands(), RunSettings.from(new YamlConfiguration()).blockedCommands());
