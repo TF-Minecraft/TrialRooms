@@ -17,6 +17,7 @@
         <maven.compiler.proc>full</maven.compiler.proc>
         <denareconomy.version>0.3.0</denareconomy.version>
         <tlibs.version>2.4.0</tlibs.version>
+        <rpcharacters.version>2.45.0</rpcharacters.version>
     </properties>
 
     <dependencies>
@@ -66,6 +67,18 @@
             <groupId>net.tfminecraft</groupId>
             <artifactId>denareconomy</artifactId>
             <version>${denareconomy.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>net.tfminecraft</groupId>
+            <artifactId>rpcharacters</artifactId>
+            <version>${rpcharacters.version}</version>
             <scope>provided</scope>
             <exclusions>
                 <exclusion>

@@ -1,0 +1,20 @@
+# Dungeon run settings. Shipped once; never overwritten. /tr dungeon reload applies changes.
+# Most runs at once; gates refuse more until one ends.
+max-runs: 4
+# Seconds between entering a fight room and its doors sealing (a solo player seals at once).
+countdown-seconds: 4
+# Seconds before a boss fight, counted once every playing member is in the boss room.
+boss-countdown-seconds: 5
+# Seconds a downed player waits; then a shared life brings them back at the last safe room.
+bleed-out-seconds: 30
+# Seconds a party member crouches within revive-radius blocks to bring a downed player back.
+revive-seconds: 3
+revive-radius: 2.5
+# Party members within this many blocks of the gate come along.
+gate-radius: 8
+# Seconds a disconnected player keeps their place in the run.
+disconnect-grace-seconds: 300
+# Seconds after a run is won before everyone still inside is sent back.
+finish-seconds: 60
+# Commands players can't use inside the dungeon world (staff can).
+blocked-commands: [home, homes, sethome, spawn, warp, tpa, tpahere, tpaccept, back, rtp]

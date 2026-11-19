@@ -4,7 +4,7 @@ name: TrialRooms
 version: '${project.version}'
 author: Drefvelin
 
-depend: [MythicMobs, TLibs, DenarEconomy]
+depend: [MythicMobs, TLibs, DenarEconomy, RPCharacters]
 
 commands:
   tr:

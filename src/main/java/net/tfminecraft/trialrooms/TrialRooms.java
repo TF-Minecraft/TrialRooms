@@ -8,6 +8,7 @@ import org.bukkit.WorldCreator;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import net.tfminecraft.trialrooms.dungeon.DungeonModule;
+import net.tfminecraft.trialrooms.dungeon.run.Adapters;
 import net.tfminecraft.trialrooms.environment.entrance.ui.EntranceEditor;
 import net.tfminecraft.trialrooms.environment.spawner.LabelCleanup;
 import net.tfminecraft.trialrooms.environment.spawner.ui.ActiveSpawnerEditor;
@@ -66,6 +67,7 @@ public class TrialRooms extends JavaPlugin{
         spawnerManager.start();
         dungeons = new DungeonModule(this, WorldCreator::createWorld);
         dungeons.enable();
+        dungeons.startRuns(new Adapters.RpcCharacters(), new Adapters.TLibsKeys(), new Adapters.MythicMobsAdapter());
         getLogger().info("TrialRooms Plugin Enabled!");
         }
 

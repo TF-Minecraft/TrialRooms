@@ -26,6 +26,12 @@ import net.tfminecraft.trialrooms.dungeon.generator.DungeonLayout;
 import net.tfminecraft.trialrooms.dungeon.load.DungeonKit;
 import net.tfminecraft.trialrooms.dungeon.load.KitLoader;
 import net.tfminecraft.trialrooms.dungeon.load.RecipeLoader;
+import net.tfminecraft.trialrooms.dungeon.run.GateStore;
+import net.tfminecraft.trialrooms.dungeon.run.Ports;
+import net.tfminecraft.trialrooms.dungeon.run.RunFiles;
+import net.tfminecraft.trialrooms.dungeon.run.RunListener;
+import net.tfminecraft.trialrooms.dungeon.run.RunManager;
+import net.tfminecraft.trialrooms.dungeon.run.RunSettings;
 import net.tfminecraft.trialrooms.dungeon.world.DungeonWorld;
 import net.tfminecraft.trialrooms.dungeon.world.LayoutPlacer;
 
@@ -44,7 +50,7 @@ public final class DungeonModule {
     public static final int SLOT_SPACING = 1024;
     /** Bundled default files, copied only when missing. */
     static final List<String> DEFAULT_LISTS = List.of("dungeons/kits/greybox/files.txt");
-    static final List<String> DEFAULT_FILES = List.of("dungeons/recipes.yml");
+    static final List<String> DEFAULT_FILES = List.of("dungeons/recipes.yml", "dungeons/settings.yml");
 
     private final JavaPlugin plugin;
     private final Function<WorldCreator, World> creator;
@@ -55,6 +61,8 @@ public final class DungeonModule {
     private final List<LayoutPlacer> previews = new ArrayList<>();
     private World world;
     private int nextSlot;
+    private RunSettings settings = RunSettings.defaults();
+    private RunManager runs;
 
     public DungeonModule(JavaPlugin plugin, Function<WorldCreator, World> creator) {
         this.plugin = plugin;
@@ -80,7 +88,27 @@ public final class DungeonModule {
     }
 
     public void disable() {
+        if (runs != null) {
+            runs.stop();
+        }
         clearPreviews();
+    }
+
+    /** Starts dungeon runs with the given plugin bridges and registers their events. */
+    public void startRuns(Ports.Characters characters, Ports.Keys keys, Ports.Mobs mobs) {
+        Path root = plugin.getDataFolder().toPath().resolve("dungeons");
+        runs = new RunManager(plugin, this, characters, keys, mobs, new RunFiles(root, plugin.getLogger()),
+                new GateStore(root.resolve("gates.yml").toFile(), plugin.getLogger()), System::currentTimeMillis);
+        runs.start();
+        plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs), plugin);
+    }
+
+    public RunManager runs() {
+        return runs;
+    }
+
+    public RunSettings settings() {
+        return settings;
     }
 
     /** Reloads kits and recipes from disk. Returns the problems found. */
@@ -100,6 +128,10 @@ public final class DungeonModule {
             }
         }
         recipes.putAll(RecipeLoader.load(new File(root, "recipes.yml"), problems));
+        File settingsFile = new File(root, "settings.yml");
+        settings = settingsFile.isFile()
+                ? RunSettings.from(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile))
+                : RunSettings.defaults();
         recipes.values().removeIf(e -> {
             if (!kits.containsKey(e.kit())) {
                 problems.add("recipe " + e.recipe().id() + ": unknown kit " + e.kit());
@@ -177,22 +209,36 @@ public final class DungeonModule {
 
     /** Builds a layout in the next free slot; the future gives the arrival point. */
     public CompletableFuture<Location> preview(DungeonLayout layout) {
+        LayoutPlacer placer;
+        try {
+            placer = placer(layout);
+        } catch (IllegalStateException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        previews.add(placer);
+        return placer.place();
+    }
+
+    /**
+     * A placer for a layout in the next free slot (slots are never reused within one uptime).
+     *
+     * @throws IllegalStateException when the world is not open or the layout is too large for a slot
+     */
+    public LayoutPlacer placer(DungeonLayout layout) {
         if (world == null) {
-            return CompletableFuture.failedFuture(new IllegalStateException("The dungeon world is not open"));
+            throw new IllegalStateException("The dungeon world is not open");
         }
         DungeonKit kit = kits.get(recipes.get(layout.recipeId()).kit());
         int cell = kit.catalog().cellSize();
         int[] b = layout.bounds();
         int reach = Math.max(Math.max(-b[0], -b[1]), Math.max(b[2] + 1, b[3] + 1)) * cell;
         if (reach > SLOT_SPACING / 2) {
-            return CompletableFuture.failedFuture(new IllegalStateException(
-                    "Layout reaches " + reach + " blocks from its start; a slot allows " + SLOT_SPACING / 2));
+            throw new IllegalStateException(
+                    "Layout reaches " + reach + " blocks from its start; a slot allows " + SLOT_SPACING / 2);
         }
         int slot = nextSlot++;
-        LayoutPlacer placer = new LayoutPlacer(plugin, world, kit, id -> structure(kit, id), layout,
+        return new LayoutPlacer(plugin, world, kit, id -> structure(kit, id), layout,
                 SLOT_START_X + slot * SLOT_SPACING, FLOOR_Y, 0);
-        previews.add(placer);
-        return placer.place();
     }
 
     /** Releases every preview's chunks. Returns how many previews were cleared. */
