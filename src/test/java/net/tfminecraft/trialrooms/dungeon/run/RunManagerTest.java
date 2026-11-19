@@ -763,8 +763,10 @@ class RunManagerTest {
     PlayerMock e = player("Ed");
     runs.startRun(e, "delve", 6);
     e.teleport(new Location(main, 9, 70, 9));
+    e.setGameMode(GameMode.SPECTATOR);
     assertTrue(runs.leave(e));
     assertEquals(9, e.getLocation().getX());
+    assertEquals(GameMode.SURVIVAL, e.getGameMode());
     // a refused teleport back keeps the return point for the next try
     PlayerMock f = player("Bo2");
     runs.startRun(f, "delve", 8);

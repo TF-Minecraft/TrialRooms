@@ -345,7 +345,8 @@ public final class RunManager {
             if (ar.run.state() != DungeonRun.State.FAILED) {
                 step(ar, now);
             }
-            if (ar.run.state() != DungeonRun.State.RUNNING
+            DungeonRun.State state = ar.run.state();
+            if (state != DungeonRun.State.RUNNING && state != DungeonRun.State.ENDED
                     && (now >= ar.finishAtMs || ar.run.present().isEmpty())) {
                 end(ar, false, null);
             }
@@ -747,6 +748,7 @@ public final class RunManager {
         Member m = ar == null ? null : ar.run.member(p.getUniqueId());
         if (m != null && Objects.equals(m.characterId(), charId)) {
             if (!inDungeonWorld(p)) {
+                unspectate(p); // an out member moved out of the dungeon doesn't stay a spectator
                 return; // not back in the dungeon yet; the step counts them as away
             }
             ar.run.online(p.getUniqueId());
@@ -806,6 +808,8 @@ public final class RunManager {
         if (here) {
             clearDowned(ar, p);
             sendBack(p, ar.run.member(p.getUniqueId()).characterId());
+        } else {
+            unspectate(p);
         }
         tell(ar, "§7" + p.getName() + " has left the dungeon.");
         return true;
