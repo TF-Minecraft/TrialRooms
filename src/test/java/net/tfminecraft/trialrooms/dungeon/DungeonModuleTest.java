@@ -164,6 +164,13 @@ class DungeonModuleTest {
     });
     broken.enable();
     assertNull(broken.world());
+    // re-enabled while the world is still loaded: reuse it, never wipe or recreate it
+    when(srv.getWorld(DungeonModule.WORLD_NAME)).thenReturn(world);
+    DungeonModule again = new DungeonModule(plugin, c -> {
+      throw new AssertionError("must not create");
+    });
+    again.enable();
+    assertSame(world, again.world());
   }
 
   @Test

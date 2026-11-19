@@ -64,6 +64,12 @@ public final class DungeonModule {
     public void enable() {
         installDefaults();
         reload();
+        World loaded = plugin.getServer().getWorld(WORLD_NAME);
+        if (loaded != null) {
+            // Re-enabled on a running server: keep the loaded world, never wipe it under itself.
+            world = loaded;
+            return;
+        }
         try {
             world = DungeonWorld.open(plugin.getServer().getWorldContainer().toPath(), WORLD_NAME, creator,
                     plugin.getLogger());
