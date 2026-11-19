@@ -1,0 +1,21 @@
+# Dungeon recipes: how each dungeon type is laid out. Shipped once; never overwritten.
+# trunk: rooms between the start room and the boss (rest room not counted), as N or MIN-MAX.
+# trunk-pool / branch-pool: room types with relative weights.
+# branches: side branches off the trunk; each ends in a treasure room.
+# branch-length: rooms per branch, the treasure room included.
+# attempts / step-budget: how hard the generator tries before giving up on a seed.
+delve_greybox:
+  kit: greybox
+  trunk: 3-5
+  trunk-pool:
+    combat: 3
+    corridor: 1
+  rest-before-boss: true
+  vault: true
+  branches: 1-2
+  branch-length: 1-2
+  branch-pool:
+    combat: 2
+    corridor: 1
+  attempts: 20
+  step-budget: 20000

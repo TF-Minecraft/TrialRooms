@@ -152,7 +152,7 @@ class ManagersTest extends TrialTestSupport {
     assertTrue(m.onTabComplete(p, cmd, "tr", new String[0]).isEmpty());
     assertTrue(m.onTabComplete(server.getConsoleSender(), cmd, "tr", new String[0]).isEmpty());
     assertTrue(m.onTabComplete(server.getConsoleSender(), cmd, "tr", new String[] {""}).isEmpty());
-    assertEquals(List.of("resetcooldowns"), m.onTabComplete(p, cmd, "tr", new String[] {""}));
+    assertEquals(List.of("resetcooldowns", "dungeon"), m.onTabComplete(p, cmd, "tr", new String[] {""}));
     assertEquals(List.of("resetcooldowns"), m.onTabComplete(p, cmd, "tr", new String[] {"RE"}));
     assertEquals(List.of("resetcooldowns"), m.onTabComplete(p, cmd, "tr", new String[] {"resetcooldowns"}));
     assertTrue(m.onTabComplete(p, cmd, "tr", new String[] {"unknown"}).isEmpty());
