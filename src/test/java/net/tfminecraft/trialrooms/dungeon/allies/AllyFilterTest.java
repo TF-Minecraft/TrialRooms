@@ -19,7 +19,11 @@ import io.lumine.mythic.core.skills.MetaSkill;
 import io.lumine.mythic.core.skills.SkillCondition;
 import io.lumine.mythic.core.skills.SkillExecutor;
 import io.lumine.mythic.core.skills.SkillMechanic;
+import io.lumine.mythic.core.skills.mechanics.CustomMechanic;
+import io.lumine.mythic.core.skills.mechanics.DamageMechanic;
+import io.lumine.mythic.core.skills.mechanics.DamageModMechanic;
 import io.lumine.mythic.core.skills.mechanics.HealMechanic;
+import io.lumine.mythic.core.skills.mechanics.OnDamagedMechanic;
 import io.lumine.mythic.core.skills.mechanics.PotionMechanic;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -103,6 +107,37 @@ class AllyFilterTest {
     assertEquals("4 mechanics: 2 help, 1 harm, 2 filtered", new AllyFilter(rules, () -> harmful, () -> helpful,
         () -> List.of(heal, slow, glow, other), log).report());
     filter.onReload(mock(MythicReloadedEvent.class));
+  }
+
+  @Test
+  void wrappedWardAndUntargetedMechanicsAreSortedByWhatTheyDo() throws Exception {
+    mythic();
+    AllyFilter filter = new AllyFilter(new AllyRules(e -> true, e -> null), () -> harmful,
+        () -> Set.of("guardian_angel_ward"), List::of, log);
+    // MythicLib's mmodamage arrives wrapped: sorted (and filtered) by what it wraps
+    CustomMechanic wrapped = mechanic(CustomMechanic.class, "mmodamage{amount=5}");
+    DamageMechanic inner = mechanic(DamageMechanic.class, "damage{}");
+    when(wrapped.getMechanic()).thenReturn(Optional.of(inner));
+    assertEquals(EffectKind.HARM, filter.kindOf(wrapped));
+    CustomMechanic unloaded = mechanic(CustomMechanic.class, "mystery{}");
+    when(unloaded.getMechanic()).thenReturn(Optional.empty());
+    assertEquals(EffectKind.NONE, filter.kindOf(unloaded));
+    // a ward is an aura, sorted by its name, never as damage
+    OnDamagedMechanic ward = mechanic(OnDamagedMechanic.class, "onDamaged{auraName=Guardian_Angel_Ward;d=20}");
+    assertEquals(EffectKind.SUPPORT, filter.kindOf(ward));
+    // a mechanic without targets would stop working with a target condition: left alone
+    assertEquals(EffectKind.NONE, filter.kindOf(mechanic(DamageModMechanic.class, "modifyDamage{amount=2}")));
+    SkillMechanic both = mock(DamageModMechanic.class,
+        withSettings().extraInterfaces(io.lumine.mythic.api.skills.ITargetedEntitySkill.class));
+    when(both.getConfigLine()).thenReturn("damage{}");
+    // it takes entity targets too, so it is sorted by its class like any other
+    assertEquals(EffectKind.of(both.getClass().getSimpleName(), false, "damage{}", harmful, Set.of()),
+        filter.kindOf(both));
+    // the walker stops at the wrapper: only its conditions count
+    List<SkillMechanic> found = AllyFilter.mechanicsIn(List.of(wrapped));
+    assertEquals(List.of(wrapped), found);
+    assertEquals(1, new AllyFilter(new AllyRules(e -> true, e -> null), () -> harmful, () -> helpful,
+        () -> List.of(wrapped), log).attach());
   }
 
   @Test

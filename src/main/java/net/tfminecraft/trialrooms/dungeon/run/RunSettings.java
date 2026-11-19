@@ -34,7 +34,8 @@ public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSe
             "Burnt", "Frozen", "Stun_Aura", "Vine_Wave_Stun", "TFMC_Guard_Vibrative_Strike_STUN", "Sanguine_Chain_Lock",
             "Glacial_Quills_Stack");
     static final List<String> DEFAULT_HELPFUL = List.of("guardian_angel", "Rhapsody_aura", "Angelic_Serenade_aura",
-            "TFMC_Guard_Restoration");
+            "TFMC_Guard_Restoration", "Guardian_Angel_Ward",
+            "TFMC_Guard_Shield_Wall_Ward");
 
     public RunSettings {
         blockedCommands = blockedCommands.stream().map(s -> s.toLowerCase(Locale.ROOT)).toList();

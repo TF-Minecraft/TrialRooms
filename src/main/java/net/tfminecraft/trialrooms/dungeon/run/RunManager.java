@@ -248,13 +248,14 @@ public final class RunManager {
             p.sendMessage("§cThe gate needs a key in your hand.");
             return;
         }
-        boolean holdForOther = heldFor != null && !heldFor.equals(p.getUniqueId());
-        if (runs.size() + pendingStarts + (holdForOther ? 1 : 0) >= settings().maxRuns()) {
+        // Parties already waiting go first: a newcomer joins the line even when a dungeon is free,
+        // and the next step offers that dungeon to the front of the line.
+        boolean held = p.getUniqueId().equals(heldFor);
+        boolean holdForOther = heldFor != null && !held;
+        if (!held && !queue.isEmpty()
+                || runs.size() + pendingStarts + (holdForOther ? 1 : 0) >= settings().maxRuns()) {
             enqueue(p, recipeId);
             return;
-        }
-        if (p.getUniqueId().equals(heldFor)) {
-            heldFor = null;
         }
         begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "");
     }
@@ -286,6 +287,9 @@ public final class RunManager {
         } catch (RuntimeException e) {
             leader.sendMessage("§cThe gate will not open: " + e.getMessage());
             return;
+        }
+        if (leader.getUniqueId().equals(heldFor)) {
+            heldFor = null; // the dungeon held for this party is now theirs
         }
         Map<UUID, String> chosen = new LinkedHashMap<>();
         for (Player m : group) {
@@ -524,7 +528,9 @@ public final class RunManager {
     private void seal(ActiveRun ar, int room) {
         // Pull everyone first, by where they stand now (not where the last step saw them), then
         // close the doors: nobody is left outside or caught in a doorway.
-        holdIn(ar, room);
+        if (holdsTheParty(ar, room)) {
+            holdIn(ar, room, SEAL_MARGIN);
+        }
         setDoors(ar, room, false, true);
         int spawned = spawn(ar, room);
         for (Player p : online(ar)) {
@@ -567,12 +573,30 @@ public final class RunManager {
         return alive.size();
     }
 
+    /** Blocks from a wall to another room that count as the doorway when a room seals. */
+    static final int SEAL_MARGIN = 2;
+
+    /**
+     * Whether this active room is the fight that holds the party: the first active room. A party
+     * split across two rooms that seal at once fights them one after the other instead of being
+     * pulled back and forth.
+     */
+    private static boolean holdsTheParty(ActiveRun ar, int room) {
+        for (int r = 0; r < room; r++) {
+            if (ar.run.room(r) == DungeonRun.Room.ACTIVE) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * Puts every member who is playing or downed (and online) inside a fight room: anyone outside
-     * it, or standing in a doorway, is moved to its entrance. Runs at the seal and every step of
-     * the fight, so lag or a stray teleport never leaves someone outside a sealed fight.
+     * it is moved to its entrance. At the seal, standing within {@code margin} blocks of a way out
+     * (a doorway) counts as outside; during the fight only leaving the room does, so lag or a stray
+     * teleport never leaves someone outside a sealed fight.
      */
-    private void holdIn(ActiveRun ar, int room) {
+    private void holdIn(ActiveRun ar, int room, int margin) {
         double[] e = ar.geo.entry(room);
         for (Member m : ar.run.present()) {
             // Members outside the dungeon world were marked away by this step already.
@@ -581,8 +605,9 @@ public final class RunManager {
                 continue;
             }
             Location here = m.status() == Status.DOWNED ? ar.downedAt.get(m.id()) : p.getLocation();
-            if (!ar.geo.safelyInside(room, here.getX(), here.getZ(), 2)) {
-                Location to = new Location(module.world(), e[0], e[1], e[2]);
+            if (!ar.geo.safelyInside(room, here.getX(), here.getZ(), margin)) {
+                Location to = new Location(module.world(), e[0], e[1], e[2], p.getLocation().getYaw(),
+                        p.getLocation().getPitch());
                 p.teleport(to);
                 if (m.status() == Status.DOWNED) {
                     ar.downedAt.put(m.id(), to);
@@ -594,7 +619,9 @@ public final class RunManager {
 
     /** Drops dead mobs, brings strays back, and clears the room when none are left. */
     private void fight(ActiveRun ar, int room) {
-        holdIn(ar, room);
+        if (holdsTheParty(ar, room)) {
+            holdIn(ar, room, 0);
+        }
         Set<Entity> alive = ar.roomMobs.getOrDefault(room, new HashSet<>());
         Iterator<Entity> it = alive.iterator();
         while (it.hasNext()) {

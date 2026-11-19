@@ -21,9 +21,13 @@ import io.lumine.mythic.bukkit.events.MythicAuraStartEvent;
 import io.lumine.mythic.bukkit.events.MythicHealMechanicEvent;
 import io.lumine.mythic.bukkit.events.MythicReloadedEvent;
 import io.lumine.mythic.core.mobs.ActiveMob;
+import io.lumine.mythic.api.skills.INoTargetSkill;
+import io.lumine.mythic.api.skills.ITargetedEntitySkill;
 import io.lumine.mythic.core.skills.AbstractSkill;
 import io.lumine.mythic.core.skills.SkillCondition;
 import io.lumine.mythic.core.skills.SkillMechanic;
+import io.lumine.mythic.core.skills.auras.Aura;
+import io.lumine.mythic.core.skills.mechanics.CustomMechanic;
 
 /**
  * Keeps class skills from helping mobs or harming allies inside dungeons.
@@ -88,8 +92,7 @@ public final class AllyFilter implements Listener {
         Field targets = field(AbstractSkill.class, "conditionsTarget");
         for (Object o : all) {
             SkillMechanic m = (SkillMechanic) o;
-            EffectKind kind = EffectKind.of(m.getClass().getSimpleName(), m.getConfigLine(), harmfulAuras.get(),
-                    helpfulAuras.get());
+            EffectKind kind = kindOf(m);
             support += kind == EffectKind.SUPPORT ? 1 : 0;
             harm += kind == EffectKind.HARM ? 1 : 0;
             List<?> list = (List<?>) read(targets, m);
@@ -98,10 +101,23 @@ public final class AllyFilter implements Listener {
         return all.size() + " mechanics: " + support + " help, " + harm + " harm, " + filtered + " filtered";
     }
 
+    /**
+     * How a mechanic is sorted. Mechanics from other plugins (MythicLib's mmodamage) come wrapped in
+     * a {@link CustomMechanic}, which is sorted by what it wraps. A mechanic that takes no targets is
+     * left alone: a target condition would stop it from running at all.
+     */
+    EffectKind kindOf(SkillMechanic m) {
+        Object real = m instanceof CustomMechanic custom ? custom.getMechanic().orElse(null) : m;
+        if (real == null || real instanceof INoTargetSkill && !(real instanceof ITargetedEntitySkill)) {
+            return EffectKind.NONE;
+        }
+        return EffectKind.of(real.getClass().getSimpleName(), real instanceof Aura, m.getConfigLine(),
+                harmfulAuras.get(), helpfulAuras.get());
+    }
+
     @SuppressWarnings("unchecked")
     private int attach(SkillMechanic m, Field targets) {
-        EffectKind kind = EffectKind.of(m.getClass().getSimpleName(), m.getConfigLine(), harmfulAuras.get(),
-                helpfulAuras.get());
+        EffectKind kind = kindOf(m);
         if (kind == EffectKind.NONE) {
             return 0;
         }
@@ -145,6 +161,9 @@ public final class AllyFilter implements Listener {
         }
         if (o instanceof SkillMechanic m) {
             found.add(m);
+            if (m instanceof CustomMechanic) {
+                return; // MythicMobs checks the wrapper's conditions, never the wrapped mechanic's
+            }
         }
         if (o instanceof Collection<?> c) {
             for (Object x : c) {

@@ -8,8 +8,8 @@ import org.bukkit.entity.Player;
 
 /**
  * No friendly fire of any kind inside dungeons: help cast by a player (or by something a player
- * summoned) never reaches a mob, and harm cast by a player never reaches another player. Mob
- * skills and everything outside the dungeon world are left as they are.
+ * summoned) never reaches a mob, and harm cast by a player never reaches another player or
+ * another player's summon. Mob skills and everything outside the dungeon world are left as they are.
  */
 public final class AllyRules {
 
@@ -34,9 +34,10 @@ public final class AllyRules {
         if (player == null) {
             return true;
         }
+        Player side = target instanceof Player p ? p : owner.apply(target);
         if (kind == EffectKind.SUPPORT) {
-            return target instanceof Player;
+            return side != null;
         }
-        return !(target instanceof Player) || target.equals(player);
+        return side == null || side.equals(player);
     }
 }

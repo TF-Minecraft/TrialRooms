@@ -24,9 +24,13 @@ public enum EffectKind {
             "HEAL", "INSTANT_HEALTH", "JUMP", "JUMP_BOOST", "REGENERATION", "DAMAGE_RESISTANCE", "RESISTANCE",
             "FIRE_RESISTANCE", "WATER_BREATHING", "INVISIBILITY", "NIGHT_VISION", "HEALTH_BOOST", "ABSORPTION",
             "SATURATION", "LUCK", "SLOW_FALLING", "CONDUIT_POWER", "DOLPHINS_GRACE", "HERO_OF_THE_VILLAGE");
-    /** Mechanics that only ever harm their targets. */
+    /**
+     * Mechanics that only ever harm their targets. Damage mechanics are matched by name ending in
+     * "DamageMechanic" too, which leaves out wards (onDamaged), damage modifiers and damage tags.
+     */
     static final Set<String> HARM_MECHANICS = Set.of("ThrowMechanic", "PullMechanic", "IgniteMechanic",
-            "FreezeMechanic", "LightningMechanic");
+            "FreezeMechanic", "LightningMechanic", "DamageBaseMechanic", "DamagePercentMechanic",
+            "DamagePhysicalMechanic");
 
     private static final Pattern TYPE = Pattern.compile("[{;]\\s*(?:type|t)\\s*=\\s*([A-Za-z_]+)");
     private static final Pattern AURA = Pattern.compile("[{;]\\s*(?:auraName|aura|name|n)\\s*=\\s*([A-Za-z0-9_]+)");
@@ -36,6 +40,12 @@ public enum EffectKind {
      * against the configured lists; potions by their effect.
      */
     public static EffectKind of(String mechanicClass, String line, Set<String> harmfulAuras, Set<String> helpfulAuras) {
+        return of(mechanicClass, mechanicClass.contains("Aura"), line, harmfulAuras, helpfulAuras);
+    }
+
+    /** As {@link #of(String, String, Set, Set)}, for a mechanic known to be an aura (or not). */
+    public static EffectKind of(String mechanicClass, boolean isAura, String line, Set<String> harmfulAuras,
+            Set<String> helpfulAuras) {
         String l = line == null ? "" : line;
         if (mechanicClass.contains("Break") || mechanicClass.contains("Remove")) {
             return NONE; // shield breaks and aura removals cut both ways
@@ -44,13 +54,13 @@ public enum EffectKind {
                 || mechanicClass.equals("PotionClearMechanic")) {
             return SUPPORT;
         }
-        if (mechanicClass.contains("Damage") || HARM_MECHANICS.contains(mechanicClass)) {
+        if (mechanicClass.endsWith("DamageMechanic") || HARM_MECHANICS.contains(mechanicClass)) {
             return HARM;
         }
         if (mechanicClass.equals("PotionMechanic")) {
             return potion(find(TYPE, l));
         }
-        if (mechanicClass.contains("Aura")) {
+        if (isAura) {
             return aura(find(AURA, l), harmfulAuras, helpfulAuras);
         }
         return NONE;

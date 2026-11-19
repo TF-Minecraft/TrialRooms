@@ -318,12 +318,14 @@ class RunManagerTest {
     assertEquals(1, runs.runs().size());
     runs.useGate(b, gate);
     verify(keys, times(1)).take(any(), any());
-    // generation that fails
+    // generation that fails (for Ann, first in line): the dungeon stays held for her
     runs.end(only(), false, null);
+    ticks(1);
     when(module.generate(eq("delve"), anyLong())).thenThrow(new IllegalStateException("no layout"));
     runs.useGate(a, gate);
     assertTrue(runs.runs().isEmpty());
     assertTrue(a.nextMessage() != null);
+    assertTrue(runs.queued(a));
   }
 
   @Test
@@ -881,9 +883,17 @@ class RunManagerTest {
     runs.end(runs.runs().getFirst(), false, null);
     ticks(1);
     assertTrue(runs.queued(e), "Cy is offline, so Ed gets the hold");
+    // a newcomer may not take a dungeon held for someone else, and waits behind
+    PlayerMock ny = player("Ny");
+    runs.startRun(ny, "delve", 11);
+    assertTrue(runs.queued(ny));
+    assertTrue(runs.runs().isEmpty());
     assertTrue(runs.unqueue(e));
     assertFalse(runs.queued(e));
-    // while every dungeon is busy, the line just waits
+    assertTrue(runs.queued(ny), "the hold passed to Ny");
+    assertTrue(runs.unqueue(ny));
+    // while every dungeon is busy, the line just waits; a newcomer joins the line even when a
+    // dungeon has just freed up, since those already waiting go first
     PlayerMock h = player("Hal");
     runs.startRun(h, "delve", 8);
     assertFalse(runs.queued(h), "a dungeon was free: Hal is playing");
@@ -909,6 +919,39 @@ class RunManagerTest {
     f.disconnect();
     now.addAndGet(31_000);
     ticks(1);
+  }
+
+  @Test
+  void aSplitPartyFightsOneRoomAtATime() {
+    DungeonRecipe two = new DungeonRecipe("delve", 2, 2, Map.of(RoomType.COMBAT, 1), true, true, 0, 0, 1, 1,
+        null, 20, 20000);
+    layout = DungeonGenerator.generate(kit.catalog(), two, 4);
+    geo = new RunGeometry(layout, 32, 4, 0, 64, 0);
+    when(module.generate(eq("delve"), anyLong())).thenReturn(layout);
+    placed = CompletableFuture.completedFuture(at(geo.entry(0)));
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.startRun(a, "delve", 1);
+    DungeonRun run = only().run();
+    List<Integer> fights = new java.util.ArrayList<>();
+    for (int i = 0; i < layout.rooms().size(); i++) {
+      if (layout.rooms().get(i).node().type() == RoomType.COMBAT) {
+        fights.add(i);
+      }
+    }
+    assertTrue(fights.size() >= 2, "the test layout has two fight rooms");
+    int first = fights.get(0);
+    int second = fights.get(1);
+    a.teleport(at(geo.centre(first)));
+    b.teleport(at(geo.centre(second)));
+    ticks(settings.countdownSeconds() * 2 + 2);
+    assertEquals(DungeonRun.Room.ACTIVE, run.room(first));
+    assertEquals(DungeonRun.Room.ACTIVE, run.room(second));
+    // both are held in the first room, and stay there while it lasts
+    ticks(2);
+    assertEquals(first, geo.roomAt(b.getLocation().getX(), b.getLocation().getZ()));
+    assertEquals(first, geo.roomAt(a.getLocation().getX(), a.getLocation().getZ()));
   }
 
   @Test
