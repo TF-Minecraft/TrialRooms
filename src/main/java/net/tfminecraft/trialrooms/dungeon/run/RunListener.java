@@ -132,7 +132,7 @@ public final class RunListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEnemyHurt(EntityDamageEvent event) {
         Entity mob = event.getEntity();
-        if (!runs.isRunMob(mob)) {
+        if (!runs.inDungeonWorld(mob) || !runs.isRunMob(mob)) {
             return;
         }
         double factor = runs.incomingFactor(mob);
@@ -157,7 +157,7 @@ public final class RunListener implements Listener {
     /** Counts what players dealt to run enemies, and that the fight is moving. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEnemyHurtDone(EntityDamageEvent event) {
-        if (runs.isRunMob(event.getEntity())) {
+        if (runs.inDungeonWorld(event.getEntity()) && runs.isRunMob(event.getEntity())) {
             runs.mobHurt(event.getEntity(), attacker(event), event.getFinalDamage());
         }
     }

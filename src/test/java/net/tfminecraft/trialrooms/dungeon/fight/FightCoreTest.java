@@ -184,8 +184,8 @@ class FightCoreTest {
     assertNull(f.next(31_000, false, 0));
     assertEquals(Mechanic.SLAM, f.next(32_000, false, 0));
     // phases
-    assertNull(f.crossed(0.6, 33_000));
-    assertSame(def.phases().get(1), f.crossed(0.5, 33_000));
+    assertNull(f.crossed(60, 100, 33_000));
+    assertSame(def.phases().get(1), f.crossed(50, 100, 33_000));
     assertEquals(1, f.phase());
     assertEquals(33_000, f.phaseStartMs(1));
     assertEquals(0, f.phaseStartMs(2));
@@ -196,8 +196,14 @@ class FightCoreTest {
     assertEquals(Mechanic.SHOCKWAVE, f.next(44_000, false, 9));
     assertNull(f.next(45_000, false, 0), "floored at 8 s");
     assertEquals(Mechanic.RALLY_CALL, f.next(52_000, false, 0));
-    assertSame(def.phases().get(2), f.crossed(0.1, 53_000));
-    assertNull(f.crossed(0.0, 54_000), "no phase after the last");
+    assertSame(def.phases().get(2), f.crossed(10, 100, 53_000));
+    assertNull(f.crossed(0, 100, 54_000), "no phase after the last");
+    // health is a float: a hit capped at a threshold lands on the nearest float, which still counts
+    BossDef thirds = new BossDef("t", "m", "T", 10, List.of(new BossDef.Phase(100, 0, List.of(), 8),
+        new BossDef.Phase(66, 0, List.of(), 8)), 0);
+    assertNotNull(new BossFight(thirds, t, 0).crossed((float) (720 * 0.66), 720, 0));
+    assertNotNull(new BossFight(thirds, t, 0).crossed((float) (1040 * 0.66), 1040, 0));
+    assertNull(new BossFight(thirds, t, 0).crossed(720 * 0.66 + 1, 720, 0));
     assertEquals(0, f.floorShare());
     assertNull(f.next(70_000, false, 0), "a phase without mechanics");
     // enrage once, after its time; aid every 30 s unless adds are many

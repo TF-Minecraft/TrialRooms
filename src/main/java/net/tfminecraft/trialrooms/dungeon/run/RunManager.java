@@ -580,9 +580,18 @@ public final class RunManager {
 
     /** Files a mob as one of the run's: marked, tracked, and sent back home if it strays. */
     void register(ActiveRun ar, Entity mob, double[] home) {
-        mob.getPersistentDataContainer().set(mobKey, PersistentDataType.STRING, ar.run.id().toString());
+        mark(ar, mob);
+        if (mob instanceof LivingEntity living) {
+            // A despawned enemy would count as killed: never let one go for being far from players.
+            living.setRemoveWhenFarAway(false);
+        }
         byMob.put(mob.getUniqueId(), ar);
         ar.mobHome.put(mob.getUniqueId(), home);
+    }
+
+    /** Marks an entity as the run's: it drops nothing and is known after a restart. */
+    void mark(ActiveRun ar, Entity e) {
+        e.getPersistentDataContainer().set(mobKey, PersistentDataType.STRING, ar.run.id().toString());
     }
 
     void forget(Entity mob) {

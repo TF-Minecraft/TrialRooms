@@ -335,11 +335,14 @@ final class Fights {
         prune(enc.adds);
         prune(enc.extras);
         if (enc.boss != null) {
+            List<Entity> fighting = new ArrayList<>(enc.adds);
+            fighting.add(enc.bossMob);
+            stall(ar, enc, now, fighting);
             return stepBoss(ar, enc, now);
         }
         affixes(ar, enc, now);
         waves(ar, enc, now);
-        stall(ar, enc, now);
+        stall(ar, enc, now, enc.alive);
         lastFew(ar, enc, now);
         return enc.done();
     }
@@ -426,9 +429,9 @@ final class Fights {
     }
 
     /** Enemies nobody has hit for a while (stuck or hiding) are moved to the marker nearest a player. */
-    private void stall(ActiveRun ar, Encounter enc, long now) {
+    private void stall(ActiveRun ar, Encounter enc, long now, java.util.Collection<Entity> fighting) {
         FightTuning t = ar.kit.fights().tuning();
-        if (enc.alive.isEmpty() || now - enc.lastHitMs < t.stallSeconds() * 1000L || !enc.telegraphs.isEmpty()) {
+        if (fighting.isEmpty() || now - enc.lastHitMs < t.stallSeconds() * 1000L || !enc.telegraphs.isEmpty()) {
             return;
         }
         List<Player> here = inRoom(ar, enc.room);
@@ -448,10 +451,10 @@ final class Fights {
                 }
             }
         }
-        for (Entity e : enc.alive) {
+        for (Entity e : fighting) {
             e.teleport(new Location(runs.world(), best[0], best[1], best[2]));
         }
-        runs.event(ar, "room " + enc.room + ": " + enc.alive.size() + " idle enemies moved to the players");
+        runs.event(ar, "room " + enc.room + ": " + fighting.size() + " idle enemies moved to the players");
     }
 
     /** With two or fewer enemies left in the last wave: they glow, and players are told where they are. */
@@ -504,7 +507,7 @@ final class Fights {
             return true;
         }
         double full = maxHealth(mob);
-        BossDef.Phase phase = boss.crossed(mob.getHealth() / full, now);
+        BossDef.Phase phase = boss.crossed(mob.getHealth(), full, now);
         if (phase != null) {
             mob.setHealth(Math.min(full, Math.max(1, full * phase.at() / 100.0)));
             int n = boss.phase() + 1;
@@ -637,6 +640,10 @@ final class Fights {
                 Iterator<Active> it = enc.telegraphs.iterator();
                 while (it.hasNext()) {
                     Active a = it.next();
+                    if (a.t.kind() != Telegraph.Kind.BURST && gone(enc.bossMob)) {
+                        it.remove(); // the boss fell: its warning lands on nobody
+                        continue;
+                    }
                     cue(ar, enc, a, now);
                     if (a.t.due(now)) {
                         it.remove();
@@ -691,6 +698,7 @@ final class Fights {
             if (!ar.run.member(p.getUniqueId()).playing() || !t.inside(l.getX(), l.getZ())) {
                 continue;
             }
+            p.setNoDamageTicks(0); // a recent hit must not soak the mechanic
             fx.hurt(p, share * maxHealth(p), source);
             if (t.kind() != Telegraph.Kind.BURST) {
                 enc.boss.hit();
@@ -781,6 +789,7 @@ final class Fights {
 
     /** Something spawned inside a run (a mob's summons): it belongs to the room and goes with it. */
     void adopt(ActiveRun ar, Entity e) {
+        runs.mark(ar, e);
         int room = ar.geo.roomAt(e.getLocation().getX(), e.getLocation().getZ());
         Encounter enc = ar.encounters.get(room);
         if (enc != null) {
@@ -850,6 +859,10 @@ final class Fights {
             mobs.remove(e);
         }
         set.clear();
+    }
+
+    private static boolean gone(Entity e) {
+        return !e.isValid() || e.isDead();
     }
 
     /** Max health, or current health for the odd entity without the attribute. */

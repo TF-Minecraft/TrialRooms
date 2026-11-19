@@ -52,17 +52,20 @@ public final class BossFight {
         return startMs;
     }
 
+    /** Health a phase start may be missed by: entity health is a float, the threshold a double. */
+    static final double SLACK = 0.05;
+
     /**
-     * The boss's health is at {@code share} of its max. When that reaches the next phase's start,
-     * the phase begins and is returned: the boss is held at that health and can't be hurt for a
-     * moment. Otherwise null.
+     * The boss has {@code health} of {@code max}. When that reaches the next phase's start, the
+     * phase begins and is returned: the boss is held at that health and can't be hurt for a moment.
+     * Otherwise null.
      */
-    public BossDef.Phase crossed(double share, long now) {
+    public BossDef.Phase crossed(double health, double max, long now) {
         if (phase + 1 >= def.phases().size()) {
             return null;
         }
         BossDef.Phase next = def.phases().get(phase + 1);
-        if (share * 100 > next.at() + 1e-6) {
+        if (health > max * next.at() / 100.0 + SLACK) {
             return null;
         }
         phase++;

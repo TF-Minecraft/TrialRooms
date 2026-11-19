@@ -130,6 +130,11 @@ class DungeonModuleTest {
     assertNull(m.world());
     assertTrue(m.problems().stream().anyMatch(p -> p.contains("unknown kit nope")));
     assertTrue(m.recipes().isEmpty());
+    // a boss the kit doesn't have is reported, and the recipe still loads
+    Files.writeString(data.resolve("dungeons/recipes.yml"), "typo:\n  kit: greybox\n  boss: bone_wardn\n  trunk-pool: {combat: 1}\n");
+    m.reload();
+    assertTrue(m.problems().stream().anyMatch(p -> p.contains("has no boss 'bone_wardn'")), m.problems().toString());
+    assertTrue(m.recipes().containsKey("typo"));
     // a kit that can only grow in a straight line: 20 corridors reach 700 blocks north
     Path line = data.resolve("dungeons/kits/line");
     Files.createDirectories(line.resolve("rooms"));

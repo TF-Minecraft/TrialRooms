@@ -493,6 +493,29 @@ class FightsTest {
     now.addAndGet(30_000);
     ticks(1);
     assertFalse(enc.adds.isEmpty());
+    // idle for long: the boss and its adds are brought to the players
+    long idleHit = enc.lastHitMs;
+    enc.telegraphs.clear();
+    now.addAndGet(25_000);
+    ticks(1);
+    assertNotEquals(idleHit, enc.lastHitMs);
+    // a warning still showing when the boss falls lands on nobody
+    enc.telegraphs.clear();
+    enc.telegraphs.add(new Fights.Active(new Telegraph(Telegraph.Kind.SLAM, a.getLocation().getX(), 65,
+        a.getLocation().getZ(), 4, now.get(), now.get())));
+    when(mob.isDead()).thenReturn(true);
+    clearInvocations(fx);
+    runs.fights().telegraphTick();
+    assertTrue(enc.telegraphs.isEmpty());
+    verify(fx, never()).hurt(any(), anyDouble(), any());
+    when(mob.isDead()).thenReturn(false);
+    when(mob.isValid()).thenReturn(false);
+    enc.telegraphs.add(new Fights.Active(new Telegraph(Telegraph.Kind.SLAM, a.getLocation().getX(), 65,
+        a.getLocation().getZ(), 4, now.get(), now.get())));
+    runs.fights().telegraphTick();
+    assertTrue(enc.telegraphs.isEmpty());
+    verify(fx, never()).hurt(any(), anyDouble(), any());
+    when(mob.isValid()).thenReturn(true);
     // the boss falls: its adds go with it and the way opens
     kill(mob);
     ticks(1);
@@ -619,6 +642,8 @@ class FightsTest {
     Entity summon = mob(at(geo.centre(fight)), "Summon");
     runs.spawned(summon);
     assertTrue(enc.extras.contains(summon));
+    verify(summon.getPersistentDataContainer()).set(any(), any(), any());
+    verify((LivingEntity) enc.alive.iterator().next()).setRemoveWhenFarAway(false);
     Entity loose = mob(at(geo.centre(0)), "Loose");
     runs.spawned(loose);
     assertTrue(ar.extras.contains(loose));
@@ -667,7 +692,7 @@ class FightsTest {
     assertEquals(30 - 30 * 0.6, runs.damageCap(mob), 1e-9);
     ticks(1);
     // a shockwave on a boss that can't be rooted
-    enc.boss.crossed(0.5, now.get());
+    enc.boss.crossed(15, 30, now.get());
     now.addAndGet(20_000);
     ticks(1);
     runs.leave(b);

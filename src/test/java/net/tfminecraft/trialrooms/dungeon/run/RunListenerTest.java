@@ -145,9 +145,16 @@ class RunListenerTest {
     assertEquals(10, elsewhere.getDamage());
     // incoming: not run mobs are left alone; immune bosses take nothing; shields soften; phases cap
     EntityDamageEvent stranger = damage(calm, p, DamageCause.ENTITY_ATTACK, 10);
+    when(runs.inDungeonWorld(calm)).thenReturn(true);
     l.onEnemyHurt(stranger);
     assertEquals(10, stranger.getDamage());
     when(runs.isRunMob(mob)).thenReturn(true);
+    // outside the dungeon world nothing is looked at
+    EntityDamageEvent away = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyHurt(away);
+    l.onEnemyHurtDone(away);
+    verify(runs, never()).incomingFactor(mob);
+    when(runs.inDungeonWorld(mob)).thenReturn(true);
     when(runs.incomingFactor(mob)).thenReturn(0.0);
     EntityDamageEvent immune = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
     l.onEnemyHurt(immune);
@@ -173,10 +180,11 @@ class RunListenerTest {
     l.onEnemyHurtDone(damage(calm, p, DamageCause.ENTITY_ATTACK, 3));
     verify(runs, never()).mobHurt(eq(calm), any(), anyDouble());
     org.bukkit.event.entity.CreatureSpawnEvent spawn = mock(org.bukkit.event.entity.CreatureSpawnEvent.class);
-    when(spawn.getEntity()).thenReturn(mob);
+    when(spawn.getEntity()).thenReturn(calm);
+    when(runs.inDungeonWorld(calm)).thenReturn(false);
     l.onSpawn(spawn);
-    verify(runs, never()).spawned(mob);
-    when(runs.inDungeonWorld(mob)).thenReturn(true);
+    verify(runs, never()).spawned(calm);
+    when(spawn.getEntity()).thenReturn(mob);
     l.onSpawn(spawn);
     verify(runs).spawned(mob);
   }

@@ -166,9 +166,14 @@ public final class DungeonModule {
                 ? RunSettings.from(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile))
                 : RunSettings.defaults();
         recipes.values().removeIf(e -> {
-            if (!kits.containsKey(e.kit())) {
+            DungeonKit kit = kits.get(e.kit());
+            if (kit == null) {
                 problems.add("recipe " + e.recipe().id() + ": unknown kit " + e.kit());
                 return true;
+            }
+            if (kit.fights() != null && kit.fights().boss(e.rules().boss()) == null) {
+                problems.add("recipe " + e.recipe().id() + ": kit " + e.kit() + " has no boss '" + e.rules().boss()
+                        + "'; its boss room holds a strong pack instead");
             }
             return false;
         });
