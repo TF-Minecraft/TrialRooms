@@ -69,6 +69,8 @@ public final class RunManager {
     private final Map<UUID, ActiveRun> byPlayer = new HashMap<>();
     private final Map<UUID, ActiveRun> byMob = new HashMap<>();
     private final Set<UUID> starting = new HashSet<>();
+    /** Members who died in their run and have not respawned yet. */
+    private final Set<UUID> diedInRun = new HashSet<>();
     private int pendingStarts;
     private BukkitTask task;
 
@@ -685,6 +687,7 @@ public final class RunManager {
     public void died(Player p) {
         ActiveRun ar = byPlayer.get(p.getUniqueId());
         if (ar != null && ar.run.state() != DungeonRun.State.FAILED && isPlayingMember(ar, p)) {
+            diedInRun.add(p.getUniqueId());
             ar.downedAt.remove(p.getUniqueId());
             ar.run.bleedOut(p.getUniqueId());
             var cause = p.getLastDamageCause();
@@ -693,7 +696,17 @@ public final class RunManager {
     }
 
     /** Where a run member respawns after a death, or null when they are not in a run. */
+    /**
+     * Where a member who died in their run respawns: back inside it. Anyone else respawns as usual.
+     * (Decided at the death: by the respawn event the player may already count as elsewhere.)
+     */
     public Location respawnPoint(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        return diedInRun.remove(p.getUniqueId()) && ar != null && isPlayingMember(ar, p) ? wakePoint(ar) : null;
+    }
+
+    /** Where a member who fell into the void is put back, or null for anyone not playing in a run here. */
+    public Location rescuePoint(Player p) {
         ActiveRun ar = byPlayer.get(p.getUniqueId());
         return ar == null || !inDungeonWorld(p) || !isPlayingMember(ar, p) ? null : wakePoint(ar);
     }

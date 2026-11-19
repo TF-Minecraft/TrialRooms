@@ -174,8 +174,11 @@ class RunListenerTest {
     when(runs.down(p)).thenReturn(true);
     l.onLethal(lethal);
     assertTrue(lethal.isCancelled());
+    var unknown = damage(p, null, DamageCause.VOID, 4);
+    l.onLethal(unknown);
+    assertFalse(unknown.isCancelled(), "no rescue point: the void is left alone");
     Location back = new Location(null, 0, 65, 0);
-    when(runs.respawnPoint(p)).thenReturn(back);
+    when(runs.rescuePoint(p)).thenReturn(back);
     var fall = damage(p, null, DamageCause.VOID, 4);
     l.onLethal(fall);
     assertTrue(fall.isCancelled());

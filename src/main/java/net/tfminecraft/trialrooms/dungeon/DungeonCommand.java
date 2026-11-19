@@ -114,6 +114,10 @@ public final class DungeonCommand {
             DungeonRun r = ar.run();
             sender.sendMessage("§f" + r.id().toString().substring(0, 8) + " §7" + r.recipeId() + " " + r.state()
                     + ", players " + r.present().size() + ", lives " + r.lives() + ", rooms cleared " + r.roomsCleared());
+            for (DungeonRun.Member m : r.members()) {
+                sender.sendMessage("§7  member " + m.id() + " " + m.status() + (m.online() ? " online" : " away")
+                        + " room " + m.room());
+            }
         }
     }
 

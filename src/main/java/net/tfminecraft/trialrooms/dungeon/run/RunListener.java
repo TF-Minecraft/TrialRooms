@@ -103,10 +103,12 @@ public final class RunListener implements Listener {
             return;
         }
         if (event.getCause() == EntityDamageEvent.DamageCause.VOID) {
-            event.setCancelled(true);
-            Location back = runs.respawnPoint(p);
-            p.setFallDistance(0f);
-            p.teleport(back);
+            Location back = runs.rescuePoint(p);
+            if (back != null) {
+                event.setCancelled(true);
+                p.setFallDistance(0f);
+                p.teleport(back);
+            }
             return;
         }
         if (p.getHealth() - event.getFinalDamage() <= 0 && runs.down(p)) {

@@ -68,6 +68,12 @@ class DungeonRunCommandsTest {
     when(r.state()).thenReturn(DungeonRun.State.RUNNING);
     when(r.layout()).thenReturn(layout);
     when(r.room(anyInt())).thenReturn(DungeonRun.Room.IDLE);
+    DungeonRun real = new DungeonRun(UUID.randomUUID(), "delve", layout, 1, 0);
+    UUID away = UUID.randomUUID();
+    real.add(UUID.randomUUID(), "c1");
+    real.add(away, "c2");
+    real.offline(away, 0);
+    when(r.members()).thenReturn(real.members());
     when(ar.run()).thenReturn(r);
     when(ar.geometry()).thenReturn(new RunGeometry(layout, 32, 4, 0, 64, 0));
     return ar;
@@ -91,6 +97,8 @@ class DungeonRunCommandsTest {
     when(runs.runs()).thenReturn(List.of(ar));
     c.run(console, new String[] {"runs"});
     verify(console).sendMessage(startsWith("§f12345678 §7delve RUNNING"));
+    verify(console).sendMessage(endsWith("ALIVE online room -1"));
+    verify(console).sendMessage(endsWith("ALIVE away room -1"));
     c.run(console, new String[] {"end"});
     c.run(console, new String[] {"end", "ffff"});
     verify(console).sendMessage("§cNo run starts with ffff.");

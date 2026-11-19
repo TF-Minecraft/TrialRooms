@@ -245,7 +245,7 @@ class RunManagerTest {
     into(a, RoomType.REST);
     ticks(1);
     assertEquals(room(RoomType.REST), run.checkpoint());
-    assertEquals(room(RoomType.REST), geo.roomAt(runs.respawnPoint(a).getX(), runs.respawnPoint(a).getZ()));
+    assertEquals(room(RoomType.REST), geo.roomAt(runs.rescuePoint(a).getX(), runs.rescuePoint(a).getZ()));
     into(a, RoomType.TREASURE);
     ticks(1);
 
@@ -441,6 +441,15 @@ class RunManagerTest {
   }
 
   @Test
+  void aDeathWhoseRunEndsBeforeTheRespawnRespawnsAsUsual() {
+    PlayerMock a = player("Ann");
+    runs.startRun(a, "delve", 1);
+    runs.died(a);
+    runs.end(only(), false, null);
+    assertNull(runs.respawnPoint(a));
+  }
+
+  @Test
   void aBeatenPartyFails() {
     PlayerMock a = player("Ann");
     rules = new RunRules(1, 3, "", 0, 1, 0.5);
@@ -547,7 +556,7 @@ class RunManagerTest {
     ticks(1);
     // the checkpoint can be a room without a rest marker
     run.checkpoint(room(RoomType.TREASURE));
-    assertEquals(room(RoomType.TREASURE), geo.roomAt(runs.respawnPoint(a).getX(), runs.respawnPoint(a).getZ()));
+    assertEquals(room(RoomType.TREASURE), geo.roomAt(runs.rescuePoint(a).getX(), runs.rescuePoint(a).getZ()));
     // Bo offline within the grace time; Bo down before a seal is pulled in down
     runs.quit(b);
     ticks(1);
@@ -562,6 +571,15 @@ class RunManagerTest {
     a.teleport(at(geo.centre(room(RoomType.COMBAT))).add(10, 0, 10));
     ticks(1);
     assertTrue(runs.isDowned(b));
+    // a member who died in the run respawns inside it, once; not on another character
+    runs.died(a);
+    assertNotNull(runs.respawnPoint(a));
+    assertNull(runs.respawnPoint(a));
+    runs.died(a);
+    characterOf.put("Ann", "char-Other");
+    assertNull(runs.respawnPoint(a));
+    characterOf.put("Ann", "char-Ann");
+    assertNull(runs.rescuePoint(player("Stranger")));
     // a run member dies outright, with and without a known cause
     b.setLastDamageCause(new EntityDamageEvent(b, EntityDamageEvent.DamageCause.VOID, mock(org.bukkit.damage.DamageSource.class), 5));
     runs.died(b);
@@ -716,7 +734,7 @@ class RunManagerTest {
     now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
     ticks(1);
     assertEquals(room(RoomType.COMBAT), geo.roomAt(a.getLocation().getX(), a.getLocation().getZ()));
-    assertEquals(room(RoomType.COMBAT), geo.roomAt(runs.respawnPoint(a).getX(), runs.respawnPoint(a).getZ()));
+    assertEquals(room(RoomType.COMBAT), geo.roomAt(runs.rescuePoint(a).getX(), runs.rescuePoint(a).getZ()));
     // coming back to the dungeon world outside the fight pulls her into it
     a.teleport(at(geo.centre(0)));
     runs.sweep(a);
@@ -727,7 +745,7 @@ class RunManagerTest {
     assertFalse(run.member(a.getUniqueId()).online());
     runs.sweep(a);
     assertFalse(run.member(a.getUniqueId()).online());
-    assertNull(runs.respawnPoint(a), "no dungeon respawn outside the dungeon world");
+    assertNull(runs.rescuePoint(a), "no dungeon rescue outside the dungeon world");
     a.teleport(at(geo.centre(room(RoomType.COMBAT))));
     runs.sweep(a);
     assertTrue(run.member(a.getUniqueId()).online());
@@ -735,6 +753,7 @@ class RunManagerTest {
     ticks(1);
     // on another character she is no member here: no dungeon respawn, deaths do not count, leave does not move her
     characterOf.put("Ann", "char-Ann2");
+    assertNull(runs.rescuePoint(a));
     assertNull(runs.respawnPoint(a));
     int lives = run.lives();
     runs.died(a);
