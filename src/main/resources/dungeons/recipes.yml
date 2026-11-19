@@ -4,6 +4,10 @@
 # branches: side branches off the trunk; each ends in a treasure room.
 # branch-length: rooms per branch, the treasure room included.
 # attempts / step-budget: how hard the generator tries before giving up on a seed.
+# players: how many players a gate lets in, as N or MIN-MAX.
+# key: TLibs item path the gate takes from the leader (blank for none).
+# lives: shared lives; each bleed-out spends one, then a player is out.
+# mob-level / health-per-extra-player: enemy level, and extra enemy health per player after the first.
 delve_greybox:
   kit: greybox
   trunk: 3-5
@@ -19,3 +23,8 @@ delve_greybox:
     corridor: 1
   attempts: 20
   step-budget: 20000
+  players: 1-3
+  key: m.loot.trial_key
+  lives: 3
+  mob-level: 1
+  health-per-extra-player: 0.5

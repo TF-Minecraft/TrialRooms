@@ -3,3 +3,10 @@ cell-size: 32
 cell-height: 24
 door-height: 4
 seal-block: minecraft:stone_bricks
+door-block: minecraft:iron_bars
+# Placeholder enemies until the fights phase: existing dungeon skeletons.
+mobs:
+  melee: dSkeleton_footman_em
+  ranged: dSkeleton_Archer_em
+  elite: dSkeleton_Halberdier_em
+  boss: dSkeleton_Tank_em

@@ -80,8 +80,16 @@ public final class KitLoader {
             problems.add(id + ": no usable rooms");
             return null;
         }
+        Map<String, String> mobs = new LinkedHashMap<>();
+        var mobSection = kit.getConfigurationSection("mobs");
+        if (mobSection != null) {
+            for (String tag : mobSection.getKeys(false)) {
+                mobs.put(tag, mobSection.getString(tag));
+            }
+        }
         return new DungeonKit(id, new RoomCatalog(cellSize, cellHeight, templates), structures, doorHeight,
-                kit.getString("seal-block", "minecraft:stone_bricks"));
+                kit.getString("seal-block", "minecraft:stone_bricks"), kit.getString("door-block", "minecraft:iron_bars"),
+                mobs);
     }
 
     /** Reads a YAML file, turning syntax and read errors into a reportable problem. */

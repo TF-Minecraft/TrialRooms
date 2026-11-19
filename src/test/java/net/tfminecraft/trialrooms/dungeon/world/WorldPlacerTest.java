@@ -135,6 +135,9 @@ class WorldPlacerTest {
       structures.put(t.id(), sized(t.widthCells() * 32, 12, t.depthCells() * 32));
     }
     LayoutPlacer placer = new LayoutPlacer(plugin, world, kit, structures::get, layout, 8192, 64, 0);
+    assertEquals(8192, placer.originX());
+    assertEquals(64, placer.originY());
+    assertEquals(0, placer.originZ());
     CompletableFuture<Location> done = placer.place();
     server.getScheduler().performTicks(layout.rooms().size() + 3);
     Location at = done.join();
@@ -164,7 +167,8 @@ class WorldPlacerTest {
         Set.of());
     RoomTemplate boss = new RoomTemplate("b", RoomType.BOSS, 1, 1, List.of(new Doorway(0, 0, Side.SOUTH, 4)),
         List.of(), 1, 0, 0, 0, Set.of());
-    DungeonKit kit = new DungeonKit("k", new RoomCatalog(32, 24, List.of(start, boss)), java.util.Map.of(), 4, "x");
+    DungeonKit kit = new DungeonKit("k", new RoomCatalog(32, 24, List.of(start, boss)), java.util.Map.of(), 4, "x",
+        "minecraft:iron_bars", java.util.Map.of());
     DungeonRecipe r = new DungeonRecipe("t", 0, 0, null, false, false, 0, 0, 1, 1, null, 1, 100);
     DungeonLayout layout = DungeonGenerator.generate(kit.catalog(), r, 1);
     Structure s = sized(32, 8, 32);

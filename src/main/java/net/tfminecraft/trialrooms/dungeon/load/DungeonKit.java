@@ -13,11 +13,19 @@ import net.tfminecraft.trialrooms.dungeon.template.RoomCatalog;
  * @param structures structure file per template id
  * @param doorHeight doorway height in blocks, from one block above the floor
  * @param sealBlock  block data used to wall up unused doorways
+ * @param doorBlock  block data that shuts a doorway while a fight runs or until a room is cleared
+ * @param mobs       MythicMobs type per spawn marker tag (such as melee, ranged, boss)
  */
 public record DungeonKit(String id, RoomCatalog catalog, Map<String, File> structures, int doorHeight,
-        String sealBlock) {
+        String sealBlock, String doorBlock, Map<String, String> mobs) {
 
     public DungeonKit {
         structures = Map.copyOf(structures);
+        mobs = Map.copyOf(mobs);
+    }
+
+    /** The mob for a spawn marker tag, falling back to the kit's melee mob; null when neither is set. */
+    public String mobFor(String tag) {
+        return mobs.getOrDefault(tag, mobs.get("melee"));
     }
 }

@@ -10,6 +10,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import net.tfminecraft.trialrooms.dungeon.generator.DungeonRecipe;
+import net.tfminecraft.trialrooms.dungeon.run.RunRules;
 import net.tfminecraft.trialrooms.dungeon.template.RoomType;
 
 /** Loads {@code recipes.yml}. A broken recipe is skipped and reported. */
@@ -18,8 +19,8 @@ public final class RecipeLoader {
     private RecipeLoader() {
     }
 
-    /** A recipe and the kit it builds from. */
-    public record Entry(DungeonRecipe recipe, String kit) {
+    /** A recipe, the kit it builds from, and how it is played. */
+    public record Entry(DungeonRecipe recipe, String kit, RunRules rules) {
     }
 
     public static Map<String, Entry> load(File file, List<String> problems) {
@@ -37,7 +38,7 @@ public final class RecipeLoader {
                 if (s == null) {
                     throw new IllegalArgumentException("not a section");
                 }
-                out.put(id, new Entry(recipe(id, s), s.getString("kit", "greybox")));
+                out.put(id, new Entry(recipe(id, s), s.getString("kit", "greybox"), rules(s)));
             } catch (IllegalArgumentException e) {
                 problems.add("recipe " + id + ": " + e.getMessage());
             }
@@ -53,6 +54,12 @@ public final class RecipeLoader {
                 s.getBoolean("rest-before-boss", true), s.getBoolean("vault", true), branches[0], branches[1],
                 length[0], length[1], pool(s.getConfigurationSection("branch-pool")), s.getInt("attempts", 20),
                 s.getInt("step-budget", 20000));
+    }
+
+    static RunRules rules(ConfigurationSection s) {
+        int[] players = range(s.getString("players", "1-3"), "players");
+        return new RunRules(players[0], players[1], s.getString("key", "m.loot.trial_key"), s.getInt("lives", 3),
+                s.getInt("mob-level", 1), s.getDouble("health-per-extra-player", 0.5));
     }
 
     private static Map<RoomType, Integer> pool(ConfigurationSection s) {

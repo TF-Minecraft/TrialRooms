@@ -21,6 +21,7 @@ import net.tfminecraft.trialrooms.dungeon.generator.DungeonLayout;
 import net.tfminecraft.trialrooms.dungeon.generator.PlacedRoom;
 import net.tfminecraft.trialrooms.dungeon.grid.Orientation;
 import net.tfminecraft.trialrooms.dungeon.load.DungeonKit;
+import net.tfminecraft.trialrooms.dungeon.run.RunGeometry;
 import net.tfminecraft.trialrooms.dungeon.template.Doorway;
 import net.tfminecraft.trialrooms.dungeon.template.Marker;
 
@@ -126,26 +127,10 @@ public final class LayoutPlacer {
         structure.place(at, false, rotation(o), o.mirrored() ? Mirror.LEFT_RIGHT : Mirror.NONE, 0, 1.0f,
                 new Random(0));
         BlockData seal = plugin.getServer().createBlockData(kit.sealBlock());
+        RunGeometry geo = new RunGeometry(layout, cell, kit.doorHeight(), originX, originY, originZ);
         for (Doorway door : layout.unusedDoorways(index)) {
-            seal(door, cell, seal);
-        }
-    }
-
-    private void seal(Doorway door, int cell, BlockData seal) {
-        int bx = originX + door.cellX() * cell;
-        int bz = originZ + door.cellZ() * cell;
-        int start = door.offsetInCell(cell);
-        for (int k = start; k < start + door.width(); k++) {
-            for (int y = 1; y <= kit.doorHeight(); y++) {
-                int x;
-                int z;
-                switch (door.side()) {
-                    case NORTH -> { x = bx + k; z = bz; }
-                    case SOUTH -> { x = bx + k; z = bz + cell - 1; }
-                    case WEST -> { x = bx; z = bz + k; }
-                    default -> { x = bx + cell - 1; z = bz + k; }
-                }
-                world.getBlockAt(x, originY + y, z).setBlockData(seal, false);
+            for (int[] b : geo.doorBlocks(door)) {
+                world.getBlockAt(b[0], b[1], b[2]).setBlockData(seal, false);
             }
         }
     }
@@ -178,6 +163,18 @@ public final class LayoutPlacer {
             chunk.removePluginChunkTicket(plugin);
         }
         held.clear();
+    }
+
+    public int originX() {
+        return originX;
+    }
+
+    public int originY() {
+        return originY;
+    }
+
+    public int originZ() {
+        return originZ;
     }
 
     public int heldChunks() {

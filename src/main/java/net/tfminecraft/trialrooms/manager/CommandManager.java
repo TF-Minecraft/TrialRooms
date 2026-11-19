@@ -22,7 +22,8 @@ public class CommandManager implements CommandExecutor, TabCompleter {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         // Dungeon staff tools also work from the console.
         if (args.length > 0 && args[0].equalsIgnoreCase("dungeon")) {
-            if (!sender.hasPermission("trialrooms.admin")) {
+            boolean leave = args.length > 1 && args[1].equalsIgnoreCase("leave");
+            if (!leave && !sender.hasPermission("trialrooms.admin")) {
                 sender.sendMessage("§cYou don't have permission to use this command.");
                 return true;
             }
