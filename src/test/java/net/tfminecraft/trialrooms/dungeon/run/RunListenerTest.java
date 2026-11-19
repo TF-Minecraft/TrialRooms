@@ -274,6 +274,7 @@ class RunListenerTest {
     l.onCharacter(activated);
     server.getScheduler().performTicks(2);
     verify(runs, times(3)).sweep(p);
+    verify(runs).giveRefunds(p);
     CharacterSelectionRequestEvent sw = new CharacterSelectionRequestEvent(p);
     l.onCharacterSwitch(sw);
     assertFalse(sw.isCancelled());
@@ -340,6 +341,9 @@ class RunListenerTest {
       PlayerTeleportEvent chorus = new PlayerTeleportEvent(who, new Location(null, 0, 0, 0), new Location(null, 1, 0, 0), PlayerTeleportEvent.TeleportCause.CONSUMABLE_EFFECT);
       l.onTeleport(chorus);
       assertEquals(blocked, chorus.isCancelled());
+      PlayerTeleportEvent spectate = new PlayerTeleportEvent(who, new Location(null, 0, 0, 0), new Location(null, 1, 0, 0), PlayerTeleportEvent.TeleportCause.SPECTATE);
+      l.onTeleport(spectate);
+      assertEquals(blocked, spectate.isCancelled());
       PlayerTeleportEvent plugin = new PlayerTeleportEvent(who, new Location(null, 0, 0, 0), new Location(null, 1, 0, 0), PlayerTeleportEvent.TeleportCause.PLUGIN);
       l.onTeleport(plugin);
       assertFalse(plugin.isCancelled());

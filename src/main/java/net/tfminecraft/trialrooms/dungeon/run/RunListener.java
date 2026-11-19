@@ -187,7 +187,10 @@ public final class RunListener implements Listener {
 
     @EventHandler
     public void onCharacter(CharacterActivatedEvent event) {
-        later(() -> runs.sweep(event.getOwner()));
+        later(() -> {
+            runs.giveRefunds(event.getOwner());
+            runs.sweep(event.getOwner());
+        });
     }
 
     @EventHandler
@@ -249,7 +252,8 @@ public final class RunListener implements Listener {
     public void onTeleport(PlayerTeleportEvent event) {
         PlayerTeleportEvent.TeleportCause cause = event.getCause();
         if ((cause == PlayerTeleportEvent.TeleportCause.ENDER_PEARL
-                || cause == PlayerTeleportEvent.TeleportCause.CONSUMABLE_EFFECT) && restricted(event.getPlayer())) {
+                || cause == PlayerTeleportEvent.TeleportCause.CONSUMABLE_EFFECT
+                || cause == PlayerTeleportEvent.TeleportCause.SPECTATE) && restricted(event.getPlayer())) {
             event.setCancelled(true);
         }
     }

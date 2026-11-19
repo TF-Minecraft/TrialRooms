@@ -60,6 +60,8 @@ class RunManagerTest {
   GateStore gates;
   AtomicLong now = new AtomicLong(1_000_000);
   RunManager runs;
+  final boolean[] blockBo = {false};
+  final String[] blockFor = {""};
   Map<String, String> characterOf = new HashMap<>();
   List<Entity> spawned = new ArrayList<>();
   RunSettings settings = RunSettings.defaults();
@@ -236,6 +238,8 @@ class RunManagerTest {
     ticks(1);
     assertEquals(GameMode.SPECTATOR, b.getGameMode());
     assertEquals(DungeonRun.Status.OUT, run.member(b.getUniqueId()).status());
+    runs.sweep(b);
+    assertEquals(GameMode.SPECTATOR, b.getGameMode());
 
     // a rest room becomes the checkpoint
     into(a, RoomType.REST);
@@ -375,17 +379,21 @@ class RunManagerTest {
     runs.sweep(stray);
     assertFalse(runs.inDungeonWorld(stray));
     assertEquals(1, stray.getLocation().getX());
+    runs.giveRefunds(stray);
     verify(keys).give(stray, "m.key");
     PlayerMock staff = player("Staff");
     staff.setOp(true);
     staff.teleport(new Location(dungeon, 0, 65, 0));
     runs.sweep(staff);
     assertTrue(runs.inDungeonWorld(staff));
-    // someone with no character and no return point goes to the main spawn
+    // someone without a character yet is left alone; once playing, with no return point, they go to spawn
     PlayerMock lost = player("Lost");
     characterOf.remove("Lost");
     lost.teleport(new Location(dungeon, 0, 65, 0));
     lost.setGameMode(GameMode.SPECTATOR);
+    runs.sweep(lost);
+    assertEquals(dungeon, lost.getWorld());
+    characterOf.put("Lost", "char-Lost");
     runs.sweep(lost);
     assertEquals(main, lost.getWorld());
     assertEquals(GameMode.SURVIVAL, lost.getGameMode());
@@ -675,5 +683,135 @@ class RunManagerTest {
     runs.end(runs.runOf(a), false, null);
     assertEquals(50, b.getLocation().getX());
     slow.complete(at(geo.entry(0)));
+  }
+
+  @Test
+  void reviewFixesHold() {
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5);
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    // the teleport in for Bo is refused by another plugin: he stays out and keeps no return point
+    var blocker = new org.bukkit.event.Listener() {
+      @org.bukkit.event.EventHandler
+      public void on(org.bukkit.event.player.PlayerTeleportEvent e) {
+        if (e.getPlayer().getName().equals("Bo") && blockBo[0] || e.getPlayer().getName().equals(blockFor[0])) {
+          e.setCancelled(true);
+        }
+      }
+    };
+    server.getPluginManager().registerEvents(blocker, MockBukkit.createMockPlugin());
+    blockBo[0] = true;
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    blockBo[0] = false;
+    DungeonRun run = runs.runOf(a).run();
+    assertEquals(DungeonRun.Status.LEFT, run.member(b.getUniqueId()).status());
+    assertNull(files.returnPoint(b.getUniqueId(), "char-Bo"));
+    assertNull(runs.runOf(b));
+    // a bleed-out during a fight wakes Ann inside the fight, not at the sealed-off checkpoint
+    into(a, RoomType.COMBAT);
+    ticks(2);
+    assertEquals(DungeonRun.Room.ACTIVE, run.room(room(RoomType.COMBAT)));
+    runs.down(a);
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    assertEquals(room(RoomType.COMBAT), geo.roomAt(a.getLocation().getX(), a.getLocation().getZ()));
+    assertEquals(room(RoomType.COMBAT), geo.roomAt(runs.respawnPoint(a).getX(), runs.respawnPoint(a).getZ()));
+    // coming back to the dungeon world outside the fight pulls her into it
+    a.teleport(at(geo.centre(0)));
+    runs.sweep(a);
+    assertEquals(room(RoomType.COMBAT), geo.roomAt(a.getLocation().getX(), a.getLocation().getZ()));
+    // moved out of the dungeon world by staff: she counts as away, and a sweep there leaves her be
+    a.teleport(new Location(main, 5, 70, 5));
+    ticks(1);
+    assertFalse(run.member(a.getUniqueId()).online());
+    runs.sweep(a);
+    assertFalse(run.member(a.getUniqueId()).online());
+    assertNull(runs.respawnPoint(a), "no dungeon respawn outside the dungeon world");
+    a.teleport(at(geo.centre(room(RoomType.COMBAT))));
+    runs.sweep(a);
+    assertTrue(run.member(a.getUniqueId()).online());
+    killAll();
+    ticks(1);
+    // on another character she is no member here: no dungeon respawn, deaths do not count, leave does not move her
+    characterOf.put("Ann", "char-Ann2");
+    assertNull(runs.respawnPoint(a));
+    int lives = run.lives();
+    runs.died(a);
+    assertEquals(lives, run.lives());
+    Location here = a.getLocation();
+    assertTrue(runs.leave(a));
+    assertEquals(here, a.getLocation());
+    characterOf.put("Ann", "char-Ann");
+    // a dungeon spectator found outside any run gets survival back; others are left alone
+    PlayerMock s = player("Spec");
+    s.setGameMode(GameMode.SPECTATOR);
+    s.getPersistentDataContainer().set(new org.bukkit.NamespacedKey(plugin, "dungeon_spectator"),
+        org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+    runs.sweep(s);
+    assertEquals(GameMode.SURVIVAL, s.getGameMode());
+    PlayerMock plain = player("Plain");
+    runs.sweep(plain);
+    // a tagged player who already switched game mode keeps it
+    PlayerMock back = player("Back");
+    back.getPersistentDataContainer().set(new org.bukkit.NamespacedKey(plugin, "dungeon_spectator"),
+        org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+    back.setGameMode(GameMode.CREATIVE);
+    runs.sweep(back);
+    assertEquals(GameMode.CREATIVE, back.getGameMode());
+    // leaving while a staff member has moved her out: nothing moves her
+    PlayerMock e = player("Ed");
+    runs.startRun(e, "delve", 6);
+    e.teleport(new Location(main, 9, 70, 9));
+    assertTrue(runs.leave(e));
+    assertEquals(9, e.getLocation().getX());
+    // a refused teleport back keeps the return point for the next try
+    PlayerMock f = player("Bo2");
+    runs.startRun(f, "delve", 8);
+    blockFor[0] = "Bo2";
+    assertTrue(runs.leave(f));
+    blockFor[0] = "";
+    assertNotNull(files.returnPoint(f.getUniqueId(), "char-Bo2"));
+    // a member on another character found outside the dungeon world leaves without being moved
+    PlayerMock c = player("Cy");
+    runs.startRun(c, "delve", 5);
+    DungeonRun cr = runs.runOf(c).run();
+    c.teleport(new Location(main, 7, 70, 7));
+    characterOf.put("Cy", "char-Cy2");
+    runs.sweep(c);
+    assertEquals(DungeonRun.Status.LEFT, cr.member(c.getUniqueId()).status());
+    assertEquals(7, c.getLocation().getX());
+  }
+
+  @Test
+  void theFinishWindowKeepsGoingAndRefundsWaitForACharacter() {
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    DungeonRun run = runs.runOf(a).run();
+    into(a, RoomType.BOSS);
+    into(b, RoomType.BOSS);
+    ticks(settings.bossCountdownSeconds() * 2 + 2);
+    killAll();
+    ticks(1);
+    into(a, RoomType.VAULT);
+    ticks(1);
+    assertEquals(DungeonRun.State.COMPLETE, run.state());
+    // Bo can still go down while the run is won; the vault again changes nothing
+    assertTrue(runs.down(b));
+    runs.died(b);
+    a.teleport(at(geo.centre(0)));
+    ticks(1);
+    into(a, RoomType.VAULT);
+    ticks(1);
+    assertEquals(DungeonRun.State.COMPLETE, run.state());
+    // an OUT member coming back is a spectator again and is not pulled anywhere
+    runs.sweep(b);
+    // the leader is in character selection (no active character) when a stop refunds the key
+    characterOf.remove("Ann");
+    runs.end(runs.runOf(a), true, null);
+    verify(keys, never()).give(any(), any());
+    assertEquals(List.of("m.key"), files.takeRefunds(a.getUniqueId()));
   }
 }

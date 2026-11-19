@@ -82,7 +82,9 @@ public final class KitLoader {
         }
         Map<String, String> mobs = new LinkedHashMap<>();
         var mobSection = kit.getConfigurationSection("mobs");
-        if (mobSection != null) {
+        if (mobSection == null) {
+            problems.add(id + ": kit.yml has no mobs section, so its fight rooms stay empty");
+        } else {
             for (String tag : mobSection.getKeys(false)) {
                 mobs.put(tag, mobSection.getString(tag));
             }

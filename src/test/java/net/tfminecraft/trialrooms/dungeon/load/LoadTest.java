@@ -46,7 +46,8 @@ class LoadTest {
     Files.writeString(dir.resolve("rooms/notes.txt"), "ignored");
     List<String> problems = new ArrayList<>();
     DungeonKit kit = KitLoader.load(dir.toFile(), problems);
-    assertEquals(4, problems.size(), problems.toString());
+    assertEquals(5, problems.size(), problems.toString());
+    assertTrue(problems.stream().anyMatch(p -> p.contains("no mobs section")), problems.toString());
     assertEquals(1, kit.catalog().templates().size());
     assertEquals("k", kit.id());
     assertEquals(5, kit.doorHeight());

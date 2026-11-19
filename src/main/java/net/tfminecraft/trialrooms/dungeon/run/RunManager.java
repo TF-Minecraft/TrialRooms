@@ -64,6 +64,7 @@ public final class RunManager {
     private final GateStore gates;
     private final LongSupplier clock;
     private final NamespacedKey mobKey;
+    private final NamespacedKey spectatorKey;
     private final Map<UUID, ActiveRun> runs = new LinkedHashMap<>();
     private final Map<UUID, ActiveRun> byPlayer = new HashMap<>();
     private final Map<UUID, ActiveRun> byMob = new HashMap<>();
@@ -119,6 +120,7 @@ public final class RunManager {
         this.gates = gates;
         this.clock = clock;
         this.mobKey = new NamespacedKey(plugin, "dungeon_run");
+        this.spectatorKey = new NamespacedKey(plugin, "dungeon_spectator");
     }
 
     public void start() {
@@ -316,7 +318,13 @@ public final class RunManager {
                 files.saveReturn(m.getUniqueId(), charId, m.getLocation());
                 run.add(m.getUniqueId(), charId);
                 byPlayer.put(m.getUniqueId(), ar);
-                m.teleport(arrival.clone().add((n % 3) - 1, 0, (n / 3) * 1.5));
+                if (!m.teleport(arrival.clone().add((n % 3) - 1, 0, (n / 3) * 1.5))) {
+                    run.leave(m.getUniqueId());
+                    byPlayer.remove(m.getUniqueId());
+                    files.clearReturn(m.getUniqueId(), charId);
+                    m.sendMessage("§cSomething held you back at the gate.");
+                    continue;
+                }
                 n++;
                 m.sendMessage("§6You step through the gate. §7Shared lives: " + run.lives()
                         + ". Leave at any time with /tr dungeon leave.");
@@ -333,9 +341,12 @@ public final class RunManager {
     void tick() {
         long now = clock.getAsLong();
         for (ActiveRun ar : new ArrayList<>(runs.values())) {
-            if (ar.run.state() == DungeonRun.State.RUNNING) {
+            // A won run keeps its fights and downed players going until everyone is sent back.
+            if (ar.run.state() != DungeonRun.State.FAILED) {
                 step(ar, now);
-            } else if (now >= ar.finishAtMs || ar.run.present().isEmpty()) {
+            }
+            if (ar.run.state() != DungeonRun.State.RUNNING
+                    && (now >= ar.finishAtMs || ar.run.present().isEmpty())) {
                 end(ar, false, null);
             }
         }
@@ -352,16 +363,16 @@ public final class RunManager {
                 continue;
             }
             Player p = Bukkit.getPlayer(m.id());
-            if (p == null) {
+            if (p == null || !inDungeonWorld(p)) {
+                // Not here (yet): character selection after a reconnect, or moved out. They don't
+                // count as playing, and the grace time runs until they come back.
+                run.offline(m.id(), now);
                 continue;
             }
             int room = ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ());
             if (room != m.room()) {
                 m.room(room);
                 entered(ar, p, room);
-                if (run.state() != DungeonRun.State.RUNNING) {
-                    return;
-                }
             }
         }
         for (DungeonRun.Action a : run.stepRooms(settings().countdownSeconds() * 2,
@@ -378,6 +389,9 @@ public final class RunManager {
             }
         }
         downed(ar, now);
+        if (run.state() != DungeonRun.State.RUNNING) {
+            return;
+        }
         if (run.present().isEmpty()) {
             end(ar, false, null);
         } else if (run.wiped() && run.present().stream().anyMatch(Member::online)) {
@@ -393,7 +407,7 @@ public final class RunManager {
         if (type == RoomType.REST && ar.run.checkpoint() != room) {
             ar.run.checkpoint(room);
             tell(ar, "§aA quiet room. Anyone who falls will wake here.");
-        } else if (type == RoomType.VAULT && ar.run.bossDefeated()) {
+        } else if (type == RoomType.VAULT && ar.run.bossDefeated() && ar.run.state() == DungeonRun.State.RUNNING) {
             complete(ar);
         } else if (type == RoomType.TREASURE) {
             p.sendActionBar(Component.text("A treasure room (treasure comes in a later update)."));
@@ -558,7 +572,7 @@ public final class RunManager {
     /** A run member took a lethal hit: they go down instead of dying. True when they were downed. */
     public boolean down(Player p) {
         ActiveRun ar = byPlayer.get(p.getUniqueId());
-        if (ar == null || ar.run.state() != DungeonRun.State.RUNNING || !ar.run.down(p.getUniqueId(), clock.getAsLong())) {
+        if (ar == null || ar.run.state() == DungeonRun.State.FAILED || !ar.run.down(p.getUniqueId(), clock.getAsLong())) {
             return false;
         }
         p.setHealth(1.0);
@@ -625,15 +639,29 @@ public final class RunManager {
         boolean back = ar.run.bleedOut(p.getUniqueId());
         event(ar, p.getName() + (back ? " bled out and spent a life" : " bled out with no lives left"));
         clearDowned(ar, p);
-        p.teleport(checkpoint(ar));
+        p.teleport(wakePoint(ar));
         if (back) {
             p.setHealth(p.getAttribute(Attribute.MAX_HEALTH).getValue());
             tell(ar, "§e" + p.getName() + " wakes at the last safe room. §7Shared lives left: " + ar.run.lives());
         } else {
-            p.setGameMode(GameMode.SPECTATOR);
+            spectate(p);
             p.sendMessage("§cNo lives are left: you are out of this run. §7Watch, or leave with /tr dungeon leave.");
         }
         ar.run.member(p.getUniqueId()).room(-1);
+    }
+
+    /**
+     * Where a fallen member comes back: inside the fight in progress (its doors are sealed, so the
+     * checkpoint would lock them out), otherwise at the checkpoint.
+     */
+    private Location wakePoint(ActiveRun ar) {
+        for (int room = 0; room < ar.run.layout().rooms().size(); room++) {
+            if (ar.run.room(room) == DungeonRun.Room.ACTIVE) {
+                double[] e = ar.geo.entry(room);
+                return new Location(module.world(), e[0], e[1], e[2]);
+            }
+        }
+        return checkpoint(ar);
     }
 
     private void clearDowned(ActiveRun ar, Player p) {
@@ -655,7 +683,7 @@ public final class RunManager {
     /** A run member died anyway (void, /kill): it counts as a bleed-out. Their items were kept. */
     public void died(Player p) {
         ActiveRun ar = byPlayer.get(p.getUniqueId());
-        if (ar != null && ar.run.state() == DungeonRun.State.RUNNING) {
+        if (ar != null && ar.run.state() != DungeonRun.State.FAILED && isPlayingMember(ar, p)) {
             ar.downedAt.remove(p.getUniqueId());
             ar.run.bleedOut(p.getUniqueId());
             var cause = p.getLastDamageCause();
@@ -666,14 +694,25 @@ public final class RunManager {
     /** Where a run member respawns after a death, or null when they are not in a run. */
     public Location respawnPoint(Player p) {
         ActiveRun ar = byPlayer.get(p.getUniqueId());
-        return ar == null ? null : checkpoint(ar);
+        return ar == null || !inDungeonWorld(p) || !isPlayingMember(ar, p) ? null : wakePoint(ar);
+    }
+
+    /** Whether the player is in this run on the character that entered it. */
+    private boolean isPlayingMember(ActiveRun ar, Player p) {
+        return Objects.equals(ar.run.member(p.getUniqueId()).characterId(), characters.activeCharacterId(p));
+    }
+
+    /** Spectating an out member; tagged so the game mode is put back wherever they turn up. */
+    private void spectate(Player p) {
+        p.setGameMode(GameMode.SPECTATOR);
+        p.getPersistentDataContainer().set(spectatorKey, PersistentDataType.BYTE, (byte) 1);
     }
 
     /** After a respawn: a member who is out watches as a spectator. */
     public void respawned(Player p) {
         Member m = member(p);
         if (m != null && m.status() == Status.OUT) {
-            p.setGameMode(GameMode.SPECTATOR);
+            spectate(p);
         }
     }
 
@@ -693,32 +732,67 @@ public final class RunManager {
     }
 
     /**
-     * Makes sure a player in the dungeon world belongs there: a member of a live run playing the
-     * character that entered, or staff. Anyone else is sent back. Owed keys are handed over here.
+     * Makes sure a player is where they belong. A player without an active character yet (still in
+     * character selection) is left alone until a character is played. In the dungeon world only a
+     * member of a live run on the character that entered it (or staff) may stay; anyone else is
+     * sent back. A member who turns up on another character leaves the run. A dungeon spectator
+     * found outside a run gets their game mode back.
      */
     public void sweep(Player p) {
-        for (String key : files.takeRefunds(p.getUniqueId())) {
-            keys.give(p, key);
-            p.sendMessage("§aA dungeon key you lost to a server stop has been returned to you.");
-        }
-        if (!inDungeonWorld(p)) {
+        String charId = characters.activeCharacterId(p);
+        if (charId == null) {
             return;
         }
         ActiveRun ar = byPlayer.get(p.getUniqueId());
         Member m = ar == null ? null : ar.run.member(p.getUniqueId());
-        String charId = characters.activeCharacterId(p);
         if (m != null && Objects.equals(m.characterId(), charId)) {
+            if (!inDungeonWorld(p)) {
+                return; // not back in the dungeon yet; the step counts them as away
+            }
             ar.run.online(p.getUniqueId());
             respawned(p);
+            if (m.status() != Status.OUT) {
+                Location fight = wakePoint(ar);
+                if (ar.geo.roomAt(fight.getX(), fight.getZ()) != ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ())
+                        && fightInProgress(ar)) {
+                    p.teleport(fight);
+                }
+            }
             return;
         }
         if (m != null) {
             ar.run.leave(p.getUniqueId());
             byPlayer.remove(p.getUniqueId());
-        } else if (p.hasPermission(STAFF_PERMISSION)) {
-            return;
         }
-        sendBack(p);
+        if (inDungeonWorld(p) && (m != null || !p.hasPermission(STAFF_PERMISSION))) {
+            sendBack(p, charId);
+        } else if (p.getPersistentDataContainer().has(spectatorKey, PersistentDataType.BYTE)) {
+            unspectate(p);
+        }
+    }
+
+    private boolean fightInProgress(ActiveRun ar) {
+        for (int room = 0; room < ar.run.layout().rooms().size(); room++) {
+            if (ar.run.room(room) == DungeonRun.Room.ACTIVE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Hands over keys owed from runs a server stop cut off; called once a character is played. */
+    public void giveRefunds(Player p) {
+        for (String key : files.takeRefunds(p.getUniqueId())) {
+            keys.give(p, key);
+            p.sendMessage("§aA dungeon key you lost to a server stop has been returned to you.");
+        }
+    }
+
+    private void unspectate(Player p) {
+        if (p.getGameMode() == GameMode.SPECTATOR) {
+            p.setGameMode(GameMode.SURVIVAL);
+        }
+        p.getPersistentDataContainer().remove(spectatorKey);
     }
 
     /** A player leaves their run by choice. */
@@ -727,9 +801,12 @@ public final class RunManager {
         if (ar == null) {
             return false;
         }
-        clearDowned(ar, p);
+        boolean here = inDungeonWorld(p) && isPlayingMember(ar, p);
         ar.run.leave(p.getUniqueId());
-        sendBack(p);
+        if (here) {
+            clearDowned(ar, p);
+            sendBack(p, ar.run.member(p.getUniqueId()).characterId());
+        }
         tell(ar, "§7" + p.getName() + " has left the dungeon.");
         return true;
     }
@@ -752,21 +829,19 @@ public final class RunManager {
         return false;
     }
 
-    /** Sends a player to their character's saved return point, or the main world's spawn. */
-    void sendBack(Player p) {
-        String charId = characters.activeCharacterId(p);
-        Location to = charId == null ? null : files.returnPoint(p.getUniqueId(), charId);
+    /** Sends a player to a character's saved return point, or the main world's spawn. */
+    void sendBack(Player p, String charId) {
+        Location to = files.returnPoint(p.getUniqueId(), charId);
         if (to == null) {
             to = Bukkit.getWorlds().get(0).getSpawnLocation();
         }
-        if (p.getGameMode() == GameMode.SPECTATOR) {
-            p.setGameMode(GameMode.SURVIVAL);
-        }
+        unspectate(p);
         p.removePotionEffect(PotionEffectType.GLOWING);
         p.removePotionEffect(PotionEffectType.SLOWNESS);
         p.setFallDistance(0f);
-        p.teleport(to);
-        if (charId != null) {
+        // Keep the return point when the teleport is refused (dead, or another plugin said no):
+        // the next sweep tries again.
+        if (p.teleport(to)) {
             files.clearReturn(p.getUniqueId(), charId);
         }
     }
@@ -799,7 +874,7 @@ public final class RunManager {
                     p.sendMessage(reason);
                 }
                 ar.downedAt.remove(m.id());
-                sendBack(p);
+                sendBack(p, m.characterId());
             }
         }
         for (Set<Entity> set : ar.roomMobs.values()) {
@@ -814,8 +889,8 @@ public final class RunManager {
         if (fault && !ar.keyPath.isBlank()) {
             files.addRefund(ar.leader, ar.keyPath);
             Player leader = Bukkit.getPlayer(ar.leader);
-            if (leader != null) {
-                sweep(leader); // hands the key over now
+            if (leader != null && characters.activeCharacterId(leader) != null) {
+                giveRefunds(leader);
             }
         }
         files.logRun(json(ar, fault ? "STOPPED" : outcome.name()));
