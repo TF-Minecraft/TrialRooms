@@ -53,6 +53,26 @@ public final class RunGeometry {
         return roomByCell.getOrDefault(key(cx, cz), -1);
     }
 
+    /**
+     * Whether a position is in a room and at least {@code margin} blocks from its outer walls (a
+     * player standing in a doorway is not), so a door can close without catching them.
+     */
+    public boolean safelyInside(int room, double x, double z, int margin) {
+        if (roomAt(x, z) != room) {
+            return false;
+        }
+        int lx = Math.floorMod((int) Math.floor(x) - originX, cell);
+        int lz = Math.floorMod((int) Math.floor(z) - originZ, cell);
+        for (int[] d : new int[][] { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }) {
+            int along = d[0] != 0 ? lx : lz;
+            boolean nearWall = d[0] + d[1] < 0 ? along < margin : along >= cell - margin;
+            if (nearWall && roomAt(x + d[0] * margin, z + d[1] * margin) != room) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** The blocks that fill a doorway's opening on its own room's wall, as {@code {x, y, z}}. */
     public List<int[]> doorBlocks(Doorway door) {
         int bx = originX + door.cellX() * cell;

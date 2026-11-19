@@ -138,6 +138,9 @@ class DungeonRunCommandsTest {
     c.run(console, new String[] {"leave"});
     verify(console).sendMessage("§cYou are not in a dungeon.");
     c.run(p, new String[] {"leave"});
+    when(runs.unqueue(p)).thenReturn(true);
+    c.run(p, new String[] {"leave"});
+    verify(p).sendMessage("§7Your party stops waiting for a dungeon.");
     when(runs.leave(p)).thenReturn(true);
     c.run(p, new String[] {"leave"});
     verify(p).sendMessage("§7You leave the dungeon.");
@@ -185,6 +188,25 @@ class DungeonRunCommandsTest {
     m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
     assertNotNull(m.runs());
     verify(pm).registerEvents(any(), eq(plugin));
+    // the ally filter and its staff report
+    DungeonCommand dc = new DungeonCommand(m);
+    CommandSender staff = mock(CommandSender.class);
+    dc.run(staff, new String[] {"allies"});
+    verify(staff).sendMessage("§cThe ally filter is not running.");
+    var heal = mock(io.lumine.mythic.core.skills.mechanics.HealMechanic.class);
+    when(heal.getConfigLine()).thenReturn("heal{}");
+    io.lumine.mythic.bukkit.MythicBukkit mythic = mock(io.lumine.mythic.bukkit.MythicBukkit.class);
+    when(mythic.getSkillManager()).thenReturn(mock(io.lumine.mythic.core.skills.SkillExecutor.class));
+    try (var mb = mockStatic(io.lumine.mythic.bukkit.MythicBukkit.class)) {
+      mb.when(io.lumine.mythic.bukkit.MythicBukkit::inst).thenReturn(mythic);
+      assertNotNull(m.startAllyFilter(() -> java.util.List.of(heal)));
+      assertNotNull(m.allyFilter());
+      // the first attach comes 100 ticks after start, then every minute (adding nothing more)
+      server.getScheduler().performTicks(101);
+      server.getScheduler().performTicks(1200);
+      dc.run(staff, new String[] {"allies"});
+      verify(staff).sendMessage("§aAlly filter: 1 mechanics: 1 help, 0 harm, 1 filtered");
+    }
     m.disable();
   }
 }

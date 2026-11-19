@@ -311,7 +311,7 @@ class RunManagerTest {
     runs.useGate(a, gate);
     rules = new RunRules(1, 3, "m.key", 1, 1, 0.5);
     // every dungeon taken
-    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of());
+    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 60, java.util.Set.of(), java.util.Set.of());
     runs.useGate(b, gate);
     assertEquals(1, runs.runs().size());
     runs.useGate(a, gate);
@@ -834,5 +834,142 @@ class RunManagerTest {
     runs.end(runs.runOf(a), true, null);
     verify(keys, never()).give(any(), any());
     assertEquals(List.of("m.key"), files.takeRefunds(a.getUniqueId()));
+  }
+
+  @Test
+  void aFullGateQueuesPartiesAndHoldsTheNextDungeon() {
+    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 30, java.util.Set.of(), java.util.Set.of());
+    rules = new RunRules(1, 3, "", 1, 1, 0.5);
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    PlayerMock c = player("Cy");
+    PlayerMock d = player("Di");
+    runs.startRun(a, "delve", 1);
+    // full: Bo, Cy and Di join the line; asking again keeps their place
+    runs.startRun(b, "delve", 2);
+    runs.startRun(c, "delve", 3);
+    runs.startRun(d, "delve", 4);
+    runs.startRun(b, "delve", 2);
+    assertTrue(runs.queued(b));
+    assertTrue(runs.queued(c));
+    assertFalse(runs.queued(a));
+    // Cy stops waiting; Di moves up
+    assertTrue(runs.unqueue(c));
+    assertFalse(runs.unqueue(c));
+    // Ann's run ends: the dungeon is held for Bo, nobody else may take it
+    runs.end(runs.runOf(a), false, null);
+    ticks(1);
+    assertTrue(runs.queued(b));
+    runs.startRun(d, "delve", 4);
+    assertTrue(runs.runs().isEmpty(), "held for Bo");
+    // Bo is too slow: the hold passes to Di
+    now.addAndGet(31_000);
+    ticks(1);
+    assertFalse(runs.queued(b));
+    assertTrue(runs.queued(d));
+    runs.startRun(d, "delve", 4);
+    assertEquals(1, runs.runs().size());
+    assertFalse(runs.queued(d));
+    // a leader who logs off leaves the line; a held leader who gives up passes the hold on
+    runs.startRun(b, "delve", 2);
+    runs.startRun(c, "delve", 3);
+    runs.quit(b);
+    assertFalse(runs.queued(b));
+    c.disconnect();
+    PlayerMock e = player("Ed");
+    runs.startRun(e, "delve", 5);
+    runs.end(runs.runs().getFirst(), false, null);
+    ticks(1);
+    assertTrue(runs.queued(e), "Cy is offline, so Ed gets the hold");
+    assertTrue(runs.unqueue(e));
+    assertFalse(runs.queued(e));
+    // while every dungeon is busy, the line just waits
+    PlayerMock h = player("Hal");
+    runs.startRun(h, "delve", 8);
+    assertFalse(runs.queued(h), "a dungeon was free: Hal is playing");
+    PlayerMock j = player("Jo");
+    runs.startRun(j, "delve", 10);
+    ticks(1);
+    assertTrue(runs.queued(j));
+    // an offline leader in line is skipped when places are announced
+    PlayerMock gone = player("Gone");
+    runs.startRun(gone, "delve", 9);
+    gone.disconnect();
+    runs.unqueue(j);
+    // Hal's run ends; the next online leader in line (nobody: Gone is offline) gets nothing held
+    runs.end(runs.runOf(h), false, null);
+    ticks(1);
+    // ticks during a hold keep it; a held leader who logs off passes it on
+    PlayerMock f = player("Fi");
+    runs.startRun(f, "delve", 6);
+    runs.startRun(player("Gi"), "delve", 7);
+    runs.end(runs.runs().getFirst(), false, null);
+    ticks(1);
+    ticks(1);
+    f.disconnect();
+    now.addAndGet(31_000);
+    ticks(1);
+  }
+
+  @Test
+  void fightsHoldEveryoneInside() {
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.startRun(a, "delve", 1);
+    DungeonRun run = only().run();
+    int fight = room(RoomType.COMBAT);
+    // Bo stands in the fight room's doorway when it seals: he is moved inside before the doors close
+    into(a, RoomType.COMBAT);
+    double[] door = geo.insideDoor(layout.rooms().get(fight).doorways().getFirst());
+    var dw = layout.rooms().get(fight).doorways().getFirst();
+    double[] edge = switch (dw.side()) {
+      case NORTH -> new double[] {door[0], door[1], door[2] - 3};
+      case SOUTH -> new double[] {door[0], door[1], door[2] + 3};
+      case WEST -> new double[] {door[0] - 3, door[1], door[2]};
+      default -> new double[] {door[0] + 3, door[1], door[2]};
+    };
+    b.teleport(at(edge));
+    assertFalse(geo.safelyInside(fight, b.getLocation().getX(), b.getLocation().getZ(), 2));
+    ticks(settings.countdownSeconds() * 2 + 2);
+    assertEquals(DungeonRun.Room.ACTIVE, run.room(fight));
+    assertTrue(geo.safelyInside(fight, b.getLocation().getX(), b.getLocation().getZ(), 2));
+    // pushed out (lag, a stray teleport): the next step brings him back, down or not
+    b.teleport(at(geo.centre(0)));
+    ticks(1);
+    assertEquals(fight, geo.roomAt(b.getLocation().getX(), b.getLocation().getZ()));
+    runs.down(b);
+    b.teleport(at(geo.centre(0)));
+    only().downedAt.put(b.getUniqueId(), at(geo.centre(0)));
+    ticks(1);
+    assertEquals(fight, geo.roomAt(runs.downedSpot(b).getX(), runs.downedSpot(b).getZ()));
+    // someone outside the dungeon world is left where they are
+    b.teleport(new Location(main, 1, 70, 1));
+    ticks(1);
+    assertEquals(main, b.getWorld());
+    // a member who is out, or offline, is not pulled in; the room clears with them elsewhere
+    b.teleport(at(geo.centre(0)));
+    runs.sweep(b);
+    run.member(b.getUniqueId()).room(0);
+    PlayerMock c = player("Cy");
+    run.add(c.getUniqueId(), "char-Cy");
+    run.down(c.getUniqueId(), 0);
+    run.bleedOut(c.getUniqueId());
+    while (run.lives() > 0) {
+      run.down(c.getUniqueId(), 0);
+      run.bleedOut(c.getUniqueId());
+    }
+    run.down(c.getUniqueId(), 0);
+    run.bleedOut(c.getUniqueId());
+    assertEquals(DungeonRun.Status.OUT, run.member(c.getUniqueId()).status());
+    c.teleport(at(geo.centre(0)));
+    UUID ghost = UUID.randomUUID();
+    run.add(ghost, "ghost");
+    run.offline(ghost, 0);
+    ticks(1);
+    assertEquals(0, geo.roomAt(c.getLocation().getX(), c.getLocation().getZ()));
+    killAll();
+    ticks(1);
+    assertEquals(DungeonRun.Room.CLEARED, run.room(fight));
   }
 }

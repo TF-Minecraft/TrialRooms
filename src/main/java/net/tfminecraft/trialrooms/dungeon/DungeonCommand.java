@@ -21,9 +21,9 @@ import net.tfminecraft.trialrooms.dungeon.run.RunManager;
 public final class DungeonCommand {
 
     static final String USAGE = "§eUsage: /tr dungeon <map|preview|start> <recipe> [seed] | clear | reload | runs"
-            + " | end <run> | rooms <run> | gate <add <recipe>|remove|list> | leave";
+            + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "gate", "leave");
+            "rooms", "allies", "gate", "leave");
 
     private final DungeonModule module;
 
@@ -40,6 +40,8 @@ public final class DungeonCommand {
             case "runs" -> runs(sender);
             case "end" -> end(sender, args);
             case "rooms" -> rooms(sender, args);
+            case "allies" -> sender.sendMessage(module.allyFilter() == null ? "§cThe ally filter is not running."
+                    : "§aAlly filter: " + module.allyFilter().report());
             case "gate" -> gate(sender, args);
             case "leave" -> leave(sender);
             case "clear" -> sender.sendMessage("§aCleared " + module.clearPreviews() + " dungeon previews.");
@@ -181,6 +183,8 @@ public final class DungeonCommand {
     private void leave(CommandSender sender) {
         if (sender instanceof Player p && module.runs().leave(p)) {
             p.sendMessage("§7You leave the dungeon.");
+        } else if (sender instanceof Player p && module.runs().unqueue(p)) {
+            p.sendMessage("§7Your party stops waiting for a dungeon.");
         } else {
             sender.sendMessage("§cYou are not in a dungeon.");
         }

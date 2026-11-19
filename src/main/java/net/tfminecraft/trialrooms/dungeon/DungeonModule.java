@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.Collection;
 
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -26,6 +28,8 @@ import net.tfminecraft.trialrooms.dungeon.generator.DungeonLayout;
 import net.tfminecraft.trialrooms.dungeon.load.DungeonKit;
 import net.tfminecraft.trialrooms.dungeon.load.KitLoader;
 import net.tfminecraft.trialrooms.dungeon.load.RecipeLoader;
+import net.tfminecraft.trialrooms.dungeon.allies.AllyFilter;
+import net.tfminecraft.trialrooms.dungeon.allies.AllyRules;
 import net.tfminecraft.trialrooms.dungeon.run.GateStore;
 import net.tfminecraft.trialrooms.dungeon.run.Ports;
 import net.tfminecraft.trialrooms.dungeon.run.RunFiles;
@@ -63,6 +67,7 @@ public final class DungeonModule {
     private int nextSlot;
     private RunSettings settings = RunSettings.defaults();
     private RunManager runs;
+    private AllyFilter allyFilter;
 
     public DungeonModule(JavaPlugin plugin, Function<WorldCreator, World> creator) {
         this.plugin = plugin;
@@ -105,6 +110,30 @@ public final class DungeonModule {
 
     public RunManager runs() {
         return runs;
+    }
+
+    /**
+     * Starts the ally filter (no friendly fire of any kind in dungeons) over MythicMobs mechanics:
+     * once shortly after start, then every minute to catch mechanics parsed later, and after each
+     * MythicMobs reload.
+     */
+    public AllyFilter startAllyFilter(Supplier<Collection<?>> mechanics) {
+        AllyRules rules = new AllyRules(runs::inDungeonWorld, AllyFilter::ownerOf);
+        AllyFilter filter = new AllyFilter(rules, () -> settings.harmfulAuras(), () -> settings.helpfulAuras(),
+                mechanics, plugin.getLogger());
+        plugin.getServer().getPluginManager().registerEvents(filter, plugin);
+        allyFilter = filter;
+        plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            int added = filter.attach();
+            if (added > 0) {
+                plugin.getLogger().info("[dungeons] ally filter on " + added + " more MythicMobs mechanics");
+            }
+        }, 100L, 1200L);
+        return filter;
+    }
+
+    public AllyFilter allyFilter() {
+        return allyFilter;
     }
 
     public RunSettings settings() {

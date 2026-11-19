@@ -68,6 +68,7 @@ public class TrialRooms extends JavaPlugin{
         dungeons = new DungeonModule(this, WorldCreator::createWorld);
         dungeons.enable();
         dungeons.startRuns(new Adapters.RpcCharacters(), new Adapters.TLibsKeys(), new Adapters.MythicMobsAdapter());
+        dungeons.startAllyFilter(net.tfminecraft.trialrooms.dungeon.allies.AllyFilter::mechanicCache);
         getLogger().info("TrialRooms Plugin Enabled!");
         }
 
