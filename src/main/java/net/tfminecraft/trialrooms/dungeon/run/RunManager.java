@@ -606,10 +606,10 @@ public final class RunManager {
             if (p == null || m.status() == Status.OUT) {
                 continue;
             }
-            Location here = m.status() == Status.DOWNED ? ar.downedAt.get(m.id()) : p.getLocation();
+            // Where they stand now, downed or not (a downed player can still be moved).
+            Location here = p.getLocation();
             if (!ar.geo.safelyInside(room, here.getX(), here.getZ(), margin)) {
-                Location to = new Location(module.world(), e[0], e[1], e[2], p.getLocation().getYaw(),
-                        p.getLocation().getPitch());
+                Location to = new Location(module.world(), e[0], e[1], e[2], here.getYaw(), here.getPitch());
                 p.teleport(to);
                 if (m.status() == Status.DOWNED) {
                     ar.downedAt.put(m.id(), to);

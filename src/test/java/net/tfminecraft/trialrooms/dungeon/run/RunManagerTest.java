@@ -981,10 +981,11 @@ class RunManagerTest {
     b.teleport(at(geo.centre(0)));
     ticks(1);
     assertEquals(fight, geo.roomAt(b.getLocation().getX(), b.getLocation().getZ()));
+    // a downed player moved out after going down (inside) is brought back, and so is their downed spot
     runs.down(b);
     b.teleport(at(geo.centre(0)));
-    only().downedAt.put(b.getUniqueId(), at(geo.centre(0)));
     ticks(1);
+    assertEquals(fight, geo.roomAt(b.getLocation().getX(), b.getLocation().getZ()));
     assertEquals(fight, geo.roomAt(runs.downedSpot(b).getX(), runs.downedSpot(b).getZ()));
     // someone outside the dungeon world is left where they are
     b.teleport(new Location(main, 1, 70, 1));
