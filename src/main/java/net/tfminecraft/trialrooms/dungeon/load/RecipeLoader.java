@@ -24,7 +24,13 @@ public final class RecipeLoader {
 
     public static Map<String, Entry> load(File file, List<String> problems) {
         Map<String, Entry> out = new LinkedHashMap<>();
-        YamlConfiguration yml = YamlConfiguration.loadConfiguration(file);
+        YamlConfiguration yml;
+        try {
+            yml = KitLoader.read(file);
+        } catch (IllegalArgumentException e) {
+            problems.add(e.getMessage());
+            return out;
+        }
         for (String id : yml.getKeys(false)) {
             ConfigurationSection s = yml.getConfigurationSection(id);
             try {

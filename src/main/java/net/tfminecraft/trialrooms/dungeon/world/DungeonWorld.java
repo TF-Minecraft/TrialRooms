@@ -73,7 +73,8 @@ public final class DungeonWorld {
     /** Deletes the chunk, entity and POI data of an owned world folder. Returns paths deleted. */
     static int wipe(Path dir) throws IOException {
         int deleted = 0;
-        for (String sub : List.of("region", "entities", "poi")) {
+        // An End-environment world keeps its chunks under DIM1/; the top level is checked as well.
+        for (String sub : List.of("region", "entities", "poi", "DIM1/region", "DIM1/entities", "DIM1/poi")) {
             Path p = dir.resolve(sub);
             if (!Files.isDirectory(p)) {
                 continue;

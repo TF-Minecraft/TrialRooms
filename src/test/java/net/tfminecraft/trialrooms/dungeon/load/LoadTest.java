@@ -41,10 +41,13 @@ class LoadTest {
         + "markers:\n  - {kind: spawn, at: '1,1,1', tag: melee, facing: south}\n  - {kind: chest, at: '2,1,2'}\n", true);
     room(dir, "nonbt", ROOM, false);
     room(dir, "badtype", "type: dragon\n", true);
+    room(dir, "badwidth", "type: combat\ndoorways:\n  - {cell: '0,0', side: north, width: 3}\n", true);
+    room(dir, "badyaml", "type: [combat\n", true);
     Files.writeString(dir.resolve("rooms/notes.txt"), "ignored");
     List<String> problems = new ArrayList<>();
     DungeonKit kit = KitLoader.load(dir.toFile(), problems);
-    assertEquals(2, problems.size(), problems.toString());
+    assertEquals(4, problems.size(), problems.toString());
+    assertEquals(1, kit.catalog().templates().size());
     assertEquals("k", kit.id());
     assertEquals(5, kit.doorHeight());
     assertEquals("minecraft:stone", kit.sealBlock());
@@ -66,7 +69,7 @@ class LoadTest {
     Files.delete(noRooms.resolve("rooms"));
     assertNull(KitLoader.load(noRooms.toFile(), problems));
     assertTrue(problems.getLast().contains("no usable rooms"));
-    for (String bad : List.of("door-height: 1\n", "door-height: 24\n", "cell-size: 7\n")) {
+    for (String bad : List.of("door-height: 1\n", "door-height: 24\n", "cell-size: 7\n", "cell-size: [\n")) {
       Path dir = kit(bad);
       room(dir, "a", ROOM, true);
       assertNull(KitLoader.load(dir.toFile(), problems), bad);
@@ -116,5 +119,11 @@ class LoadTest {
     assertEquals(20, defaults.recipe().maxAttempts());
     assertArrayEquals(new int[] {4, 4}, RecipeLoader.range(" 4 ", "x"));
     assertThrows(IllegalArgumentException.class, () -> RecipeLoader.range("1-b", "x"));
+    // unreadable and missing files are problems, not silent empty configs
+    Files.writeString(f.toPath(), "good: [\n");
+    List<String> more = new ArrayList<>();
+    assertTrue(RecipeLoader.load(f, more).isEmpty());
+    assertTrue(RecipeLoader.load(temp.resolve("none.yml").toFile(), more).isEmpty());
+    assertEquals(2, more.size(), more.toString());
   }
 }

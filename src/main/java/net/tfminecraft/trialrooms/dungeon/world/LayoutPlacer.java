@@ -92,8 +92,8 @@ public final class LayoutPlacer {
             try {
                 placeRoom(next[0]);
             } catch (RuntimeException e) {
-                task.cancel();
                 done.completeExceptionally(e);
+                release(); // a failed build lets go of its chunks
                 return;
             }
             next[0]++;

@@ -90,6 +90,8 @@ class WorldPlacerTest {
     Files.createDirectories(dir.resolve("region/sub"));
     Files.writeString(dir.resolve("region/sub/r.0.0.mca"), "x");
     Files.createDirectories(dir.resolve("poi"));
+    Files.createDirectories(dir.resolve("DIM1/region"));
+    Files.writeString(dir.resolve("DIM1/region/r.0.0.mca"), "x");
     Files.writeString(dir.resolve(DungeonWorld.OWNER_FILE), "x");
     AtomicReference<WorldCreator> made = new AtomicReference<>();
     World w = DungeonWorld.open(temp, "d", c -> {
@@ -99,6 +101,7 @@ class WorldPlacerTest {
     assertSame(world, w);
     assertFalse(Files.exists(dir.resolve("region")));
     assertFalse(Files.exists(dir.resolve("poi")));
+    assertFalse(Files.exists(dir.resolve("DIM1/region")));
     assertEquals(World.Environment.THE_END, made.get().environment());
     verify(world).setAutoSave(false);
     verify(world).setGameRule(GameRule.DO_MOB_SPAWNING, false);
@@ -182,6 +185,7 @@ class WorldPlacerTest {
       var f = p.place();
       server.getScheduler().performTicks(3);
       assertTrue(f.isCompletedExceptionally());
+      assertEquals(0, p.heldChunks());
     }
     // a chunk that fails to load
     when(world.getChunkAtAsync(anyInt(), anyInt(), eq(true)))

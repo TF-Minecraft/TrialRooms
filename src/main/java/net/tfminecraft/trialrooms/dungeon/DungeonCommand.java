@@ -71,7 +71,7 @@ public final class DungeonCommand {
         sender.sendMessage("§7Building the preview...");
         module.preview(layout).whenComplete((arrival, error) -> {
             if (error != null) {
-                sender.sendMessage("§cPreview failed: " + error.getMessage());
+                sender.sendMessage("§cPreview failed: " + error);
                 return;
             }
             sender.sendMessage("§aPreview built at " + arrival.getBlockX() + " " + arrival.getBlockY() + " "

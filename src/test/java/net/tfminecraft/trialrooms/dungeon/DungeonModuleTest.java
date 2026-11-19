@@ -98,8 +98,13 @@ class DungeonModuleTest {
     assertSame(world, m.world());
     // a second start keeps edited files
     Files.writeString(data.resolve("dungeons/recipes.yml"), "x: 1\n");
+    Files.delete(data.resolve("dungeons/kits/greybox/rooms/rest_camp.yml"));
     m.installDefaults();
     assertEquals("x: 1\n", Files.readString(data.resolve("dungeons/recipes.yml")));
+    // a bundled kit installs once: a room staff deleted stays deleted
+    assertFalse(Files.exists(data.resolve("dungeons/kits/greybox/rooms/rest_camp.yml")));
+    Files.copy(DungeonModule.class.getClassLoader().getResourceAsStream(
+        "dungeons/kits/greybox/rooms/rest_camp.yml"), data.resolve("dungeons/kits/greybox/rooms/rest_camp.yml"));
 
     Files.delete(data.resolve("dungeons/recipes.yml"));
     DungeonModule fresh = enabled();
@@ -153,6 +158,12 @@ class DungeonModuleTest {
     when(structures.loadStructure(any(File.class))).thenThrow(new IOException("broken"));
     var kit = open.kits().get("greybox");
     assertThrows(java.io.UncheckedIOException.class, () -> open.structure(kit, "start_hall"));
+    // a world that blows up while being created only turns dungeons off
+    DungeonModule broken = new DungeonModule(plugin, c -> {
+      throw new IllegalStateException("session lock");
+    });
+    broken.enable();
+    assertNull(broken.world());
   }
 
   @Test
@@ -161,10 +172,10 @@ class DungeonModuleTest {
     DungeonModule empty = new DungeonModule(plugin, c -> world);
     empty.installDefaults();
     assertFalse(Files.exists(data.resolve("dungeons/recipes.yml")));
-    // no kits folder at all, then a kit folder without kit.yml
-    assertTrue(empty.reload().isEmpty());
-    Files.createDirectories(data.resolve("dungeons/kits/broken"));
+    // no kits folder and no recipes.yml, then also a kit folder without kit.yml
     assertEquals(1, empty.reload().size());
+    Files.createDirectories(data.resolve("dungeons/kits/broken"));
+    assertEquals(2, empty.reload().size());
     // a stream that breaks mid-copy leaves no partial file behind
     when(plugin.getResource(anyString())).thenAnswer(i -> {
       String path = i.getArgument(0);

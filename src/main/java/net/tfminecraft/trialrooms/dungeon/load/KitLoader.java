@@ -1,6 +1,7 @@
 package net.tfminecraft.trialrooms.dungeon.load;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -8,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import net.tfminecraft.trialrooms.dungeon.grid.Side;
@@ -37,7 +39,23 @@ public final class KitLoader {
             problems.add(id + ": missing kit.yml");
             return null;
         }
-        YamlConfiguration kit = YamlConfiguration.loadConfiguration(kitFile);
+        YamlConfiguration kit;
+        int cellSize;
+        int cellHeight;
+        int doorHeight;
+        try {
+            kit = read(kitFile);
+            cellSize = kit.getInt("cell-size", 32);
+            cellHeight = kit.getInt("cell-height", 24);
+            new RoomCatalog(cellSize, cellHeight, List.of()); // checks the sizes
+            doorHeight = kit.getInt("door-height", 4);
+            if (doorHeight < 2 || doorHeight >= cellHeight) {
+                throw new IllegalArgumentException("door-height must be at least 2 and below cell-height");
+            }
+        } catch (IllegalArgumentException e) {
+            problems.add(id + ": " + e.getMessage());
+            return null;
+        }
         File[] files = new File(kitDir, "rooms").listFiles((dir, name) -> name.endsWith(".yml"));
         List<File> sidecars = new ArrayList<>(files == null ? List.of() : Arrays.asList(files));
         sidecars.sort(null);
@@ -50,28 +68,31 @@ public final class KitLoader {
                 if (!nbt.isFile()) {
                     throw new IllegalArgumentException("missing " + nbt.getName());
                 }
-                templates.add(room(roomId, YamlConfiguration.loadConfiguration(sidecar)));
+                RoomTemplate template = room(roomId, read(sidecar));
+                RoomCatalog.check(template, cellSize, cellHeight);
+                templates.add(template);
                 structures.put(roomId, nbt);
             } catch (RuntimeException e) {
                 problems.add(id + "/" + roomId + ": " + e.getMessage());
             }
         }
-        try {
-            RoomCatalog catalog = new RoomCatalog(kit.getInt("cell-size", 32), kit.getInt("cell-height", 24),
-                    templates);
-            int doorHeight = kit.getInt("door-height", 4);
-            if (doorHeight < 2 || doorHeight >= catalog.cellHeight()) {
-                throw new IllegalArgumentException("door-height must be at least 2 and below cell-height");
-            }
-            if (templates.isEmpty()) {
-                throw new IllegalArgumentException("no usable rooms");
-            }
-            return new DungeonKit(id, catalog, structures, doorHeight,
-                    kit.getString("seal-block", "minecraft:stone_bricks"));
-        } catch (IllegalArgumentException e) {
-            problems.add(id + ": " + e.getMessage());
+        if (templates.isEmpty()) {
+            problems.add(id + ": no usable rooms");
             return null;
         }
+        return new DungeonKit(id, new RoomCatalog(cellSize, cellHeight, templates), structures, doorHeight,
+                kit.getString("seal-block", "minecraft:stone_bricks"));
+    }
+
+    /** Reads a YAML file, turning syntax and read errors into a reportable problem. */
+    static YamlConfiguration read(File file) {
+        YamlConfiguration yml = new YamlConfiguration();
+        try {
+            yml.load(file);
+        } catch (IOException | InvalidConfigurationException e) {
+            throw new IllegalArgumentException("cannot read " + file.getName() + ": " + e.getMessage(), e);
+        }
+        return yml;
     }
 
     static RoomTemplate room(String id, YamlConfiguration yml) {

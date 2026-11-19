@@ -35,19 +35,24 @@ public final class RoomCatalog {
             if (!ids.add(t.id())) {
                 throw new IllegalArgumentException("Duplicate template id: " + t.id());
             }
-            for (Doorway d : t.doorways()) {
-                if (d.width() < 2 || d.width() % 2 != 0 || d.width() > cellSize - 2) {
-                    throw new IllegalArgumentException(t.id() + ": doorway width must be even and between 2 and "
-                            + (cellSize - 2) + ": " + d.width());
-                }
-            }
-            for (Marker m : t.markers()) {
-                if (m.x() < 0 || m.z() < 0 || m.y() < 0 || m.x() >= t.widthCells() * cellSize
-                        || m.z() >= t.depthCells() * cellSize || m.y() >= cellHeight) {
-                    throw new IllegalArgumentException(t.id() + ": marker outside the room: " + m);
-                }
-            }
+            check(t, cellSize, cellHeight);
             byType.computeIfAbsent(t.type(), k -> new ArrayList<>()).add(t);
+        }
+    }
+
+    /** Checks one template against a kit's cell size: doorway widths and marker positions. */
+    public static void check(RoomTemplate t, int cellSize, int cellHeight) {
+        for (Doorway d : t.doorways()) {
+            if (d.width() < 2 || d.width() % 2 != 0 || d.width() > cellSize - 2) {
+                throw new IllegalArgumentException(t.id() + ": doorway width must be even and between 2 and "
+                        + (cellSize - 2) + ": " + d.width());
+            }
+        }
+        for (Marker m : t.markers()) {
+            if (m.x() < 0 || m.z() < 0 || m.y() < 0 || m.x() >= t.widthCells() * cellSize
+                    || m.z() >= t.depthCells() * cellSize || m.y() >= cellHeight) {
+                throw new IllegalArgumentException(t.id() + ": marker outside the room: " + m);
+            }
         }
     }
 

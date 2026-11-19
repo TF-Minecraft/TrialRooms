@@ -67,8 +67,9 @@ public final class DungeonModule {
         try {
             world = DungeonWorld.open(plugin.getServer().getWorldContainer().toPath(), WORLD_NAME, creator,
                     plugin.getLogger());
-        } catch (IOException e) {
-            plugin.getLogger().severe("Dungeons are off: " + e.getMessage());
+        } catch (IOException | RuntimeException e) {
+            // A broken dungeon world never takes the rest of TrialRooms down with it.
+            plugin.getLogger().severe("Dungeons are off: " + e);
         }
     }
 
@@ -112,6 +113,10 @@ public final class DungeonModule {
         List<String> files = new ArrayList<>(DEFAULT_FILES);
         for (String list : DEFAULT_LISTS) {
             String dir = list.substring(0, list.lastIndexOf('/') + 1);
+            // A bundled kit installs once, as a whole: rooms staff delete stay deleted.
+            if (Files.exists(plugin.getDataFolder().toPath().resolve(dir))) {
+                continue;
+            }
             for (String line : resourceLines(list)) {
                 files.add(dir + line);
             }
