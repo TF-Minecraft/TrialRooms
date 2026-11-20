@@ -30,6 +30,9 @@ public final class KitLoader {
     private KitLoader() {
     }
 
+    /** Furthest a kit may let rooms sit above or below the start (dungeon floor y 64, world 0-256). */
+    static final int MAX_RISE = 60;
+
     /**
      * @param problems receives one line per skipped room or kit setting
      * @return the kit, or {@code null} when it has no usable rooms or a broken {@code kit.yml}
@@ -51,6 +54,10 @@ public final class KitLoader {
             cellSize = kit.getInt("cell-size", 32);
             cellHeight = kit.getInt("cell-height", 24);
             maxRise = kit.getInt("max-rise", 24);
+            if (maxRise > MAX_RISE) {
+                // the dungeon floor is y 64 in a world 0-256 tall: rooms must stay inside it
+                throw new IllegalArgumentException("max-rise must be at most " + MAX_RISE);
+            }
             new RoomCatalog(cellSize, cellHeight, maxRise, List.of()); // checks the sizes
             doorHeight = kit.getInt("door-height", 4);
             if (doorHeight < 2 || doorHeight >= cellHeight) {
@@ -73,7 +80,7 @@ public final class KitLoader {
                     throw new IllegalArgumentException("missing " + nbt.getName());
                 }
                 RoomTemplate template = room(roomId, read(sidecar));
-                RoomCatalog.check(template, cellSize, cellHeight);
+                RoomCatalog.check(template, cellSize, cellHeight, doorHeight);
                 requireMarkers(template);
                 templates.add(template);
                 structures.put(roomId, nbt);
@@ -120,6 +127,9 @@ public final class KitLoader {
             doorways.add(new Doorway(cell[0], cell[1], Side.parse(text(d, "side", null)),
                     Integer.parseInt(text(d, "width", "4")), Integer.parseInt(text(d, "floor", "0")),
                     Integer.parseInt(text(d, "height", "0"))));
+        }
+        if (yml.contains("cells") && !yml.isList("cells")) {
+            throw new IllegalArgumentException("cells must be a list such as ['0,0', '1,0']");
         }
         Set<Integer> cells = new HashSet<>();
         for (String c : yml.getStringList("cells")) {

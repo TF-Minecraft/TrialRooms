@@ -364,7 +364,7 @@ def build():
     for x, z in ((10, 14), (21, 14), (10, 21), (21, 21), (16, 18)):
         r.marker("spawn", x, 1, z, tag="melee")
     r.marker("spawn", 3, 5, 16, tag="ranged")
-    r.marker("spawn", 28, 5, 16, tag="ranged")
+    r.marker("spawn", 28, 5, 8, tag="ranged")  # clear of the east doorway's landing
     rooms.append(r)
 
     r = Room("vault_exit", "vault", 1, 1, 10)

@@ -108,6 +108,8 @@ class LoadTest {
       room(dir, "out" + c.replace(",", "_").replace("-", "m"), "type: corridor\nfootprint: 1x1\ncells: ['" + c
           + "']\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
     }
+    room(dir, "notalist", "type: corridor\ncells: '0,0'\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
+    room(dir, "toohigh", "type: corridor\ndoorways:\n  - {cell: '0,0', side: north, floor: 20}\n", true);
     room(dir, "nospawn", "type: elite\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
     room(dir, "noboss", "type: boss\ndoorways:\n  - {cell: '0,0', side: north}\n"
         + "markers:\n  - {kind: spawn, at: '8,1,8'}\n", true);
@@ -126,6 +128,11 @@ class LoadTest {
     assertTrue(all.contains("nospawn: a elite room needs a spawn marker"), all);
     assertTrue(all.contains("noboss: a boss room needs a spawn marker tagged boss"), all);
     assertTrue(all.contains("norest: a rest room needs a rest marker"), all);
+    assertTrue(all.contains("notalist: cells must be a list"), all);
+    assertTrue(all.contains("toohigh: doorway"), all);
+    List<String> rise = new ArrayList<>();
+    assertNull(KitLoader.load(kit("max-rise: 61\n").toFile(), rise));
+    assertTrue(rise.getLast().contains("max-rise must be at most 60"), rise.toString());
   }
 
   @Test

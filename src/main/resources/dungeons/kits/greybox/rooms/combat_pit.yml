@@ -15,4 +15,4 @@ markers:
   - {kind: spawn, at: '21,1,21', tag: melee}
   - {kind: spawn, at: '16,1,18', tag: melee}
   - {kind: spawn, at: '3,5,16', tag: ranged}
-  - {kind: spawn, at: '28,5,16', tag: ranged}
+  - {kind: spawn, at: '28,5,8', tag: ranged}

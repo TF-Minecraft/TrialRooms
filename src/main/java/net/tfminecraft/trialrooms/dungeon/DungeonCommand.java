@@ -138,7 +138,7 @@ public final class DungeonCommand {
         sender.sendMessage("§cNo run starts with " + args[1] + ".");
     }
 
-    /** Each room of a run: type, state and centre, for staff and tests. */
+    /** Each room of a run: type, state, entry and template, for staff and tests. */
     private void rooms(CommandSender sender, String[] args) {
         for (RunManager.ActiveRun ar : module.runs().runs()) {
             if (args.length > 1 && ar.run().id().toString().startsWith(args[1])) {
@@ -146,7 +146,8 @@ public final class DungeonCommand {
                 for (int i = 0; i < r.layout().rooms().size(); i++) {
                     double[] c = ar.geometry().centre(i);
                     sender.sendMessage("§7room " + i + " " + r.layout().rooms().get(i).node().type() + " " + r.room(i)
-                            + " at " + (int) c[0] + " " + (int) c[1] + " " + (int) c[2]);
+                            + " at " + (int) c[0] + " " + (int) c[1] + " " + (int) c[2] + " ("
+                            + r.layout().rooms().get(i).template().id() + ")");
                 }
                 return;
             }

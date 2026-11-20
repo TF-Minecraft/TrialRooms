@@ -54,14 +54,19 @@ public final class RoomCatalog {
         }
     }
 
-    /** Checks one template against a kit's cell size: doorway widths and marker positions. */
+    /** Checks one template against a kit's cell size: doorway widths, heights and marker positions. */
     public static void check(RoomTemplate t, int cellSize, int cellHeight) {
+        check(t, cellSize, cellHeight, 0);
+    }
+
+    /** As above, with the kit's door height for doorways that set none. */
+    public static void check(RoomTemplate t, int cellSize, int cellHeight, int doorHeight) {
         for (Doorway d : t.doorways()) {
             if (d.width() < 2 || d.width() % 2 != 0 || d.width() > cellSize - 2) {
                 throw new IllegalArgumentException(t.id() + ": doorway width must be even and between 2 and "
                         + (cellSize - 2) + ": " + d.width());
             }
-            if (d.floor() + d.height() >= cellHeight) {
+            if (d.floor() + d.heightOr(doorHeight) >= cellHeight) {
                 throw new IllegalArgumentException(t.id() + ": doorway " + d + " reaches above the room height "
                         + cellHeight);
             }
