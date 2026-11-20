@@ -78,6 +78,8 @@ final class Fights {
         final Set<Entity> adds = new HashSet<>();
         /** Mobs just spawned, by spawn time: MythicMobs sets their health and name once more after a moment. */
         final Map<Entity, Long> settling = new HashMap<>();
+        /** Damage each settling mob has taken since it spawned, from anything. */
+        final Map<Entity, Double> taken = new HashMap<>();
         /** Names this fight gave its elites and boss, kept against MythicMobs' own display names. */
         final Map<Entity, Component> names = new HashMap<>();
         UUID lastSlam;
@@ -140,8 +142,8 @@ final class Fights {
 
     /**
      * Shortly after spawning, MythicMobs applies its own health, base max health and display name
-     * once more. Until a mob settles (or is hurt), keep its health full, a boss's base health its
-     * own, and every named mob's name the fight's.
+     * once more. Until a mob settles, keep its health at its scaled max less the damage it has
+     * taken, a boss's base health its own, and every named mob's name the fight's.
      */
     private void settle(Encounter enc, long now) {
         Iterator<Map.Entry<Entity, Long>> it = enc.settling.entrySet().iterator();
@@ -150,6 +152,7 @@ final class Fights {
             Entity mob = e.getKey();
             if (now - e.getValue() > SETTLE_MS || !mob.isValid()) {
                 it.remove();
+                enc.taken.remove(mob);
                 continue;
             }
             if (mob instanceof LivingEntity living) {
@@ -157,13 +160,31 @@ final class Fights {
                 if (max != null && living.equals(enc.bossMob) && max.getBaseValue() != enc.boss.def().health()) {
                     max.setBaseValue(enc.boss.def().health());
                 }
-                living.setHealth(maxHealth(living));
+                double left = maxHealth(living) - enc.taken.getOrDefault(mob, 0.0);
+                if (left > 0) {
+                    living.setHealth(left);
+                }
             }
         }
         enc.names.keySet().removeIf(mob -> !mob.isValid());
         for (Map.Entry<Entity, Component> n : enc.names.entrySet()) {
-            if (!n.getValue().equals(n.getKey().customName())) {
+            // compared as text: a name read back from the entity need not be the same component
+            if (!plain(n.getValue()).equals(plain(n.getKey().customName()))) {
                 n.getKey().customName(n.getValue());
+            }
+        }
+    }
+
+    private static String plain(Component c) {
+        return c == null ? "" : net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(c);
+    }
+
+    /** A run mob took damage (from anything): a settling mob keeps it when its health is set again. */
+    void hurt(ActiveRun ar, Entity mob, double amount) {
+        for (Encounter enc : ar.encounters.values()) {
+            if (enc.settling.containsKey(mob)) {
+                enc.taken.merge(mob, amount, Double::sum);
             }
         }
     }
@@ -261,10 +282,8 @@ final class Fights {
     }
 
     static String baseName(Entity mob) {
-        Component name = mob.customName();
-        String plain = name == null ? null
-                : net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(name);
-        return plain == null || plain.isBlank() ? mob.getName() : plain;
+        String text = plain(mob.customName());
+        return text.isBlank() ? mob.getName() : text;
     }
 
     /** Spawns one mob of the fight and registers it with the run. */
@@ -806,7 +825,6 @@ final class Fights {
         for (Encounter enc : ar.encounters.values()) {
             if (enc.alive.contains(mob) || mob.equals(enc.bossMob) || enc.adds.contains(mob)) {
                 enc.lastHitMs = clock.getAsLong();
-                enc.settling.remove(mob); // hurt: its health is the fight's now
             }
         }
     }

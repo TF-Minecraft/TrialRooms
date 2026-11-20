@@ -454,9 +454,19 @@ class FightsTest {
     clearInvocations(mob.getAttribute(Attribute.MAX_HEALTH));
     ticks(1);
     verify(mob.getAttribute(Attribute.MAX_HEALTH), never()).setBaseValue(anyDouble());
-    // a hit ends its settling: its health is the fight's from then on
-    runs.fights().hit(ar, mob);
-    assertFalse(enc.settling.containsKey(mob));
+    // damage while an add settles is kept when its health is set again; damage past its health isn't undone
+    LivingEntity fresh = (LivingEntity) enc.adds.iterator().next();
+    runs.mobHurt(fresh, null, 12);
+    runs.mobHurt(fresh, a, 3);
+    ticks(1);
+    assertEquals(30 - 15, fresh.getHealth(), 1e-9);
+    runs.mobHurt(fresh, null, 100);
+    fresh.setHealth(1);
+    ticks(1);
+    assertEquals(1, fresh.getHealth(), 1e-9);
+    enc.taken.clear();
+    fresh.setHealth(30);
+    runs.fights().hurt(ar, mock(Entity.class), 5);
     now.addAndGet(Fights.SETTLE_MS + 1);
     ticks(1);
     assertTrue(enc.settling.isEmpty(), "settled once the time is up");

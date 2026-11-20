@@ -1149,7 +1149,11 @@ public final class RunManager {
     /** A run mob took damage (from a player, when {@code by} is set). */
     public void mobHurt(Entity mob, Player by, double amount) {
         ActiveRun ar = byMob.get(mob.getUniqueId());
-        if (ar == null || by == null) {
+        if (ar == null) {
+            return;
+        }
+        fights.hurt(ar, mob, amount);
+        if (by == null) {
             return;
         }
         ar.damage.merge(by.getUniqueId(), amount, Double::sum);
