@@ -188,11 +188,6 @@ def build():
     r.solid(1, 1, 11, 30, 8)
     r.solid(12, 20, 30, 30, 8)
     r.solid(20, 1, 30, 11, 8)
-    r.spike(16, 16, 2)                  # a small spike in the bend's corner, off the path
-    r.clear(16, 1, 16)
-    r.clear(16, 2, 16)
-    for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        r.clear(16 + dx, 1, 16 + dz)
     rooms.append(r)
 
     r = SeithrRoom("glacier_stair", "corridor", 1, 1, 16)
@@ -387,7 +382,7 @@ roster:
 packs:
   patrol: {slots: [grunt, grunt, ranged, swarm], weight: 3}
   diggers: {slots: [swarm, swarm, swarm, grunt], weight: 2}
-  shieldline: {slots: [tank, grunt, ranged, ranged], weight: 2, min-depth: 1}
+  shieldline: {slots: [tank, grunt, swarm, swarm], weight: 2, min-depth: 1}
   frostcall: {slots: [caster, bruiser, grunt, swarm], weight: 1, min-depth: 2}
 # Bosses. health = base max health before party scaling. Phases start at a health percent;
 # adds = threat budget of the adds that come with it; every = seconds between mechanics.

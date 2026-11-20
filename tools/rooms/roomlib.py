@@ -26,13 +26,6 @@ DOOR_W = 4
 DOOR_H = 4
 SIDES = {"north", "east", "south", "west"}
 
-# blocks a player walks through
-PASSABLE_PREFIXES = ("minecraft:air", "minecraft:snow[", "minecraft:light[", "minecraft:torch",
-                     "minecraft:wall_torch", "minecraft:soul_torch", "minecraft:soul_wall_torch",
-                     "minecraft:white_carpet", "minecraft:light_blue_carpet", "minecraft:cyan_carpet")
-PASSABLE_EXACT = {"minecraft:snow", "minecraft:air", "minecraft:light"}
-
-
 def state(name):
     """A palette entry from 'minecraft:block' or 'minecraft:block[key=value,...]'."""
     if "[" not in name:
@@ -187,87 +180,154 @@ class Room:
 
 # ---------------------------------------------------------------------------- walk check
 
+# Blocks a player walks through. Snow layers count only up to 2 layers (a quarter block).
+PASSABLE_BASES = {
+    "minecraft:air", "minecraft:cave_air", "minecraft:light", "minecraft:torch", "minecraft:wall_torch",
+    "minecraft:soul_torch", "minecraft:soul_wall_torch", "minecraft:white_carpet", "minecraft:light_blue_carpet",
+    "minecraft:cyan_carpet",
+}
+# Blocks nobody should stand on or walk through: they hurt, trap or drown.
+HAZARD_BASES = {
+    "minecraft:water", "minecraft:lava", "minecraft:campfire", "minecraft:soul_campfire", "minecraft:fire",
+    "minecraft:soul_fire", "minecraft:powder_snow", "minecraft:magma_block",
+}
+FACING = {"north": (0, -1), "south": (0, 1), "west": (-1, 0), "east": (1, 0)}
+
+
+def _props(name):
+    if "[" not in name:
+        return name, {}
+    base, rest = name[:-1].split("[", 1)
+    return base, dict(p.split("=", 1) for p in rest.split(","))
+
+
 def _passable(name):
-    return name in PASSABLE_EXACT or name.startswith(PASSABLE_PREFIXES)
+    base, props = _props(name)
+    if base == "minecraft:snow":
+        return int(props.get("layers", "1")) <= 2
+    return base in PASSABLE_BASES
 
 
-def _half(name):
-    """True for blocks a player stands on half a block up and walks onto without jumping."""
-    base = name.split("[", 1)[0]
-    if base.endswith("_stairs") or base.endswith("campfire"):
-        return True
-    return base.endswith("_slab") and "type=bottom" in name
+def _stand_options(room, x, z):
+    """Where a player can stand in one column, with 2 blocks of clearance.
 
-
-def _stand_heights(room, x, z):
-    """Heights, in half blocks, a player can stand at in one column (with 2 blocks of clearance)."""
-    out = []
+    Returns {height in half blocks: (kind, facing)}: kind 'flat' (a full block or a bottom slab),
+    'low' (a stair's front step) or 'high' (a stair's back); facing is the way a stair climbs.
+    """
+    out = {}
     for y in range(0, room.h):
-        here = room.get(x, y, z)
-        if _passable(here):
+        name = room.get(x, y, z)
+        base, props = _props(name)
+        if _passable(name) or base in HAZARD_BASES:
             continue
-        # a slab is stood on half a block up; a stair both on its low step and its high back
-        options = [y * 2 + 1] if _half(here) else [y * 2 + 2]
-        if here.split("[", 1)[0].endswith("_stairs"):
-            options.append(y * 2 + 2)
-        for h in options:
-            # clearance: every block the player's 1.8 blocks overlap, from the standing height up
-            blocks = range((h + 1) // 2, (h + 5) // 2)
-            if blocks.stop <= room.h and all(_passable(room.get(x, yy, z)) for yy in blocks):
-                out.append(h)
+        if base.endswith("_stairs") and props.get("half", "bottom") == "bottom":
+            options = [(y * 2 + 1, "low", props.get("facing")), (y * 2 + 2, "high", props.get("facing"))]
+        elif base.endswith("_slab") and props.get("type") == "bottom":
+            options = [(y * 2 + 1, "flat", None)]
+        else:
+            options = [(y * 2 + 2, "flat", None)]
+        for h, kind, facing in options:
+            if _clear(room, x, z, h, h):
+                out[h] = (kind, facing)
     return out
 
 
-def walk_check(room, max_drop=6):
-    """Problems with walking the room: unreachable doorways or spawn points, shallow landings.
+def _clear(room, x, z, lo, hi):
+    """Whether a player fits in a column from standing height lo up to standing height hi (half blocks)."""
+    blocks = range((lo + 1) // 2, (hi + 5) // 2)
+    return blocks.stop <= room.h and all(_passable(room.get(x, yy, z)) for yy in blocks)
 
-    A step is to a side neighbour at most half a block up (stairs and bottom slabs) or a drop of at
-    most max_drop blocks. Everything must be reached from every doorway.
+
+def walk_check(room, max_drop=6):
+    """Problems with walking the room, as messages; an empty list means it is fine.
+
+    - every doorway has a flat landing 4 blocks deep across its whole width, and a clear opening;
+    - every doorway and every spawn, rest, entry, chest and exit point can be walked to from the first
+      doorway, and every spot that can be reached can walk back to it (no pits that trap);
+    - a step goes at most half a block up (a stair climbed the way it faces, or a bottom slab), a
+      drop at most max_drop blocks, with room for the player's head all along the way.
     """
     problems = []
-    stands = {}
+    cache = {}
 
-    def heights(x, z):
-        if (x, z) not in stands:
-            stands[(x, z)] = _stand_heights(room, x, z) if 0 <= x < room.w and 0 <= z < room.d else []
-        return stands[(x, z)]
+    def options(x, z):
+        if (x, z) not in cache:
+            cache[(x, z)] = _stand_options(room, x, z) if 0 <= x < room.w and 0 <= z < room.d else {}
+        return cache[(x, z)]
 
-    def reach(start):
+    def allowed(a, b):
+        (x, h, z), (x2, h2, z2) = a, b
+        dh = h2 - h
+        if dh > 1 or -dh > max_drop * 2:
+            return False
+        kind2, facing2 = options(x2, z2)[h2]
+        if (x, z) == (x2, z2):
+            return abs(dh) == 1 and kind2 in ("low", "high") and options(x, z)[h][0] in ("low", "high")
+        if dh == 1 and kind2 == "low" and FACING.get(facing2) == (x - x2, z - z2):
+            return False  # walking into a stair's back: it needs a jump
+        if dh < 0 and not _clear(room, x2, z2, h2, h):
+            return False  # no room to step over and drop down
+        if dh > 0 and not _clear(room, x, z, h, h2):
+            return False
+        return True
+
+    def neighbours(state):
+        x, h, z = state
+        for h2 in options(x, z):
+            if h2 != h:
+                yield (x, h2, z)
+        for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            for h2 in options(x + dx, z + dz):
+                yield (x + dx, h2, z + dz)
+
+    def search(start, forward):
         seen = {start}
         todo = [start]
         while todo:
-            x, h, z = todo.pop()
-            for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                for h2 in heights(x + dx, z + dz):
-                    if h2 - h <= 1 and h - h2 <= max_drop * 2:
-                        s = (x + dx, h2, z + dz)
-                        if s not in seen:
-                            seen.add(s)
-                            todo.append(s)
+            s = todo.pop()
+            for n in neighbours(s):
+                if n not in seen and (allowed(s, n) if forward else allowed(n, s)):
+                    seen.add(n)
+                    todo.append(n)
         return seen
 
     starts = []
+    start = (CELL - DOOR_W) // 2
     for cx, cz, side, floor in room.doors:
-        (x, y, z), (dx, dz) = room.landing(cx, cz, side, floor)
-        h = y * 2
-        for k in range(4):
-            if h not in heights(x + dx * k, z + dz * k):
-                problems.append(f"{room.id}: the {side} doorway at {cx},{cz} has no flat landing {k + 1} blocks in")
-                break
-        starts.append(((x, h, z), f"{side} doorway at {cx},{cz}"))
-    if not starts:
+        bx, bz = cx * CELL, cz * CELL
+        h = floor * 2 + 2
+        bad = None
+        for k in range(5):  # 0 = the doorway itself, then 4 blocks in
+            for j in range(DOOR_W):
+                x, z = {"north": (bx + start + j, bz + k), "south": (bx + start + j, bz + CELL - 1 - k),
+                        "west": (bx + k, bz + start + j), "east": (bx + CELL - 1 - k, bz + start + j)}[side]
+                if k == 0 and not all(_passable(room.get(x, y, z)) for y in range(floor + 1, floor + 1 + DOOR_H)):
+                    bad = "its opening is blocked"
+                elif options(x, z).get(h, ("", None))[0] != "flat":
+                    bad = bad or f"no flat landing {k} blocks in" if k else bad or "no floor in its opening"
+        if bad:
+            problems.append(f"{room.id}: the {side} doorway at {cx},{cz}: {bad}")
+        mid = CELL // 2
+        sx, sz = {"north": (bx + mid, bz + 1), "south": (bx + mid, bz + CELL - 2),
+                  "west": (bx + 1, bz + mid), "east": (bx + CELL - 2, bz + mid)}[side]
+        starts.append(((sx, h, sz), f"{side} doorway at {cx},{cz}"))
+    if not starts or problems:
         return problems
-    first = reach(starts[0][0])
+    first = starts[0][0]
+    reach = search(first, True)
+    back = search(first, False)
     for s, label in starts[1:]:
-        if s not in first:
+        if s not in reach:
             problems.append(f"{room.id}: the {label} can't be walked to from the first doorway")
-        elif starts[0][0] not in reach(s):
-            problems.append(f"{room.id}: the first doorway can't be walked to from the {label}")
     for kind, tag, x, y, z, facing in room.markers:
         if kind not in ("spawn", "rest", "entry", "chest", "exit"):
             continue
         # the run stands players one block above a rest marker (it marks the block they wake on)
         feet = y + 1 if kind == "rest" else y
-        if not any(c in first for c in ((x, feet * 2, z), (x, feet * 2 - 1, z))):
+        if not any(c in reach for c in ((x, feet * 2, z), (x, feet * 2 - 1, z))):
             problems.append(f"{room.id}: the {kind} {tag} marker at {x},{y},{z} can't be walked to")
+    traps = sorted(reach - back)
+    if traps:
+        x, h, z = traps[0]
+        problems.append(f"{room.id}: {len(traps)} spots can be walked into but not out of, such as {x},{h / 2},{z}")
     return problems

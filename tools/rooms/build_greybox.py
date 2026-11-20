@@ -156,7 +156,7 @@ def build():
     r.door(0, 0, "south")
     r.shell()
     r.put(16, 1, 16, "minecraft:campfire")
-    r.marker("rest", 16, 1, 16)
+    r.marker("rest", 16, 0, 19)  # the floor beside the fire: players wake standing on it, not in the fire
     rooms.append(r)
 
     r = Room("treasure_nook", "treasure", 1, 1, 8)

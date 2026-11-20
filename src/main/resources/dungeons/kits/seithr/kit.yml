@@ -22,7 +22,7 @@ roster:
 packs:
   patrol: {slots: [grunt, grunt, ranged, swarm], weight: 3}
   diggers: {slots: [swarm, swarm, swarm, grunt], weight: 2}
-  shieldline: {slots: [tank, grunt, ranged, ranged], weight: 2, min-depth: 1}
+  shieldline: {slots: [tank, grunt, swarm, swarm], weight: 2, min-depth: 1}
   frostcall: {slots: [caster, bruiser, grunt, swarm], weight: 1, min-depth: 2}
 # Bosses. health = base max health before party scaling. Phases start at a health percent;
 # adds = threat budget of the adds that come with it; every = seconds between mechanics.
