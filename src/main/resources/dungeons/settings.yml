@@ -10,6 +10,11 @@ bleed-out-seconds: 30
 # Seconds a party member crouches within revive-radius blocks to bring a downed player back.
 revive-seconds: 3
 revive-radius: 2.5
+# A downed player nobody can revive (solo, or the rest of the party is out or offline) crouches this
+# many seconds to get back up, once per fight room; after that they wait alone-bleed-out-seconds,
+# then a shared life brings them back.
+self-revive-seconds: 5
+alone-bleed-out-seconds: 10
 # Party members within this many blocks of the gate come along.
 gate-radius: 8
 # Seconds a disconnected player keeps their place in the run.

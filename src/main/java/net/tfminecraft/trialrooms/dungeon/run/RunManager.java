@@ -106,6 +106,8 @@ public final class RunManager {
         /** Damage each player dealt to the run's enemies, for the run log. */
         final Map<UUID, Double> damage = new HashMap<>();
         double healthFactor = 1;
+        /** Fight budget multiplier for the party's size. */
+        double enemyFactor = 1;
         long finishAtMs = -1;
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
@@ -372,6 +374,7 @@ public final class RunManager {
                         + ". Leave at any time with /tr dungeon leave.");
             }
             ar.healthFactor = entry.rules().healthFactor(n);
+            ar.enemyFactor = entry.rules().enemyFactor(n);
             if (n == 0) {
                 end(ar, true, null);
             }
@@ -783,8 +786,16 @@ public final class RunManager {
         ar.downedAt.put(p.getUniqueId(), p.getLocation().clone());
         p.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, PotionEffect.INFINITE_DURATION, 0, false, false));
         p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, PotionEffect.INFINITE_DURATION, 6, false, false));
-        p.sendMessage("§cYou are down. §7A party member crouching beside you for " + settings().reviveSeconds()
-                + " seconds brings you back.");
+        if (!ar.run.alone(p.getUniqueId())) {
+            p.sendMessage("§cYou are down. §7A party member crouching beside you for " + settings().reviveSeconds()
+                    + " seconds brings you back.");
+        } else if (ar.run.canSelfRevive(p.getUniqueId())) {
+            p.sendMessage("§cYou are down. §7Nobody can reach you: crouch for " + settings().selfReviveSeconds()
+                    + " seconds to get back up. You can do this once per fight.");
+        } else {
+            p.sendMessage("§cYou are down. §7Nobody can reach you, and you already got up once in this fight: in "
+                    + settings().aloneBleedOutSeconds() + " seconds a shared life brings you back.");
+        }
         tell(ar, "§c" + p.getName() + " is down!");
         event(ar, p.getName() + " went down");
         return true;
@@ -822,14 +833,32 @@ public final class RunManager {
                 }
                 continue;
             }
+            boolean alone = ar.run.alone(m.id());
+            boolean self = ar.run.canSelfRevive(m.id());
+            if (self && d.isSneaking()) {
+                long selfNeeded = settings().selfReviveSeconds() * 1000L;
+                if (ar.run.addSelfRevive(m.id(), STEP_MS, selfNeeded)) {
+                    clearDowned(ar, d);
+                    d.setHealth(Math.max(1.0, d.getAttribute(Attribute.MAX_HEALTH).getValue() * 0.3));
+                    d.sendMessage("§aYou get back up." + (ar.run.activeRoom() < 0 ? ""
+                            : " §7If you go down again in this fight, you can't get up on your own."));
+                    event(ar, d.getName() + " got back up alone");
+                } else {
+                    cues.send(d, Cues.Level.DOWNED, "Getting up... " + (int) (100 * ar.run.member(m.id()).reviveMs()
+                            / selfNeeded) + "%", now, 600);
+                }
+                continue;
+            }
             ar.run.resetRevive(m.id());
-            long left = settings().bleedOutSeconds() * 1000L - (now - m.downedAtMs());
+            long limit = (alone && !self ? settings().aloneBleedOutSeconds() : settings().bleedOutSeconds()) * 1000L;
+            long left = limit - (now - m.downedAtMs());
             if (left <= 0) {
                 bleedOut(ar, d);
                 continue;
             }
-            cues.send(d, Cues.Level.DOWNED, "You are down: " + (left + 999) / 1000 + "s. Lives left: "
-                    + ar.run.lives(), now, 600);
+            String secs = (left + 999) / 1000 + "s";
+            cues.send(d, Cues.Level.DOWNED, self ? "You are down: crouch to get back up. " + secs + " left"
+                    : "You are down: " + secs + ". Lives left: " + ar.run.lives(), now, 600);
             for (Player a : online(ar)) {
                 if (ar.run.member(a.getUniqueId()).playing()) {
                     Location l = a.getLocation();
@@ -860,14 +889,15 @@ public final class RunManager {
      * checkpoint would lock them out), otherwise at the checkpoint.
      */
     private Location wakePoint(ActiveRun ar) {
-        for (int room = 0; room < ar.run.layout().rooms().size(); room++) {
-            if (ar.run.room(room) == DungeonRun.Room.ACTIVE) {
-                double[] e = ar.geo.entry(room);
-                return new Location(module.world(), e[0], e[1], e[2]);
-            }
+        int room = ar.run.activeRoom();
+        if (room >= 0) {
+            double[] e = ar.geo.entry(room);
+            return new Location(module.world(), e[0], e[1], e[2]);
         }
         return checkpoint(ar);
     }
+
+
 
     private void clearDowned(ActiveRun ar, Player p) {
         ar.downedAt.remove(p.getUniqueId());
@@ -990,12 +1020,7 @@ public final class RunManager {
     }
 
     private boolean fightInProgress(ActiveRun ar) {
-        for (int room = 0; room < ar.run.layout().rooms().size(); room++) {
-            if (ar.run.room(room) == DungeonRun.Room.ACTIVE) {
-                return true;
-            }
-        }
-        return false;
+        return ar.run.activeRoom() >= 0;
     }
 
     /** Hands over keys owed from runs a server stop cut off; called once a character is played. */

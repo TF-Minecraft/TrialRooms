@@ -32,6 +32,8 @@ public final class DungeonRun {
         private boolean online = true;
         private long offlineSinceMs;
         private int room = -1;
+        /** The fight room this member last got up alone in. */
+        private int selfRevivedIn = Integer.MIN_VALUE;
 
         Member(UUID id, String characterId) {
             this.id = id;
@@ -161,17 +163,16 @@ public final class DungeonRun {
 
     /**
      * True when the party is beaten: nobody is up and playing, and nobody downed can still come
-     * back (a downed member with shared lives left wakes at the checkpoint when they bleed out).
+     * back (a downed member with shared lives left wakes at the checkpoint when they bleed out, and
+     * one nobody can revive may still get up alone).
      */
     public boolean wiped() {
         if (playing() > 0) {
             return false;
         }
-        if (lives == 0) {
-            return true;
-        }
         for (Member m : members.values()) {
-            if (m.status == Status.DOWNED && m.online) {
+            // With lives left a downed member wakes when they bleed out; without, only getting up alone helps.
+            if (m.status == Status.DOWNED && m.online && (lives > 0 || canSelfRevive(m.id))) {
                 return false;
             }
         }
@@ -202,6 +203,54 @@ public final class DungeonRun {
         }
         m.status = Status.ALIVE;
         m.reviveMs = 0;
+        return true;
+    }
+
+    /**
+     * True when nobody else could revive this member: no other member is online and still in the
+     * fight (up or downed).
+     */
+    public boolean alone(UUID player) {
+        for (Member m : members.values()) {
+            if (!m.id.equals(player) && m.online && (m.status == Status.ALIVE || m.status == Status.DOWNED)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** The fight room in progress (the first one), or -1. */
+    public int activeRoom() {
+        for (int room = 0; room < rooms.length; room++) {
+            if (rooms[room] == Room.ACTIVE) {
+                return room;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Whether a downed member nobody can revive may get up on their own: once per fight room, and
+     * without limit outside a fight.
+     */
+    public boolean canSelfRevive(UUID player) {
+        Member m = members.get(player);
+        if (m == null || m.status != Status.DOWNED || !alone(player)) {
+            return false;
+        }
+        int room = activeRoom();
+        return room < 0 || m.selfRevivedIn != room;
+    }
+
+    /**
+     * Adds progress to a member getting up on their own; true when it reaches {@code neededMs}
+     * and they are back up (their one get-up in this fight is spent).
+     */
+    public boolean addSelfRevive(UUID player, long stepMs, long neededMs) {
+        if (!canSelfRevive(player) || !addRevive(player, stepMs, neededMs)) {
+            return false;
+        }
+        members.get(player).selfRevivedIn = activeRoom();
         return true;
     }
 

@@ -6,8 +6,8 @@ import java.util.List;
 import org.bukkit.configuration.ConfigurationSection;
 
 /**
- * The numbers behind a kit's fights: budgets, waves, elites and boss timings. Party size never
- * changes any of them; it only scales enemy health.
+ * The numbers behind a kit's fights: budgets, waves, elites and boss timings, for one player. A
+ * bigger party multiplies the budgets (and enemy health) by its recipe's party factors.
  *
  * @param budgetCombat       threat budget of a combat room
  * @param budgetElite        threat budget of an elite room (its elite included)

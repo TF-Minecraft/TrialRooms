@@ -315,7 +315,7 @@ class RunManagerTest {
     runs.useGate(a, gate);
     rules = new RunRules(1, 3, "m.key", 1, 1, 0.5);
     // every dungeon taken
-    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 60, java.util.Set.of(), java.util.Set.of());
+    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 60, java.util.Set.of(), java.util.Set.of(), 5, 10);
     runs.useGate(b, gate);
     assertEquals(1, runs.runs().size());
     runs.useGate(a, gate);
@@ -458,10 +458,15 @@ class RunManagerTest {
   @Test
   void aBeatenPartyFails() {
     PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
     rules = new RunRules(1, 3, "", 0, 1, 0.5);
     runs.startRun(a, "delve", 1);
     DungeonRun run = only().run();
     runs.down(a);
+    ticks(1);
+    assertEquals(DungeonRun.State.RUNNING, run.state(), "Bo is still up");
+    runs.down(b);
     ticks(1);
     assertEquals(DungeonRun.State.FAILED, run.state());
     assertFalse(runs.down(a), "no downs once the run is over");
@@ -844,7 +849,7 @@ class RunManagerTest {
 
   @Test
   void aFullGateQueuesPartiesAndHoldsTheNextDungeon() {
-    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 30, java.util.Set.of(), java.util.Set.of());
+    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 30, java.util.Set.of(), java.util.Set.of(), 5, 10);
     rules = new RunRules(1, 3, "", 1, 1, 0.5);
     PlayerMock a = player("Ann");
     PlayerMock b = player("Bo");
@@ -1019,5 +1024,52 @@ class RunManagerTest {
     killAll();
     ticks(1);
     assertEquals(DungeonRun.Room.CLEARED, run.room(fight));
+  }
+
+  static List<String> drain(PlayerMock p) {
+    List<String> out = new ArrayList<>();
+    for (String m = p.nextMessage(); m != null; m = p.nextMessage()) {
+      out.add(m);
+    }
+    return out;
+  }
+
+  @Test
+  void aSoloPlayerGetsUpAloneOncePerFight() {
+    PlayerMock a = player("Ann");
+    runs.startRun(a, "delve", 1);
+    DungeonRun run = only().run();
+    drain(a);
+    // outside a fight: crouching gets them up, with no limit
+    assertTrue(runs.down(a));
+    assertTrue(drain(a).stream().anyMatch(m -> m.contains("crouch for " + settings.selfReviveSeconds() + " seconds")));
+    a.setSneaking(true);
+    ticks(settings.selfReviveSeconds() * 2);
+    assertFalse(runs.isDowned(a));
+    assertTrue(drain(a).contains("§aYou get back up."));
+    // in a fight: once, then a shorter wait for a life
+    into(a, RoomType.COMBAT);
+    ticks(1);
+    int fight = room(RoomType.COMBAT);
+    assertEquals(DungeonRun.Room.ACTIVE, run.room(fight));
+    a.setSneaking(false);
+    runs.down(a);
+    ticks(3);
+    assertTrue(runs.isDowned(a), "lying still waits");
+    a.setSneaking(true);
+    ticks(settings.selfReviveSeconds() * 2 - 1);
+    assertTrue(runs.isDowned(a), "not yet");
+    ticks(1);
+    assertFalse(runs.isDowned(a));
+    assertTrue(drain(a).stream().anyMatch(m -> m.contains("you can't get up on your own")));
+    runs.down(a);
+    assertTrue(drain(a).stream().anyMatch(m -> m.contains("already got up once")));
+    ticks(settings.selfReviveSeconds() * 2 + 2);
+    assertTrue(runs.isDowned(a), "crouching does nothing now");
+    now.addAndGet(settings.aloneBleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    assertFalse(runs.isDowned(a));
+    assertEquals(0, run.lives(), "a life brought them back");
+    assertEquals(DungeonRun.State.RUNNING, run.state());
   }
 }

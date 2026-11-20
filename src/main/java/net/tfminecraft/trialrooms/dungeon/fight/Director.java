@@ -9,7 +9,7 @@ import net.tfminecraft.trialrooms.dungeon.template.RoomType;
 /**
  * Puts a room's fight together from its threat budget: a pack shape filled from the roster,
  * maybe an elite, split into waves, each enemy given a spawn marker. The same seed always gives
- * the same fight. Party size plays no part; it only scales enemy health later.
+ * the same fight. A bigger party brings a bigger budget (the recipe's party factor).
  */
 public final class Director {
 
@@ -61,15 +61,22 @@ public final class Director {
         return base * t.tierFactor(tier) * (1 + t.depthStep() * Math.max(0, depth));
     }
 
+    /** Plans a combat or elite room for one player. */
+    public static Plan plan(FightKit kit, RoomType type, int depth, int tier, List<String> markerTags, Random rng) {
+        return plan(kit, type, depth, tier, 1, markerTags, rng);
+    }
+
     /**
      * Plans a combat or elite room.
      *
      * @param depth      fight rooms the party has cleared
+     * @param party      budget multiplier for the party's size (1 for one player)
      * @param markerTags tags of the room's spawn markers, in order
      */
-    public static Plan plan(FightKit kit, RoomType type, int depth, int tier, List<String> markerTags, Random rng) {
+    public static Plan plan(FightKit kit, RoomType type, int depth, int tier, double party, List<String> markerTags,
+            Random rng) {
         FightTuning t = kit.tuning();
-        double budget = budget(t, type, depth, tier);
+        double budget = budget(t, type, depth, tier) * party;
         double[] left = { budget };
         List<RosterEntry> picks = new ArrayList<>();
         List<Affix> affixes = new ArrayList<>();

@@ -33,8 +33,8 @@ bosses:
       - {at: 100, adds: 0, mechanics: [slam], every: 12}
       - {at: 66, adds: 5, mechanics: [slam, shockwave], every: 10}
       - {at: 33, adds: 6, mechanics: [shockwave, slam, rally-call], every: 9}
-# Fight numbers (all optional; these are the defaults). Party size never changes them: it only
-# scales enemy health (health-per-extra-player in recipes.yml).
+# Fight numbers (all optional; these are the defaults), for one player. Bigger parties get more
+# budget and enemy health from their recipe (enemies-per-extra-player, health-per-extra-player).
 fights:
   budget-combat: 6
   budget-elite: 8

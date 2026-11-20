@@ -76,6 +76,11 @@ class DirectorTest {
     assertEquals(1, a.waves().size());
     assertTrue(cost(a) <= a.budget() + 1e-9);
     assertTrue(a.enemies() >= 3);
+    // a bigger party gets a bigger budget, so more enemies
+    Director.Plan trio = Director.plan(kit, RoomType.COMBAT, 0, 1, 1.5, MARKERS, new Random(7));
+    assertEquals(a.budget() * 1.5, trio.budget(), 1e-9);
+    assertTrue(cost(trio) <= trio.budget() + 1e-9);
+    assertTrue(trio.enemies() > a.enemies());
     for (Director.Spawn s : a.waves().getFirst()) {
       assertFalse(s.elite());
       assertNotEquals(6, s.marker(), "boss markers are left for the boss");

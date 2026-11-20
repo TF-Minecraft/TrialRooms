@@ -220,7 +220,8 @@ final class Fights {
         int depth = ar.run.roomsCleared();
         BossDef def = type == RoomType.BOSS ? kit.boss(ar.rules.boss()) : null;
         Director.Plan plan = def != null ? new Director.Plan(0, "boss", List.of())
-                : Director.plan(kit, type == RoomType.BOSS ? RoomType.ELITE : type, depth, ar.rules.tier(), tags, rng);
+                : Director.plan(kit, type == RoomType.BOSS ? RoomType.ELITE : type, depth, ar.rules.tier(),
+                        ar.enemyFactor, tags, rng);
         Encounter enc = new Encounter(room, plan, now, ar.run.downs(), seed);
         ar.encounters.put(room, enc);
         if (def != null && startBoss(ar, enc, def, now)) {
@@ -229,7 +230,8 @@ final class Fights {
         }
         if (def != null) {
             // The boss's mob is missing: fight a strong pack instead of an empty room.
-            enc = new Encounter(room, Director.plan(kit, RoomType.ELITE, depth, ar.rules.tier(), tags, rng), now,
+            enc = new Encounter(room, Director.plan(kit, RoomType.ELITE, depth, ar.rules.tier(), ar.enemyFactor, tags,
+                    rng), now,
                     ar.run.downs(), seed);
             ar.encounters.put(room, enc);
         }
@@ -365,7 +367,7 @@ final class Fights {
     private void spawnAdds(ActiveRun ar, Encounter enc, double budget) {
         List<double[]> points = ar.geo.markers(enc.room, "spawn");
         List<String> tags = ar.geo.markerTags(enc.room, "spawn");
-        for (Director.Spawn s : Director.adds(ar.kit.fights(), budget, tags, enc.rng)) {
+        for (Director.Spawn s : Director.adds(ar.kit.fights(), budget * ar.enemyFactor, tags, enc.rng)) {
             Entity mob = spawn(ar, enc, s.entry().mob(), spawnPoint(ar, enc.room, points, s));
             if (mob != null) {
                 enc.adds.add(mob);

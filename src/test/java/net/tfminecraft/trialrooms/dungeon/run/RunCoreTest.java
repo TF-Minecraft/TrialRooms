@@ -102,8 +102,58 @@ public class RunCoreTest {
     assertFalse(run.wiped(), "a second, online downed member can still wake");
     DungeonRun noLives = new DungeonRun(UUID.randomUUID(), "t", line(), 0, 0);
     noLives.add(a, "c");
+    noLives.add(b, "b");
     noLives.down(a, 0);
-    assertTrue(noLives.wiped());
+    noLives.down(b, 0);
+    assertTrue(noLives.wiped(), "everyone down, no lives, and each could be revived by the other");
+  }
+
+  @Test
+  void aMemberNobodyCanReviveGetsUpAloneOncePerFight() {
+    DungeonLayout l = line();
+    DungeonRun run = new DungeonRun(UUID.randomUUID(), "t", l, 0, 0);
+    UUID a = UUID.randomUUID();
+    run.add(a, "a");
+    assertTrue(run.alone(a));
+    assertFalse(run.canSelfRevive(a), "only a downed member gets up");
+    assertFalse(run.canSelfRevive(UUID.randomUUID()));
+    assertFalse(run.addSelfRevive(a, 500, 1000));
+    // outside a fight there is no limit
+    assertEquals(-1, run.activeRoom());
+    run.down(a, 0);
+    assertTrue(run.canSelfRevive(a));
+    assertFalse(run.wiped(), "no lives, but they can still get up");
+    assertFalse(run.addSelfRevive(a, 500, 1000));
+    assertTrue(run.addSelfRevive(a, 500, 1000));
+    assertEquals(DungeonRun.Status.ALIVE, run.member(a).status());
+    run.down(a, 0);
+    assertTrue(run.addSelfRevive(a, 1000, 1000));
+    // in a fight: once
+    int fight = index(l, RoomType.COMBAT);
+    run.member(a).room(fight);
+    run.stepRooms(4, 5);
+    assertEquals(fight, run.activeRoom());
+    run.down(a, 0);
+    assertTrue(run.addSelfRevive(a, 1000, 1000));
+    run.down(a, 0);
+    assertFalse(run.canSelfRevive(a));
+    assertFalse(run.addSelfRevive(a, 1000, 1000));
+    assertTrue(run.wiped(), "no lives and the get-up is spent");
+    // anyone else still in it (up or downed, online) could revive them
+    UUID b = UUID.randomUUID();
+    run.add(b, "b");
+    assertFalse(run.alone(a));
+    run.down(b, 0);
+    assertFalse(run.alone(a));
+    run.offline(b, 0);
+    assertTrue(run.alone(a));
+    run.online(b);
+    run.bleedOut(b);
+    assertTrue(run.alone(a), "out of lives");
+    // the next fight gives a new get-up
+    run.clearRoom(fight);
+    assertEquals(-1, run.activeRoom());
+    assertTrue(run.canSelfRevive(a));
   }
 
   @Test
@@ -261,6 +311,18 @@ public class RunCoreTest {
     assertEquals("", new RunRules(1, 1, "", 1, 1, 0, 2, null).boss());
     assertEquals("warden", new RunRules(1, 1, "", 1, 1, 0, 2, " warden ").boss());
     assertEquals(1, r.tier());
+    assertEquals(1.0, r.enemyFactor(3), "the short constructors add no enemies");
+    RunRules party = new RunRules(1, 3, "", 1, 1, 0.5, 1, "", 0.25);
+    assertEquals(1.0, party.enemyFactor(1));
+    assertEquals(1.5, party.enemyFactor(3));
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", -0.1));
+    assertEquals(5, d.selfReviveSeconds());
+    assertEquals(10, d.aloneBleedOutSeconds());
+    YamlConfiguration alone = new YamlConfiguration();
+    alone.set("self-revive-seconds", 0);
+    alone.set("alone-bleed-out-seconds", 7);
+    assertEquals(1, RunSettings.from(alone).selfReviveSeconds());
+    assertEquals(7, RunSettings.from(alone).aloneBleedOutSeconds());
   }
 
   @Test
