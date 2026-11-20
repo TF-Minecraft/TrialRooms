@@ -127,12 +127,13 @@ public final class RunListener implements Listener {
 
     /**
      * Hits on run enemies: none land on a boss between phases, a shielded elite takes less, and no
-     * single hit takes a boss past its next phase.
+     * single hit takes a boss past its next phase. Staff's /kill always kills.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEnemyHurt(EntityDamageEvent event) {
         Entity mob = event.getEntity();
-        if (!runs.inDungeonWorld(mob) || !runs.isRunMob(mob)) {
+        if (event.getCause() == EntityDamageEvent.DamageCause.KILL || !runs.inDungeonWorld(mob)
+                || !runs.isRunMob(mob)) {
             return;
         }
         double factor = runs.incomingFactor(mob);

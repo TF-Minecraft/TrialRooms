@@ -173,6 +173,11 @@ class RunListenerTest {
     EntityDamageEvent none = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
     l.onEnemyHurt(none);
     assertTrue(none.isCancelled());
+    // /kill always kills
+    EntityDamageEvent kill = damage(mob, null, DamageCause.KILL, 1000);
+    l.onEnemyHurt(kill);
+    assertFalse(kill.isCancelled());
+    assertEquals(1000, kill.getDamage());
     // what lands is counted; spawns in the dungeon world are reported
     EntityDamageEvent done = damage(mob, p, DamageCause.ENTITY_ATTACK, 3);
     l.onEnemyHurtDone(done);
