@@ -62,7 +62,7 @@ public final class RunManager {
     private final Ports.Mobs mobs;
     private final Fights fights;
     /** One action bar line per player, warnings first. */
-    final ActionBars bars = new ActionBars();
+    final Cues cues = new Cues();
     private final RunFiles files;
     private final GateStore gates;
     private final LongSupplier clock;
@@ -534,7 +534,7 @@ public final class RunManager {
         } else if (type == RoomType.VAULT && ar.run.bossDefeated() && ar.run.state() == DungeonRun.State.RUNNING) {
             complete(ar);
         } else if (type == RoomType.TREASURE) {
-            bars.send(p, ActionBars.Level.INFO, "A treasure room (treasure comes in a later update).", clock.getAsLong(),
+            cues.send(p, Cues.Level.INFO, "A treasure room (treasure comes in a later update).", clock.getAsLong(),
                     2000);
         }
     }
@@ -545,7 +545,7 @@ public final class RunManager {
         }
         for (Player p : online(ar)) {
             if (ar.run.member(p.getUniqueId()).room() == c.room()) {
-                bars.send(p, ActionBars.Level.INFO, "The doors close in " + c.stepsLeft() / 2 + "...", clock.getAsLong(),
+                cues.send(p, Cues.Level.INFO, "The doors close in " + c.stepsLeft() / 2 + "...", clock.getAsLong(),
                         900);
                 p.playSound(p.getLocation(), "minecraft:block.note_block.hat", 1f, 1f);
             }
@@ -724,7 +724,7 @@ public final class RunManager {
             if (m.room() == room) {
                 String next = nextDoor(ar, room, p);
                 if (next != null) {
-                    bars.send(p, ActionBars.Level.INFO, "Next door: " + next, clock.getAsLong(), 3000);
+                    cues.send(p, Cues.Level.INFO, "Next door: " + next, clock.getAsLong(), 3000);
                 }
             }
         }
@@ -817,8 +817,8 @@ public final class RunManager {
                     event(ar, reviver.getName() + " revived " + d.getName());
                 } else {
                     int pct = (int) (100 * ar.run.member(m.id()).reviveMs() / needed);
-                    bars.send(reviver, ActionBars.Level.DOWNED, "Reviving " + d.getName() + "... " + pct + "%", now, 600);
-                    bars.send(d, ActionBars.Level.DOWNED, reviver.getName() + " is reviving you... " + pct + "%", now, 600);
+                    cues.send(reviver, Cues.Level.DOWNED, "Reviving " + d.getName() + "... " + pct + "%", now, 600);
+                    cues.send(d, Cues.Level.DOWNED, reviver.getName() + " is reviving you... " + pct + "%", now, 600);
                 }
                 continue;
             }
@@ -828,12 +828,12 @@ public final class RunManager {
                 bleedOut(ar, d);
                 continue;
             }
-            bars.send(d, ActionBars.Level.DOWNED, "You are down: " + (left + 999) / 1000 + "s. Lives left: "
+            cues.send(d, Cues.Level.DOWNED, "You are down: " + (left + 999) / 1000 + "s. Lives left: "
                     + ar.run.lives(), now, 600);
             for (Player a : online(ar)) {
                 if (ar.run.member(a.getUniqueId()).playing()) {
                     Location l = a.getLocation();
-                    bars.send(a, ActionBars.Level.DOWNED, d.getName() + " is down, " + RunGeometry.direction(l.getX(),
+                    cues.send(a, Cues.Level.DOWNED, d.getName() + " is down, " + RunGeometry.direction(l.getX(),
                             l.getZ(), l.getYaw(), d.getLocation().getX(), d.getLocation().getZ()), now, 600);
                 }
             }

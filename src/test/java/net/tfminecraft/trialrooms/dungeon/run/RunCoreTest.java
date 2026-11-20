@@ -268,12 +268,12 @@ public class RunCoreTest {
     org.mockbukkit.mockbukkit.ServerMock server = org.mockbukkit.mockbukkit.MockBukkit.mock();
     try {
       var p = server.addPlayer();
-      ActionBars bars = new ActionBars();
-      assertTrue(bars.send(p, ActionBars.Level.WARNING, "move", 0, 1000));
-      assertFalse(bars.send(p, ActionBars.Level.INFO, "info", 500, 1000), "a warning holds the bar");
-      assertTrue(bars.send(p, ActionBars.Level.WARNING, "again", 600, 1000), "the same level may replace it");
-      assertTrue(bars.send(p, ActionBars.Level.INFO, "info", 1700, 1000), "once the hold runs out");
-      assertTrue(bars.send(p, ActionBars.Level.DOWNED, "down", 1800, 1000), "a higher level goes over a lower one");
+      Cues cues = new Cues();
+      assertTrue(cues.send(p, Cues.Level.WARNING, "move", 0, 1000));
+      assertFalse(cues.send(p, Cues.Level.INFO, "info", 500, 1000), "a warning holds the bar");
+      assertTrue(cues.send(p, Cues.Level.WARNING, "again", 600, 1000), "the same level may replace it");
+      assertTrue(cues.send(p, Cues.Level.INFO, "info", 1700, 1000), "once the hold runs out");
+      assertTrue(cues.send(p, Cues.Level.DOWNED, "down", 1800, 1000), "a higher level goes over a lower one");
     } finally {
       org.mockbukkit.mockbukkit.MockBukkit.unmock();
     }

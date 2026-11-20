@@ -28,6 +28,8 @@ public final class BossFight {
         this.phaseStartMs = new long[def.phases().size()];
         this.phaseStartMs[0] = now;
         this.nextMechanicMs = now + interval(def.phases().getFirst());
+        // Untouchable while it wakes (and while its own plugin finishes setting it up).
+        this.immuneUntilMs = now + WAKE_MS;
     }
 
     public BossDef def() {
@@ -51,6 +53,9 @@ public final class BossFight {
     public long startMs() {
         return startMs;
     }
+
+    /** How long a boss can't be hurt after it wakes. */
+    public static final long WAKE_MS = 2500;
 
     /** Health a phase start may be missed by: entity health is a float, the threshold a double. */
     static final double SLACK = 0.05;

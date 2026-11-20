@@ -76,6 +76,10 @@ final class Fights {
         LivingEntity bossMob;
         BossBar bar;
         final Set<Entity> adds = new HashSet<>();
+        /** Mobs just spawned, by spawn time: MythicMobs sets their health and name once more after a moment. */
+        final Map<Entity, Long> settling = new HashMap<>();
+        /** Names this fight gave its elites and boss, kept against MythicMobs' own display names. */
+        final Map<Entity, Component> names = new HashMap<>();
         UUID lastSlam;
 
         Encounter(int room, Director.Plan plan, long now, int downs, long seed) {
@@ -125,6 +129,45 @@ final class Fights {
 
     // ------------------------------------------------------------------ health
 
+    /** How long after spawning a mob's health and name are set again (MythicMobs sets its own once more). */
+    static final long SETTLE_MS = 2500;
+
+    private void name(Encounter enc, Entity mob, Component name) {
+        enc.names.put(mob, name);
+        mob.customName(name);
+        mob.setCustomNameVisible(true);
+    }
+
+    /**
+     * Shortly after spawning, MythicMobs applies its own health, base max health and display name
+     * once more. Until a mob settles (or is hurt), keep its health full, a boss's base health its
+     * own, and every named mob's name the fight's.
+     */
+    private void settle(Encounter enc, long now) {
+        Iterator<Map.Entry<Entity, Long>> it = enc.settling.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Entity, Long> e = it.next();
+            Entity mob = e.getKey();
+            if (now - e.getValue() > SETTLE_MS || !mob.isValid()) {
+                it.remove();
+                continue;
+            }
+            if (mob instanceof LivingEntity living) {
+                AttributeInstance max = living.getAttribute(Attribute.MAX_HEALTH);
+                if (max != null && living.equals(enc.bossMob) && max.getBaseValue() != enc.boss.def().health()) {
+                    max.setBaseValue(enc.boss.def().health());
+                }
+                living.setHealth(maxHealth(living));
+            }
+        }
+        enc.names.keySet().removeIf(mob -> !mob.isValid());
+        for (Map.Entry<Entity, Component> n : enc.names.entrySet()) {
+            if (!n.getValue().equals(n.getKey().customName())) {
+                n.getKey().customName(n.getValue());
+            }
+        }
+    }
+
     /** Multiplies a mob's max health by {@code factor} (one keyed modifier, so it is never doubled) and fills it. */
     void scale(Entity mob, double factor) {
         if (!(mob instanceof LivingEntity living)) {
@@ -140,12 +183,6 @@ final class Fights {
                     AttributeModifier.Operation.MULTIPLY_SCALAR_1));
         }
         living.setHealth(max.getValue());
-        // MythicMobs may set health again once the mob is set up: fill it once more a tick later.
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (living.isValid()) {
-                living.setHealth(max.getValue());
-            }
-        });
     }
 
     // ------------------------------------------------------------------ starting
@@ -210,8 +247,7 @@ final class Fights {
                 factor *= ar.kit.fights().tuning().eliteHealth();
                 enc.elites.put(mob.getUniqueId(), s.affix());
                 String name = s.affix().title() + " " + baseName(mob);
-                mob.customName(Component.text(name, NamedTextColor.GOLD));
-                mob.setCustomNameVisible(true);
+                name(enc, mob, Component.text(name, NamedTextColor.GOLD));
                 runs.tellRoom(ar, enc.room, "§6A " + name + " leads this pack: §7it " + s.affix().hint() + ".");
             }
             scale(mob, Math.min(factor, ar.kit.fights().tuning().healthCap()));
@@ -241,6 +277,7 @@ final class Fights {
         // Its spawn event may have filed it as a stray; it is one of ours.
         enc.extras.remove(mob);
         ar.extras.remove(mob);
+        enc.settling.put(mob, clock.getAsLong());
         runs.register(ar, mob, new double[] { at.getX(), at.getY(), at.getZ() });
         return mob;
     }
@@ -291,8 +328,7 @@ final class Fights {
             max.setBaseValue(def.health());
         }
         scale(living, Math.min(ar.healthFactor, ar.kit.fights().tuning().healthCap()));
-        living.customName(Component.text(def.name(), NamedTextColor.DARK_RED));
-        living.setCustomNameVisible(true);
+        name(enc, living, Component.text(def.name(), NamedTextColor.DARK_RED));
         enc.boss = new BossFight(def, ar.kit.fights().tuning(), now);
         enc.bossMob = living;
         enc.bar = BossBar.bossBar(Component.text(def.name()), 1f, BossBar.Color.RED, BossBar.Overlay.NOTCHED_10);
@@ -334,6 +370,7 @@ final class Fights {
         prune(enc.alive);
         prune(enc.adds);
         prune(enc.extras);
+        settle(enc, now);
         if (enc.boss != null) {
             List<Entity> fighting = new ArrayList<>(enc.adds);
             fighting.add(enc.bossMob);
@@ -410,7 +447,7 @@ final class Fights {
                 fx.burst(e.getLocation());
                 for (Player p : inRoom(ar, enc.room)) {
                     p.playSound(e.getLocation(), "minecraft:entity.evoker.prepare_summon", 1f, 1.2f);
-                    runs.bars.send(p, ActionBars.Level.INFO, "The " + baseName(e) + " rallies its allies: they hit"
+                    runs.cues.send(p, Cues.Level.INFO, "The " + baseName(e) + " rallies its allies: they hit"
                             + " harder for " + t.rallySeconds() + " seconds.", now, 2000);
                 }
             }
@@ -484,7 +521,7 @@ final class Fights {
                     near = e;
                 }
             }
-            runs.bars.send(p, ActionBars.Level.INFO, "Last enemy: " + RunGeometry.direction(l.getX(), l.getZ(),
+            runs.cues.send(p, Cues.Level.INFO, "Last enemy: " + RunGeometry.direction(l.getX(), l.getZ(),
                     l.getYaw(), near.getLocation().getX(), near.getLocation().getZ()), now, 2500);
         }
     }
@@ -674,12 +711,12 @@ final class Fights {
                     a.warned.put(p.getUniqueId(), now);
                     double[] out = t.wayOut(l.getX(), l.getZ());
                     p.playSound(l, "minecraft:block.note_block.bass", 1f, 0.5f);
-                    runs.bars.send(p, ActionBars.Level.WARNING, "Danger in " + t.secondsLeft(now) + "s: move "
+                    runs.cues.send(p, Cues.Level.WARNING, "Danger in " + t.secondsLeft(now) + "s: move "
                             + RunGeometry.direction(l.getX(), l.getZ(), l.getYaw(), out[0], out[1]), now, 1200);
                 }
             } else if (Boolean.TRUE.equals(before)) {
                 p.playSound(l, "minecraft:block.note_block.chime", 1f, 1.5f);
-                runs.bars.send(p, ActionBars.Level.WARNING, "You're clear.", now, 1500);
+                runs.cues.send(p, Cues.Level.WARNING, "You're clear.", now, 1500);
             }
         }
     }
@@ -769,6 +806,7 @@ final class Fights {
         for (Encounter enc : ar.encounters.values()) {
             if (enc.alive.contains(mob) || mob.equals(enc.bossMob) || enc.adds.contains(mob)) {
                 enc.lastHitMs = clock.getAsLong();
+                enc.settling.remove(mob); // hurt: its health is the fight's now
             }
         }
     }

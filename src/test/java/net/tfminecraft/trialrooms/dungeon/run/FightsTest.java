@@ -359,7 +359,13 @@ class FightsTest {
     assertTrue(seen.stream().anyMatch(m -> m.contains("leads this pack")), seen.toString());
     Entity elite = ar.encounters.get(fight).alive.stream().filter(m -> enc.elites.containsKey(m.getUniqueId()))
         .findFirst().orElseThrow();
-    verify(elite).customName(any(Component.class));
+    verify(elite, atLeastOnce()).customName(any(Component.class));
+    // MythicMobs puts its own name back: the fight's name is set again while the mob settles
+    Component given = enc.names.get(elite);
+    when(elite.customName()).thenReturn(given);
+    clearInvocations(elite);
+    ticks(1);
+    verify(elite, never()).customName(any(Component.class));
     List<Entity> others = new ArrayList<>(enc.alive);
     others.remove(elite);
     // shielded: takes less while its wave stands; the shield falls with the last of them
@@ -441,7 +447,19 @@ class FightsTest {
     assertNotNull(enc.boss);
     assertTrue(said(a, "The Warden awakens."));
     assertFalse(enc.adds.isEmpty(), "the first phase brings adds");
-    verify(mob.getAttribute(Attribute.MAX_HEALTH)).setBaseValue(300);
+    verify(mob.getAttribute(Attribute.MAX_HEALTH), atLeastOnce()).setBaseValue(300);
+    // while it wakes it can't be hurt; its own plugin resetting its base health is undone
+    assertEquals(0, runs.incomingFactor(mob));
+    when(mob.getAttribute(Attribute.MAX_HEALTH).getBaseValue()).thenReturn(300.0);
+    clearInvocations(mob.getAttribute(Attribute.MAX_HEALTH));
+    ticks(1);
+    verify(mob.getAttribute(Attribute.MAX_HEALTH), never()).setBaseValue(anyDouble());
+    // a hit ends its settling: its health is the fight's from then on
+    runs.fights().hit(ar, mob);
+    assertFalse(enc.settling.containsKey(mob));
+    now.addAndGet(Fights.SETTLE_MS + 1);
+    ticks(1);
+    assertTrue(enc.settling.isEmpty(), "settled once the time is up");
     // a slam marks the boss's target after the first interval
     now.addAndGet(8000);
     ticks(1);
@@ -725,7 +743,15 @@ class FightsTest {
     RunManager.ActiveRun fresh = new RunManager.ActiveRun(ar.run, ar.geo, ar.placer, kit, ar.rules, ar.leader,
         ar.keyPath, ar.arrival);
     ar.run.member(a.getUniqueId()).room(corridor);
+    // an enemy that isn't alive still settles without a health to fill
+    Entity statue = mock(Entity.class);
+    when(statue.getUniqueId()).thenReturn(UUID.randomUUID());
+    when(statue.getPersistentDataContainer()).thenReturn(mock(PersistentDataContainer.class));
+    when(statue.isValid()).thenReturn(true);
+    when(statue.getLocation()).thenReturn(at(geo.centre(corridor)));
+    nextOf.put("mob_halb", statue);
     f.start(fresh, corridor);
+    f.step(fresh, corridor);
     Fights.Encounter enc = fresh.encounters.get(corridor);
     assertFalse(enc.alive.isEmpty());
     // a second enemy on a marker stands beside it when there is floor and room
