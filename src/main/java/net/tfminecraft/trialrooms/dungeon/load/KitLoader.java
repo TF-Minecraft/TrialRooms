@@ -13,6 +13,7 @@ import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import net.tfminecraft.trialrooms.dungeon.grid.Side;
+import net.tfminecraft.trialrooms.dungeon.fight.FightKit;
 import net.tfminecraft.trialrooms.dungeon.template.Doorway;
 import net.tfminecraft.trialrooms.dungeon.template.Marker;
 import net.tfminecraft.trialrooms.dungeon.template.RoomCatalog;
@@ -82,16 +83,18 @@ public final class KitLoader {
         }
         Map<String, String> mobs = new LinkedHashMap<>();
         var mobSection = kit.getConfigurationSection("mobs");
-        if (mobSection == null) {
-            problems.add(id + ": kit.yml has no mobs section, so its fight rooms stay empty");
-        } else {
+        if (mobSection != null) {
             for (String tag : mobSection.getKeys(false)) {
                 mobs.put(tag, mobSection.getString(tag));
             }
         }
+        FightKit fights = FightKit.load(kit, id, problems);
+        if (fights == null && mobs.isEmpty()) {
+            problems.add(id + ": kit.yml has no roster or mobs section, so its fight rooms stay empty");
+        }
         return new DungeonKit(id, new RoomCatalog(cellSize, cellHeight, templates), structures, doorHeight,
                 kit.getString("seal-block", "minecraft:stone_bricks"), kit.getString("door-block", "minecraft:iron_bars"),
-                mobs);
+                mobs, fights);
     }
 
     /** Reads a YAML file, turning syntax and read errors into a reportable problem. */

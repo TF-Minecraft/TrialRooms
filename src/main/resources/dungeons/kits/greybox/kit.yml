@@ -4,9 +4,53 @@ cell-height: 24
 door-height: 4
 seal-block: minecraft:stone_bricks
 door-block: minecraft:iron_bars
-# Placeholder enemies until the fights phase: existing dungeon skeletons.
-mobs:
-  melee: dSkeleton_footman_em
-  ranged: dSkeleton_Archer_em
-  elite: dSkeleton_Halberdier_em
-  boss: dSkeleton_Tank_em
+# Enemies: the existing dungeon skeletons (MythicMobs). cost = share of a room's threat budget.
+# Roles: grunt, bruiser, tank, ranged, caster, swarm, elite. Ranged and casters prefer 'ranged'
+# spawn markers, the rest 'melee' ones.
+roster:
+  footman: {mob: dSkeleton_footman_em, role: grunt, cost: 1, weight: 3}
+  swordman: {mob: dSkeleton_swordman_em, role: grunt, cost: 1.5, weight: 2}
+  halberdier: {mob: dSkeleton_Halberdier_em, role: bruiser, cost: 2}
+  warrior: {mob: dSkeleton_Warrior_em, role: tank, cost: 2.5}
+  archer: {mob: dSkeleton_Archer_em, role: ranged, cost: 2.5}
+  wizard: {mob: dSkeleton_Wizard_em, role: caster, cost: 3}
+  tank: {mob: dSkeleton_Tank_em, role: elite, cost: 5}
+# Pack shapes, one role per enemy; min-depth = fight rooms cleared before it appears.
+packs:
+  patrol: {slots: [grunt, grunt, grunt, ranged], weight: 3}
+  shieldwall: {slots: [tank, grunt, grunt, ranged], weight: 2, min-depth: 1}
+  warband: {slots: [bruiser, bruiser, grunt, caster], weight: 1, min-depth: 2}
+# Bosses. health = base max health before party scaling. Phases start at a health percent;
+# adds = threat budget of the adds that come with it; every = seconds between mechanics.
+# Mechanics: slam (marks the ground under a player), shockwave (around the boss), rally-call (adds).
+bosses:
+  bone_warden:
+    mob: dSkeleton_Tank_em
+    name: The Bone Warden
+    health: 400
+    enrage-seconds: 600
+    phases:
+      - {at: 100, adds: 0, mechanics: [slam], every: 12}
+      - {at: 66, adds: 5, mechanics: [slam, shockwave], every: 10}
+      - {at: 33, adds: 6, mechanics: [shockwave, slam, rally-call], every: 9}
+# Fight numbers (all optional; these are the defaults), for one player. Bigger parties get more
+# budget and enemy health from their recipe (enemies-per-extra-player, health-per-extra-player).
+fights:
+  budget-combat: 6
+  budget-elite: 8
+  depth-step: 0.15
+  tier-factors: [1.0, 1.35, 1.8]
+  wave-split: 9
+  third-wave: 16
+  wave-warning-seconds: 5
+  max-alive: 24
+  elite-chance: 0.35
+  elite-min-depth: 2
+  elite-health: 2.0
+  health-cap: 4.0
+  slam-seconds: 3
+  shockwave-seconds: 4
+  burst-seconds: 3
+  slam-damage: 0.35
+  shockwave-damage: 0.45
+  burst-damage: 0.30

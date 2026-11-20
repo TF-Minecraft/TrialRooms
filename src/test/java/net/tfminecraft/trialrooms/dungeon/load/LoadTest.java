@@ -47,7 +47,7 @@ class LoadTest {
     List<String> problems = new ArrayList<>();
     DungeonKit kit = KitLoader.load(dir.toFile(), problems);
     assertEquals(5, problems.size(), problems.toString());
-    assertTrue(problems.stream().anyMatch(p -> p.contains("no mobs section")), problems.toString());
+    assertTrue(problems.stream().anyMatch(p -> p.contains("no roster or mobs section")), problems.toString());
     assertEquals(1, kit.catalog().templates().size());
     assertEquals("k", kit.id());
     assertEquals(5, kit.doorHeight());
@@ -59,6 +59,24 @@ class LoadTest {
     assertEquals("melee", t.markers().getFirst().tag());
     assertNull(t.markers().get(1).facing());
     assertTrue(kit.structures().get("good").getName().endsWith("good.nbt"));
+    assertNull(kit.fights());
+    // a kit with one enemy per marker, and one with a roster
+    Path mobs = temp.resolve("mobs");
+    java.nio.file.Files.createDirectories(mobs.resolve("rooms"));
+    java.nio.file.Files.writeString(mobs.resolve("kit.yml"), "mobs:\n  melee: foot\n");
+    room(mobs, "good", ROOM, true);
+    List<String> none = new ArrayList<>();
+    DungeonKit simple = KitLoader.load(mobs.toFile(), none);
+    assertEquals(java.util.Map.of("melee", "foot"), simple.mobs());
+    assertEquals(List.of(), none);
+    Path roster = temp.resolve("roster");
+    java.nio.file.Files.createDirectories(roster.resolve("rooms"));
+    java.nio.file.Files.writeString(roster.resolve("kit.yml"), "roster:\n  foot: {mob: f}\n");
+    room(roster, "good", ROOM, true);
+    DungeonKit fights = KitLoader.load(roster.toFile(), none);
+    assertNotNull(fights.fights());
+    assertEquals(java.util.Map.of(), fights.mobs());
+    assertEquals(List.of(), none);
   }
 
   @Test

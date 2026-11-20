@@ -93,11 +93,92 @@ public final class RunListener implements Listener {
         }
     }
 
+    /** The entity behind a hit: whoever caused it, the attacker, or whoever shot the projectile. */
+    static Entity source(EntityDamageEvent event) {
+        Entity causing = event.getDamageSource().getCausingEntity();
+        if (causing != null) {
+            return causing;
+        }
+        if (event instanceof EntityDamageByEntityEvent byEntity) {
+            Entity damager = byEntity.getDamager();
+            if (damager instanceof Projectile projectile && projectile.getShooter() instanceof Entity shooter) {
+                return shooter;
+            }
+            return damager;
+        }
+        return null;
+    }
+
+    /** Run enemies hit as hard as their fight says: rallied, enraged, or not at all while charging. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onEnemyHit(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player) || !runs.inDungeonWorld(event.getEntity())) {
+            return;
+        }
+        Entity source = source(event);
+        if (source == null) {
+            return;
+        }
+        double factor = runs.outgoingFactor(source);
+        if (factor != 1) {
+            event.setDamage(event.getDamage() * factor);
+        }
+    }
+
     /**
-     * A lethal hit on a run member downs them instead. This runs before RPCharacters' own
-     * knockout handler (HIGHEST, skips cancelled hits), so neither its knockouts nor deaths happen.
+     * Hits on run enemies: none land on a boss between phases, a shielded elite takes less, and no
+     * single hit takes a boss past its next phase. Staff's /kill always kills.
      */
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEnemyHurt(EntityDamageEvent event) {
+        Entity mob = event.getEntity();
+        if (event.getCause() == EntityDamageEvent.DamageCause.KILL || !runs.inDungeonWorld(mob)
+                || !runs.isRunMob(mob)) {
+            return;
+        }
+        double factor = runs.incomingFactor(mob);
+        if (factor <= 0) {
+            event.setCancelled(true);
+            return;
+        }
+        if (factor != 1) {
+            event.setDamage(event.getDamage() * factor);
+        }
+        double cap = runs.damageCap(mob);
+        double dealt = event.getFinalDamage();
+        if (dealt > cap) {
+            if (cap <= 0) {
+                event.setCancelled(true);
+                return;
+            }
+            event.setDamage(event.getDamage() * cap / dealt);
+        }
+    }
+
+    /** Counts what players dealt to run enemies, and that the fight is moving. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEnemyHurtDone(EntityDamageEvent event) {
+        if (runs.inDungeonWorld(event.getEntity()) && runs.isRunMob(event.getEntity())) {
+            runs.mobHurt(event.getEntity(), attacker(event), event.getFinalDamage());
+        }
+    }
+
+    /** Summons and other spawns inside a run are cleaned up with it. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSpawn(org.bukkit.event.entity.CreatureSpawnEvent event) {
+        if (runs.inDungeonWorld(event.getEntity())) {
+            runs.spawned(event.getEntity());
+        }
+    }
+
+    /**
+     * A lethal hit on a run member downs them instead. It looks last (HIGHEST), once every other
+     * plugin has changed the damage: armour, damage stats and the like can raise a hit that looked
+     * survivable earlier into a killing blow. RPCharacters' knockout also runs at HIGHEST but only
+     * for hits from players, which never land in a dungeon (they are cancelled first), and it skips
+     * hits this cancels.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onLethal(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player p) || runs.runOf(p) == null || !runs.inDungeonWorld(p)) {
             return;

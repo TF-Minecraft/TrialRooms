@@ -114,6 +114,43 @@ class AdaptersTest {
   }
 
   @Test
+  void fightEffectsAreParticlesAndMagicDamage() {
+    org.bukkit.World w = mock(org.bukkit.World.class);
+    var fx = new Adapters.BukkitFx();
+    fx.ring(w, 0, 64, 0, 4);
+    verify(w, times(24)).spawnParticle(eq(org.bukkit.Particle.FLAME), anyDouble(), anyDouble(), anyDouble(), eq(1),
+        eq(0.0), eq(0.0), eq(0.0), eq(0.0));
+    fx.ring(w, 0, 64, 0, 1);
+    verify(w, times(24 + 12)).spawnParticle(eq(org.bukkit.Particle.FLAME), anyDouble(), anyDouble(), anyDouble(),
+        eq(1), eq(0.0), eq(0.0), eq(0.0), eq(0.0));
+    fx.burst(new Location(w, 1, 2, 3));
+    verify(w).spawnParticle(eq(org.bukkit.Particle.ENCHANT), eq(1.0), eq(3.0), eq(3.0), eq(8), anyDouble(),
+        anyDouble(), anyDouble(), anyDouble());
+    org.bukkit.damage.DamageSource.Builder b = mock(org.bukkit.damage.DamageSource.Builder.class);
+    when(b.withCausingEntity(any())).thenReturn(b);
+    when(b.withDirectEntity(any())).thenReturn(b);
+    org.bukkit.damage.DamageSource built = mock(org.bukkit.damage.DamageSource.class);
+    when(b.build()).thenReturn(built);
+    org.bukkit.entity.Player p = mock(org.bukkit.entity.Player.class);
+    Entity boss = mock(Entity.class);
+    try (var ds = mockStatic(org.bukkit.damage.DamageSource.class)) {
+      ds.when(() -> org.bukkit.damage.DamageSource.builder(any())).thenReturn(b);
+      fx.hurt(p, 5, boss);
+      fx.hurt(p, 3, null);
+    }
+    verify(b).withCausingEntity(boss);
+    verify(p).damage(5, built);
+    verify(p).damage(3, built);
+    // the do-nothing effects: no particles, plain damage
+    Ports.Fx.NONE.ring(w, 0, 0, 0, 1);
+    Ports.Fx.NONE.burst(new Location(w, 0, 0, 0));
+    Ports.Fx.NONE.hurt(p, 2, boss);
+    Ports.Fx.NONE.hurt(p, 1, null);
+    verify(p).damage(2, boss);
+    verify(p).damage(1);
+  }
+
+  @Test
   void mobsSpawnAndDespawnThroughMythicMobs() {
     MythicBukkit mythic = mock(MythicBukkit.class);
     MobExecutor exec = mock(MobExecutor.class);
