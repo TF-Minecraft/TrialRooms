@@ -19,5 +19,11 @@ rooms/treasure_nook.yml
 rooms/treasure_nook.nbt
 rooms/boss_arena.yml
 rooms/boss_arena.nbt
+rooms/combat_ell.yml
+rooms/combat_ell.nbt
+rooms/corridor_ramp.yml
+rooms/corridor_ramp.nbt
+rooms/combat_pit.yml
+rooms/combat_pit.nbt
 rooms/vault_exit.yml
 rooms/vault_exit.nbt

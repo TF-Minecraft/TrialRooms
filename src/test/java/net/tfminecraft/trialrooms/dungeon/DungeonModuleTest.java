@@ -59,8 +59,10 @@ class DungeonModuleTest {
     when(structures.loadStructure(any(File.class))).thenAnswer(i -> {
       Structure s = mock(Structure.class);
       File f = i.getArgument(0);
-      int depth = f.getName().startsWith("combat_long") || f.getName().startsWith("boss") ? 64 : 32;
-      when(s.getSize()).thenReturn(new BlockVector(32, 12, depth));
+      String n = f.getName();
+      int width = n.startsWith("combat_ell") ? 64 : 32;
+      int depth = n.startsWith("combat_long") || n.startsWith("boss") || n.startsWith("combat_ell") ? 64 : 32;
+      when(s.getSize()).thenReturn(new BlockVector(width, 12, depth));
       return s;
     });
     plugin = mock(JavaPlugin.class);

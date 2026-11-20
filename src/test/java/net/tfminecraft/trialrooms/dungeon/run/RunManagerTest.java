@@ -608,6 +608,39 @@ class RunManagerTest {
   }
 
   @Test
+  void aClearedRoomWithTwoWaysOnNamesTheNearerDoor() {
+    // a layout where the fight room leads on through two doorways (the trunk and a branch)
+    DungeonRecipe branchy = new DungeonRecipe("delve", 1, 1, Map.of(RoomType.COMBAT, 1), true, true, 1, 1, 1, 1,
+        null, 20, 20000);
+    DungeonLayout found = null;
+    int fight = -1;
+    for (long seed = 0; seed < 200 && found == null; seed++) {
+      DungeonLayout l = DungeonGenerator.generate(kit.catalog(), branchy, seed);
+      for (int i = 0; i < l.rooms().size(); i++) {
+        int from = i;
+        if (l.rooms().get(i).node().type() == RoomType.COMBAT
+            && l.connections().stream().filter(c -> c.roomA() == from).count() >= 2) {
+          found = l;
+          fight = i;
+        }
+      }
+    }
+    assertNotNull(found);
+    layout = found;
+    geo = new RunGeometry(layout, 32, 4, 0, 64, 0);
+    when(module.generate(eq("delve"), anyLong())).thenReturn(layout);
+    placed = CompletableFuture.completedFuture(at(geo.entry(0)));
+    PlayerMock a = player("Ann");
+    runs.startRun(a, "delve", 1);
+    a.teleport(at(middle(fight)));
+    ticks(2);
+    assertEquals(DungeonRun.Room.ACTIVE, only().run().room(fight));
+    killAll();
+    ticks(1);
+    assertEquals(DungeonRun.Room.CLEARED, only().run().room(fight));
+  }
+
+  @Test
   void lastRoomsAndRefundsForOfflineLeaders() {
     // a run without a vault: the boss room is a dead end, so clearing it names no next door
     DungeonRecipe noVault = new DungeonRecipe("delve", 0, 0, null, false, false, 0, 0, 1, 1, null, 20, 20000);
