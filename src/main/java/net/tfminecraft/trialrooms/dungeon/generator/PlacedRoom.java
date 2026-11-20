@@ -16,22 +16,22 @@ import net.tfminecraft.trialrooms.dungeon.template.RoomTemplate;
  * @param originX     grid x of the room's first cell
  * @param originZ     grid z of the room's first cell
  * @param doorways    the room's doorways in grid cell coordinates, in template order
+ * @param elevation   how far the room's base sits above the start room's, in blocks (negative = below)
  */
 public record PlacedRoom(MissionNode node, RoomTemplate template, Orientation orientation, int originX, int originZ,
-        List<Doorway> doorways) {
+        List<Doorway> doorways, int elevation) {
 
     public PlacedRoom {
         doorways = List.copyOf(doorways);
     }
 
     static PlacedRoom place(MissionNode node, RoomTemplate template, Orientation orientation, int originX,
-            int originZ) {
+            int originZ, int elevation) {
         List<Doorway> doors = new ArrayList<>();
         for (Doorway d : template.doorways()) {
-            Doorway o = d.oriented(orientation, template.widthCells(), template.depthCells());
-            doors.add(new Doorway(o.cellX() + originX, o.cellZ() + originZ, o.side(), o.width()));
+            doors.add(d.oriented(orientation, template.widthCells(), template.depthCells()).moved(originX, originZ));
         }
-        return new PlacedRoom(node, template, orientation, originX, originZ, doors);
+        return new PlacedRoom(node, template, orientation, originX, originZ, doors, elevation);
     }
 
     public int widthCells() {
@@ -45,10 +45,9 @@ public record PlacedRoom(MissionNode node, RoomTemplate template, Orientation or
     /** Grid cells the room covers, as {@code {x, z}} pairs. */
     public List<int[]> cells() {
         List<int[]> cells = new ArrayList<>();
-        for (int x = 0; x < widthCells(); x++) {
-            for (int z = 0; z < depthCells(); z++) {
-                cells.add(new int[] { originX + x, originZ + z });
-            }
+        for (int[] c : template.cellList()) {
+            int[] o = orientation.transform(c[0], c[1], template.widthCells(), template.depthCells());
+            cells.add(new int[] { originX + o[0], originZ + o[1] });
         }
         return cells;
     }

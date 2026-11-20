@@ -27,22 +27,28 @@ public final class LayoutMap {
         for (char[] row : grid) {
             java.util.Arrays.fill(row, ' ');
         }
-        for (PlacedRoom r : layout.rooms()) {
-            char letter = LETTERS.charAt(r.node().type().ordinal());
-            for (int x = 0; x < r.widthCells(); x++) {
-                for (int z = 0; z < r.depthCells(); z++) {
-                    int gx = (r.originX() + x - b[0]) * 2;
-                    int gz = (r.originZ() + z - b[1]) * 2;
-                    grid[gz][gx] = letter;
-                    if (x + 1 < r.widthCells()) {
-                        grid[gz][gx + 1] = letter;
-                    }
-                    if (z + 1 < r.depthCells()) {
-                        grid[gz + 1][gx] = letter;
-                        if (x + 1 < r.widthCells()) {
-                            grid[gz + 1][gx + 1] = letter;
-                        }
-                    }
+        java.util.Map<Long, Integer> roomOf = new java.util.HashMap<>();
+        for (int i = 0; i < layout.rooms().size(); i++) {
+            for (int[] c : layout.rooms().get(i).cells()) {
+                roomOf.put(key(c[0], c[1]), i);
+            }
+        }
+        for (int i = 0; i < layout.rooms().size(); i++) {
+            char letter = LETTERS.charAt(layout.rooms().get(i).node().type().ordinal());
+            for (int[] c : layout.rooms().get(i).cells()) {
+                int gx = (c[0] - b[0]) * 2;
+                int gz = (c[1] - b[1]) * 2;
+                grid[gz][gx] = letter;
+                boolean east = roomOf.getOrDefault(key(c[0] + 1, c[1]), -1) == i;
+                boolean south = roomOf.getOrDefault(key(c[0], c[1] + 1), -1) == i;
+                if (east) {
+                    grid[gz][gx + 1] = letter;
+                }
+                if (south) {
+                    grid[gz + 1][gx] = letter;
+                }
+                if (east && south && roomOf.getOrDefault(key(c[0] + 1, c[1] + 1), -1) == i) {
+                    grid[gz + 1][gx + 1] = letter;
                 }
             }
         }
@@ -57,5 +63,9 @@ public final class LayoutMap {
             lines.add(new String(row).stripTrailing());
         }
         return lines;
+    }
+
+    private static long key(int x, int z) {
+        return ((long) x << 32) ^ (z & 0xffffffffL);
     }
 }

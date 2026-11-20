@@ -254,7 +254,7 @@ class FightsTest {
   RunManager.ActiveRun enter(PlayerMock a, int room) {
     runs.startRun(a, "delve", 1);
     RunManager.ActiveRun ar = only();
-    a.teleport(at(geo.centre(room)));
+    a.teleport(at(middle(room)));
     ticks(1);
     return ar;
   }
@@ -301,7 +301,7 @@ class FightsTest {
     now.addAndGet(3000);
     ticks(1);
     // a stray enemy is sent back into the room
-    wave2.getLast().teleport(at(geo.centre(0)));
+    wave2.getLast().teleport(at(middle(0)));
     ticks(1);
     assertEquals(fight, geo.roomAt(wave2.getLast().getLocation().getX(), wave2.getLast().getLocation().getZ()));
     kill(wave2.getLast());
@@ -328,7 +328,7 @@ class FightsTest {
     enc.waveStartMs = started;
     enc.waveSize = wave1.size() * 2; // as if half the wave were gone already
     now.addAndGet(20_000);
-    a.teleport(at(geo.centre(fight)).add(8, 0, 8));
+    a.teleport(at(middle(fight)).add(8, 0, 8));
     ticks(1);
     assertEquals(now.get(), enc.lastHitMs);
     assertEquals(-1, enc.nextWaveAtMs);
@@ -340,7 +340,7 @@ class FightsTest {
     Location before = wave1.getLast().getLocation();
     enc.nextWaveAtMs = -1;
     enc.wave = enc.plan.waves().size() - 1;
-    a.teleport(at(geo.centre(0)));
+    a.teleport(at(middle(0)));
     ar.run.member(a.getUniqueId()).room(0);
     now.addAndGet(25_000);
     runs.fights().step(ar, fight);
@@ -436,7 +436,7 @@ class FightsTest {
   void aBossFightsInPhasesWithTelegraphs() {
     PlayerMock a = player("Ann");
     int boss = room(RoomType.BOSS);
-    Mob mob = living(Mob.class, at(geo.centre(boss)), "Warden");
+    Mob mob = living(Mob.class, at(middle(boss)), "Warden");
     AttributeInstance speed = mock(AttributeInstance.class);
     when(mob.getAttribute(Attribute.MOVEMENT_SPEED)).thenReturn(speed);
     when(mob.getTarget()).thenReturn(a);
@@ -561,12 +561,12 @@ class FightsTest {
     PlayerMock b = player("Bo");
     when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
     int boss = room(RoomType.BOSS);
-    LivingEntity mob = living(LivingEntity.class, at(geo.centre(boss)), "Warden");
+    LivingEntity mob = living(LivingEntity.class, at(middle(boss)), "Warden");
     nextOf.put("mob_boss", mob);
     runs.startRun(a, "delve", 1);
     RunManager.ActiveRun ar = only();
-    a.teleport(at(geo.centre(boss)));
-    b.teleport(at(geo.centre(boss)));
+    a.teleport(at(middle(boss)));
+    b.teleport(at(middle(boss)));
     ticks(settings.bossCountdownSeconds() * 2 + 2);
     Fights.Encounter enc = ar.encounters.get(boss);
     // not the same player twice running
@@ -607,17 +607,17 @@ class FightsTest {
     PlayerMock b = player("Bo");
     when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
     int boss = room(RoomType.BOSS);
-    Mob mob = living(Mob.class, at(geo.centre(boss)), "Warden");
+    Mob mob = living(Mob.class, at(middle(boss)), "Warden");
     when(mob.getTarget()).thenReturn(b);
     nextOf.put("mob_boss", mob);
     runs.startRun(a, "delve", 1);
     RunManager.ActiveRun ar = only();
-    a.teleport(at(geo.centre(boss)));
-    b.teleport(at(geo.centre(boss)));
+    a.teleport(at(middle(boss)));
+    b.teleport(at(middle(boss)));
     ticks(settings.bossCountdownSeconds() * 2 + 2);
     Fights.Encounter enc = ar.encounters.get(boss);
     runs.down(b);
-    a.teleport(at(geo.centre(boss)).add(6, 0, 0));
+    a.teleport(at(middle(boss)).add(6, 0, 0));
     a.setSneaking(true);
     now.addAndGet(8000);
     ticks(1);
@@ -667,12 +667,12 @@ class FightsTest {
     RunManager.ActiveRun ar = enter(a, fight);
     Fights.Encounter enc = ar.encounters.get(fight);
     // summons inside a fight belong to it; elsewhere in the run to the run; outside any run to nobody
-    Entity summon = mob(at(geo.centre(fight)), "Summon");
+    Entity summon = mob(at(middle(fight)), "Summon");
     runs.spawned(summon);
     assertTrue(enc.extras.contains(summon));
     verify(summon.getPersistentDataContainer()).set(any(), any(), any());
     verify((LivingEntity) enc.alive.iterator().next()).setRemoveWhenFarAway(false);
-    Entity loose = mob(at(geo.centre(0)), "Loose");
+    Entity loose = mob(at(middle(0)), "Loose");
     runs.spawned(loose);
     assertTrue(ar.extras.contains(loose));
     Entity away = mob(new Location(dungeon, 900_000, 64, 900_000), "Away");
@@ -706,13 +706,13 @@ class FightsTest {
     PlayerMock b = player("Bo");
     when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
     int boss = room(RoomType.BOSS);
-    LivingEntity mob = living(LivingEntity.class, at(geo.centre(boss)), "Warden");
+    LivingEntity mob = living(LivingEntity.class, at(middle(boss)), "Warden");
     when(mob.getAttribute(Attribute.MAX_HEALTH)).thenReturn(null);
     nextOf.put("mob_boss", mob);
     runs.startRun(a, "delve", 1);
     RunManager.ActiveRun ar = only();
-    a.teleport(at(geo.centre(boss)));
-    b.teleport(at(geo.centre(boss)));
+    a.teleport(at(middle(boss)));
+    b.teleport(at(middle(boss)));
     ticks(settings.bossCountdownSeconds() * 2 + 2);
     Fights.Encounter enc = ar.encounters.get(boss);
     assertNotNull(enc.bar);
@@ -740,7 +740,7 @@ class FightsTest {
     LivingEntity bare = mock(LivingEntity.class);
     f.scale(bare, 2);
     verify(bare, never()).setHealth(anyDouble());
-    LivingEntity normal = (LivingEntity) mob(at(geo.centre(0)), "N");
+    LivingEntity normal = (LivingEntity) mob(at(middle(0)), "N");
     f.scale(normal, 1);
     verify(normal.getAttribute(Attribute.MAX_HEALTH), never()).addTransientModifier(any());
     f.scale(normal, 2);
@@ -758,7 +758,7 @@ class FightsTest {
     when(statue.getUniqueId()).thenReturn(UUID.randomUUID());
     when(statue.getPersistentDataContainer()).thenReturn(mock(PersistentDataContainer.class));
     when(statue.isValid()).thenReturn(true);
-    when(statue.getLocation()).thenReturn(at(geo.centre(corridor)));
+    when(statue.getLocation()).thenReturn(at(middle(corridor)));
     nextOf.put("mob_halb", statue);
     f.start(fresh, corridor);
     f.step(fresh, corridor);
@@ -788,17 +788,17 @@ class FightsTest {
     int fight = room(RoomType.COMBAT);
     // an enemy that won't spawn is skipped; names come from the mob's own name when it has one
     doReturn(null).when(mobs).spawn(eq("mob_foot"), any(), anyInt());
-    LivingEntity blank = living(LivingEntity.class, at(geo.centre(fight)), "Archer");
+    LivingEntity blank = living(LivingEntity.class, at(middle(fight)), "Archer");
     when(blank.customName()).thenReturn(Component.text(""));
     nextOf.put("mob_arch", blank);
-    LivingEntity captain = living(LivingEntity.class, at(geo.centre(fight)), "Halberdier");
+    LivingEntity captain = living(LivingEntity.class, at(middle(fight)), "Halberdier");
     when(captain.customName()).thenReturn(Component.text("Captain"));
     nextOf.put("mob_halb", captain);
     useKit(fightKit(tuning(6, 1), warden()));
     runs.startRun(a, "delve", 1);
     RunManager.ActiveRun ar = only();
-    a.teleport(at(geo.centre(fight)));
-    b.teleport(at(geo.centre(0)));
+    a.teleport(at(middle(fight)));
+    b.teleport(at(middle(0)));
     ticks(settings.countdownSeconds() * 2 + 2);
     Fights.Encounter enc = ar.encounters.get(fight);
     assertNotNull(enc);
@@ -810,7 +810,7 @@ class FightsTest {
     Entity plain = mock(Entity.class);
     when(plain.getUniqueId()).thenReturn(UUID.randomUUID());
     when(plain.isValid()).thenReturn(true);
-    when(plain.getLocation()).thenReturn(at(geo.centre(fight)).add(5, 0, 0));
+    when(plain.getLocation()).thenReturn(at(middle(fight)).add(5, 0, 0));
     enc.alive.add(plain);
     enc.waveOf.put(plain.getUniqueId(), 0);
     for (int i = 0; i < all.size() - 1; i++) {
@@ -829,7 +829,7 @@ class FightsTest {
     ticks(1);
     assertTrue(said(a, "Two enemies left."));
     now.addAndGet(3000);
-    a.teleport(at(geo.centre(fight)).add(6, 0, 0));
+    a.teleport(at(middle(fight)).add(6, 0, 0));
     ticks(1);
     // a shielded elite in another wave than the rest holds no shield
     enc.elites.put(all.getLast().getUniqueId(), Affix.SHIELDED);
@@ -878,13 +878,13 @@ class FightsTest {
         new BossDef.Phase(100, 0, List.of(Mechanic.SLAM), 8), new BossDef.Phase(50, 0, List.of(Mechanic.SHOCKWAVE), 8)),
         60);
     useKit(fightKit(tuning(6, 0), calm));
-    Mob mob = living(Mob.class, at(geo.centre(boss)), "Warden");
+    Mob mob = living(Mob.class, at(middle(boss)), "Warden");
     when(mob.getTarget()).thenReturn(mock(LivingEntity.class));
     nextOf.put("mob_boss", mob);
     runs.startRun(a, "delve", 1);
     RunManager.ActiveRun ar = only();
-    a.teleport(at(geo.centre(boss)));
-    b.teleport(at(geo.centre(boss)));
+    a.teleport(at(middle(boss)));
+    b.teleport(at(middle(boss)));
     ticks(settings.bossCountdownSeconds() * 2 + 2);
     Fights.Encounter enc = ar.encounters.get(boss);
     assertTrue(enc.adds.isEmpty(), "no adds in the first phase");
@@ -925,7 +925,7 @@ class FightsTest {
     Fights.Encounter other = new Fights.Encounter(rest, new net.tfminecraft.trialrooms.dungeon.fight.Director.Plan(0,
         "boss", List.of()), now.get(), 0, 1);
     doReturn(null).when(mobs).spawn(eq("mob_foot"), any(), anyInt());
-    nextOf.put("mob_boss", living(LivingEntity.class, at(geo.centre(rest)), "Other"));
+    nextOf.put("mob_boss", living(LivingEntity.class, at(middle(rest)), "Other"));
     assertTrue(runs.fights().startBoss(ar, other, warden(), now.get()));
   }
 
@@ -949,5 +949,11 @@ class FightsTest {
     a.setSneaking(true);
     ar.run.member(a.getUniqueId()).room(fight);
     assertNotNull(enc);
+  }
+
+  /** The middle of a room's footprint box at standing height (the tests' rooms are rectangles). */
+  double[] middle(int room) {
+    var r = layout.rooms().get(room);
+    return new double[] {(r.originX() + r.widthCells() / 2.0) * 32, 65, (r.originZ() + r.depthCells() / 2.0) * 32};
   }
 }

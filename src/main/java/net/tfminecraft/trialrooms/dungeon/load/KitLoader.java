@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -43,12 +44,14 @@ public final class KitLoader {
         YamlConfiguration kit;
         int cellSize;
         int cellHeight;
+        int maxRise;
         int doorHeight;
         try {
             kit = read(kitFile);
             cellSize = kit.getInt("cell-size", 32);
             cellHeight = kit.getInt("cell-height", 24);
-            new RoomCatalog(cellSize, cellHeight, List.of()); // checks the sizes
+            maxRise = kit.getInt("max-rise", 24);
+            new RoomCatalog(cellSize, cellHeight, maxRise, List.of()); // checks the sizes
             doorHeight = kit.getInt("door-height", 4);
             if (doorHeight < 2 || doorHeight >= cellHeight) {
                 throw new IllegalArgumentException("door-height must be at least 2 and below cell-height");
@@ -71,6 +74,7 @@ public final class KitLoader {
                 }
                 RoomTemplate template = room(roomId, read(sidecar));
                 RoomCatalog.check(template, cellSize, cellHeight);
+                requireMarkers(template);
                 templates.add(template);
                 structures.put(roomId, nbt);
             } catch (RuntimeException e) {
@@ -92,7 +96,7 @@ public final class KitLoader {
         if (fights == null && mobs.isEmpty()) {
             problems.add(id + ": kit.yml has no roster or mobs section, so its fight rooms stay empty");
         }
-        return new DungeonKit(id, new RoomCatalog(cellSize, cellHeight, templates), structures, doorHeight,
+        return new DungeonKit(id, new RoomCatalog(cellSize, cellHeight, maxRise, templates), structures, doorHeight,
                 kit.getString("seal-block", "minecraft:stone_bricks"), kit.getString("door-block", "minecraft:iron_bars"),
                 mobs, fights);
     }
@@ -114,7 +118,16 @@ public final class KitLoader {
         for (Map<?, ?> d : yml.getMapList("doorways")) {
             int[] cell = ints(text(d, "cell", "0,0"), ",", 2, "doorway cell");
             doorways.add(new Doorway(cell[0], cell[1], Side.parse(text(d, "side", null)),
-                    Integer.parseInt(text(d, "width", "4"))));
+                    Integer.parseInt(text(d, "width", "4")), Integer.parseInt(text(d, "floor", "0")),
+                    Integer.parseInt(text(d, "height", "0"))));
+        }
+        Set<Integer> cells = new HashSet<>();
+        for (String c : yml.getStringList("cells")) {
+            int[] at = ints(c, ",", 2, "cell");
+            if (at[0] < 0 || at[0] >= footprint[0] || at[1] < 0 || at[1] >= footprint[1]) {
+                throw new IllegalArgumentException("cell " + c + " is outside the footprint");
+            }
+            cells.add(at[1] * footprint[0] + at[0]);
         }
         List<Marker> markers = new ArrayList<>();
         for (Map<?, ?> m : yml.getMapList("markers")) {
@@ -125,7 +138,32 @@ public final class KitLoader {
         }
         return new RoomTemplate(id, RoomType.parse(yml.getString("type")), footprint[0], footprint[1], doorways,
                 markers, yml.getInt("weight", 1), yml.getInt("min-depth", 0), yml.getInt("max-depth", 0),
-                yml.getInt("max-per-run", 0), new HashSet<>(yml.getStringList("tags")));
+                yml.getInt("max-per-run", 0), new HashSet<>(yml.getStringList("tags")), cells);
+    }
+
+    /**
+     * The markers the run code needs, so nothing falls back to a guessed spot: spawn markers in
+     * combat and elite rooms, a {@code boss} spawn marker in boss rooms, a rest marker in rest rooms.
+     */
+    static void requireMarkers(RoomTemplate t) {
+        boolean spawn = false;
+        boolean boss = false;
+        boolean rest = false;
+        for (Marker m : t.markers()) {
+            spawn |= m.kind().equals("spawn");
+            boss |= m.kind().equals("spawn") && m.tag().equals("boss");
+            rest |= m.kind().equals("rest");
+        }
+        String missing = switch (t.type()) {
+            case COMBAT, ELITE -> spawn ? null : "a spawn marker";
+            case BOSS -> boss ? null : "a spawn marker tagged boss";
+            case REST -> rest ? null : "a rest marker";
+            default -> null;
+        };
+        if (missing != null) {
+            throw new IllegalArgumentException("a " + t.type().name().toLowerCase(java.util.Locale.ROOT)
+                    + " room needs " + missing);
+        }
     }
 
     private static String text(Map<?, ?> map, String key, String fallback) {

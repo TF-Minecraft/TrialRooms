@@ -441,7 +441,8 @@ final class Fights {
         for (Player p : inRoom(ar, enc.room)) {
             Location l = p.getLocation();
             p.sendMessage("§eMore enemies come in " + t.waveWarningSeconds() + " seconds, "
-                    + RunGeometry.direction(l.getX(), l.getZ(), l.getYaw(), from[0], from[2]) + ".");
+                    + RunGeometry.direction(l.getX(), l.getY(), l.getZ(), l.getYaw(), from[0], from[1], from[2])
+                    + ".");
             p.playSound(at, "minecraft:item.goat_horn.sound.0", 1f, 1f);
         }
     }
@@ -502,7 +503,10 @@ final class Fights {
         double bestD = Double.MAX_VALUE;
         for (double[] m : points) {
             for (Player p : here) {
-                double d = Math.hypot(m[0] - p.getLocation().getX(), m[2] - p.getLocation().getZ());
+                Location l = p.getLocation();
+                // Height counts: in a room with a balcony, the nearest marker must be on the player's level.
+                double d = Math.sqrt(Math.pow(m[0] - l.getX(), 2) + Math.pow(m[1] - l.getY(), 2)
+                        + Math.pow(m[2] - l.getZ(), 2));
                 if (d < bestD) {
                     bestD = d;
                     best = m;
@@ -542,8 +546,9 @@ final class Fights {
                     near = e;
                 }
             }
-            runs.cues.send(p, Cues.Level.INFO, "Last enemy: " + RunGeometry.direction(l.getX(), l.getZ(),
-                    l.getYaw(), near.getLocation().getX(), near.getLocation().getZ()), now, 2500);
+            Location n = near.getLocation();
+            runs.cues.send(p, Cues.Level.INFO, "Last enemy: " + RunGeometry.direction(l.getX(), l.getY(), l.getZ(),
+                    l.getYaw(), n.getX(), n.getY(), n.getZ()), now, 2500);
         }
     }
 
@@ -725,7 +730,7 @@ final class Fights {
                 continue;
             }
             Location l = p.getLocation();
-            boolean in = t.inside(l.getX(), l.getZ());
+            boolean in = t.inside(l.getX(), l.getY(), l.getZ());
             Boolean before = a.inside.put(p.getUniqueId(), in);
             if (in) {
                 if (now - a.warned.getOrDefault(p.getUniqueId(), Long.MIN_VALUE / 2) >= 1000) {
@@ -753,7 +758,7 @@ final class Fights {
         Entity source = t.kind() == Telegraph.Kind.BURST ? null : enc.bossMob;
         for (Player p : inRoom(ar, enc.room)) {
             Location l = p.getLocation();
-            if (!ar.run.member(p.getUniqueId()).playing() || !t.inside(l.getX(), l.getZ())) {
+            if (!ar.run.member(p.getUniqueId()).playing() || !t.inside(l.getX(), l.getY(), l.getZ())) {
                 continue;
             }
             p.setNoDamageTicks(0); // a recent hit must not soak the mechanic

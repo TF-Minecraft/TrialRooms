@@ -61,6 +61,7 @@ class WorldPlacerTest {
     when(plugin.getServer()).thenReturn(srv);
     when(plugin.isEnabled()).thenReturn(true);
     world = mock(World.class);
+    when(world.getMaxHeight()).thenReturn(256);
     block = mock(Block.class);
     when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(block);
     when(world.getChunkAtAsync(anyInt(), anyInt(), eq(true)))
@@ -176,8 +177,15 @@ class WorldPlacerTest {
     placer.placeRoom(0);
     verify(block, times(3 * 4 * 4)).setBlockData(any(), eq(false));
     Location at = placer.arrival();
-    assertEquals(16.5, at.getX());
+    double[] in = new net.tfminecraft.trialrooms.dungeon.run.RunGeometry(layout, 32, 4, 0, 64, 0).insideDoor(0, 0);
+    assertEquals(in[0], at.getX());
+    assertEquals(in[2], at.getZ());
     assertEquals(65, at.getY());
+    // a room that would reach past the world's top or bottom is refused
+    assertThrows(IllegalStateException.class,
+        () -> new LayoutPlacer(plugin, world, kit, id -> s, layout, 0, 250, 0).placeRoom(0));
+    when(world.getMinHeight()).thenReturn(100);
+    assertThrows(IllegalStateException.class, () -> placer.placeRoom(0));
   }
 
   @Test

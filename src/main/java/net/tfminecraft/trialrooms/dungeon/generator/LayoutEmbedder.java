@@ -67,7 +67,7 @@ final class LayoutEmbedder {
         if (node.parent() < 0) {
             for (RoomTemplate t : candidates(node)) {
                 for (Orientation o : Weighted.shuffled(ORIENTATIONS, random)) {
-                    if (attempt(i, t, o, 0, 0, null)) {
+                    if (attempt(i, t, o, 0, 0, 0, null)) {
                         return true;
                     }
                 }
@@ -82,11 +82,15 @@ final class LayoutEmbedder {
             Side need = from.side().opposite();
             for (RoomTemplate t : candidates(node)) {
                 for (Orientation o : Weighted.shuffled(ORIENTATIONS, random)) {
-                    List<Doorway> doors = PlacedRoom.place(node, t, o, 0, 0).doorways();
+                    List<Doorway> doors = PlacedRoom.place(node, t, o, 0, 0, 0).doorways();
                     for (int j = 0; j < doors.size(); j++) {
                         Doorway to = doors.get(j);
-                        if (to.side() == need && to.width() == from.width() && attempt(i, t, o,
-                                targetX - to.cellX(), targetZ - to.cellZ(), new int[] { node.parent(), d, j })) {
+                        // Joined doorways meet at the same height: the room sits as far up as that needs.
+                        int elevation = parent.elevation() + from.floor() - to.floor();
+                        if (to.side() == need && to.width() == from.width()
+                                && Math.abs(elevation) <= catalog.maxRise()
+                                && attempt(i, t, o, targetX - to.cellX(), targetZ - to.cellZ(), elevation,
+                                        new int[] { node.parent(), d, j })) {
                             return true;
                         }
                     }
@@ -97,11 +101,12 @@ final class LayoutEmbedder {
     }
 
     /** Places room {@code i} if its cells are free, recurses, and undoes it on failure. */
-    private boolean attempt(int i, RoomTemplate t, Orientation o, int originX, int originZ, int[] link) {
+    private boolean attempt(int i, RoomTemplate t, Orientation o, int originX, int originZ, int elevation,
+            int[] link) {
         if (++steps > budget) {
             throw new OutOfSteps();
         }
-        PlacedRoom room = PlacedRoom.place(nodes.get(i), t, o, originX, originZ);
+        PlacedRoom room = PlacedRoom.place(nodes.get(i), t, o, originX, originZ, elevation);
         List<int[]> cells = room.cells();
         for (int[] c : cells) {
             if (occupied.containsKey(key(c[0], c[1]))) {
@@ -134,7 +139,10 @@ final class LayoutEmbedder {
         return false;
     }
 
-    /** Templates that fit the room's type, depth and per-run limits, heavier ones first. */
+    /**
+     * Templates that fit the room's type, depth and per-run limits, heavier ones first. The
+     * parent's own template goes last, so the same room rarely comes twice in a row.
+     */
     private List<RoomTemplate> candidates(MissionNode node) {
         List<RoomTemplate> fit = new ArrayList<>();
         for (RoomTemplate t : catalog.ofType(node.type())) {
@@ -142,7 +150,11 @@ final class LayoutEmbedder {
                 fit.add(t);
             }
         }
-        return Weighted.order(fit, RoomTemplate::weight, random);
+        List<RoomTemplate> ordered = new ArrayList<>(Weighted.order(fit, RoomTemplate::weight, random));
+        if (node.parent() >= 0 && ordered.remove(placed[node.parent()].template())) {
+            ordered.add(placed[node.parent()].template());
+        }
+        return ordered;
     }
 
     private List<Integer> freeDoors(int room) {

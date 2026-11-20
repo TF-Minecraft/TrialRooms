@@ -741,12 +741,12 @@ public final class RunManager {
             if (c.roomA() != room) {
                 continue;
             }
-            double[] d = ar.geo.insideDoor(ar.run.layout().rooms().get(room).doorways().get(c.doorA()));
+            double[] d = ar.geo.insideDoor(room, c.doorA());
             Location l = p.getLocation();
             double dist = Math.hypot(d[0] - l.getX(), d[2] - l.getZ());
             if (dist < bestDistance) {
                 bestDistance = dist;
-                best = RunGeometry.direction(l.getX(), l.getZ(), l.getYaw(), d[0], d[2]);
+                best = RunGeometry.direction(l.getX(), l.getY(), l.getZ(), l.getYaw(), d[0], d[1], d[2]);
             }
         }
         return best;
@@ -767,8 +767,7 @@ public final class RunManager {
             } else {
                 continue;
             }
-            Doorway d = ar.run.layout().rooms().get(room).doorways().get(door);
-            for (int[] b : ar.geo.doorBlocks(d)) {
+            for (int[] b : ar.geo.doorBlocks(room, door)) {
                 module.world().getBlockAt(b[0], b[1], b[2]).setBlockData(data, true);
             }
         }
@@ -863,8 +862,9 @@ public final class RunManager {
             for (Player a : online(ar)) {
                 if (ar.run.member(a.getUniqueId()).playing()) {
                     Location l = a.getLocation();
+                    Location dl = d.getLocation();
                     cues.send(a, Cues.Level.DOWNED, d.getName() + " is down, " + RunGeometry.direction(l.getX(),
-                            l.getZ(), l.getYaw(), d.getLocation().getX(), d.getLocation().getZ()), now, 600);
+                            l.getY(), l.getZ(), l.getYaw(), dl.getX(), dl.getY(), dl.getZ()), now, 600);
                 }
             }
         }

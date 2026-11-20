@@ -42,10 +42,6 @@ public final class RunGeometry {
         return layout;
     }
 
-    public int floorY() {
-        return originY;
-    }
-
     /** The room a block position is in, or -1 outside every room. */
     public int roomAt(double x, double z) {
         int cx = Math.floorDiv((int) Math.floor(x) - originX, cell);
@@ -73,35 +69,49 @@ public final class RunGeometry {
         return true;
     }
 
+    /** The block height of a room's base: the kit's floor plus the room's elevation. */
+    public int baseY(int room) {
+        return originY + layout.rooms().get(room).elevation();
+    }
+
+    /** The block height of a doorway's floor. */
+    public int doorFloorY(int room, int door) {
+        return baseY(room) + layout.rooms().get(room).doorways().get(door).floor();
+    }
+
     /** The blocks that fill a doorway's opening on its own room's wall, as {@code {x, y, z}}. */
-    public List<int[]> doorBlocks(Doorway door) {
-        int bx = originX + door.cellX() * cell;
-        int bz = originZ + door.cellZ() * cell;
-        int start = door.offsetInCell(cell);
+    public List<int[]> doorBlocks(int room, int door) {
+        Doorway d = layout.rooms().get(room).doorways().get(door);
+        int floor = doorFloorY(room, door);
+        int bx = originX + d.cellX() * cell;
+        int bz = originZ + d.cellZ() * cell;
+        int start = d.offsetInCell(cell);
         List<int[]> blocks = new ArrayList<>();
-        for (int k = start; k < start + door.width(); k++) {
-            for (int y = 1; y <= doorHeight; y++) {
-                switch (door.side()) {
-                    case NORTH -> blocks.add(new int[] { bx + k, originY + y, bz });
-                    case SOUTH -> blocks.add(new int[] { bx + k, originY + y, bz + cell - 1 });
-                    case WEST -> blocks.add(new int[] { bx, originY + y, bz + k });
-                    default -> blocks.add(new int[] { bx + cell - 1, originY + y, bz + k });
+        for (int k = start; k < start + d.width(); k++) {
+            for (int y = 1; y <= d.heightOr(doorHeight); y++) {
+                switch (d.side()) {
+                    case NORTH -> blocks.add(new int[] { bx + k, floor + y, bz });
+                    case SOUTH -> blocks.add(new int[] { bx + k, floor + y, bz + cell - 1 });
+                    case WEST -> blocks.add(new int[] { bx, floor + y, bz + k });
+                    default -> blocks.add(new int[] { bx + cell - 1, floor + y, bz + k });
                 }
             }
         }
         return blocks;
     }
 
-    /** A standing spot three blocks inside a doorway, as {@code {x, y, z}}. */
-    public double[] insideDoor(Doorway door) {
-        double bx = originX + door.cellX() * cell;
-        double bz = originZ + door.cellZ() * cell;
+    /** A standing spot three blocks inside a doorway, on its floor, as {@code {x, y, z}}. */
+    public double[] insideDoor(int room, int door) {
+        Doorway d = layout.rooms().get(room).doorways().get(door);
+        double bx = originX + d.cellX() * cell;
+        double bz = originZ + d.cellZ() * cell;
+        double y = doorFloorY(room, door) + 1;
         double mid = cell / 2.0;
-        return switch (door.side()) {
-            case NORTH -> new double[] { bx + mid, originY + 1, bz + 3.5 };
-            case SOUTH -> new double[] { bx + mid, originY + 1, bz + cell - 3.5 };
-            case WEST -> new double[] { bx + 3.5, originY + 1, bz + mid };
-            default -> new double[] { bx + cell - 3.5, originY + 1, bz + mid };
+        return switch (d.side()) {
+            case NORTH -> new double[] { bx + mid, y, bz + 3.5 };
+            case SOUTH -> new double[] { bx + mid, y, bz + cell - 3.5 };
+            case WEST -> new double[] { bx + 3.5, y, bz + mid };
+            default -> new double[] { bx + cell - 3.5, y, bz + mid };
         };
     }
 
@@ -109,10 +119,10 @@ public final class RunGeometry {
     public double[] entry(int room) {
         for (DungeonLayout.Connection c : layout.connections()) {
             if (c.roomB() == room) {
-                return insideDoor(layout.rooms().get(room).doorways().get(c.doorB()));
+                return insideDoor(room, c.doorB());
             }
         }
-        return insideDoor(layout.rooms().get(room).doorways().get(0));
+        return insideDoor(room, 0);
     }
 
     /** Every marker of a kind in a room, in world block coordinates (block centres), as {@code {x, y, z}}. */
@@ -124,7 +134,7 @@ public final class RunGeometry {
         for (Marker m : r.template().markers()) {
             if (m.kind().equals(kind)) {
                 Marker o = m.oriented(r.orientation(), w, d);
-                out.add(new double[] { originX + r.originX() * cell + o.x() + 0.5, originY + o.y(),
+                out.add(new double[] { originX + r.originX() * cell + o.x() + 0.5, baseY(room) + o.y(),
                     originZ + r.originZ() * cell + o.z() + 0.5 });
             }
         }
@@ -142,11 +152,12 @@ public final class RunGeometry {
         return tags;
     }
 
-    /** The middle of a room at standing height. */
+    /**
+     * A safe spot in a room when a marker is missing: its entry. (A shaped room's box centre can be
+     * in a wall or outside the room, and a sunken room's floor is not at the doorways' height.)
+     */
     public double[] centre(int room) {
-        PlacedRoom r = layout.rooms().get(room);
-        return new double[] { originX + (r.originX() + r.widthCells() / 2.0) * cell, originY + 1,
-            originZ + (r.originZ() + r.depthCells() / 2.0) * cell };
+        return entry(room);
     }
 
     /**
@@ -154,6 +165,12 @@ public final class RunGeometry {
      * 0 = south, 90 = west), for players who navigate by text and sound.
      */
     public static String direction(double fromX, double fromZ, float yaw, double toX, double toZ) {
+        return direction(fromX, 0, fromZ, yaw, toX, 0, toZ);
+    }
+
+    /** As above, and says "above" or "below" when the point is two or more blocks up or down. */
+    public static String direction(double fromX, double fromY, double fromZ, float yaw, double toX, double toY,
+            double toZ) {
         double dx = toX - fromX;
         double dz = toZ - fromZ;
         long distance = Math.round(Math.sqrt(dx * dx + dz * dz));
@@ -169,7 +186,9 @@ public final class RunGeometry {
         } else {
             where = "to your left";
         }
-        return distance + (distance == 1 ? " block " : " blocks ") + where;
+        double dy = toY - fromY;
+        String level = dy >= 2 ? ", above" : dy <= -2 ? ", below" : "";
+        return distance + (distance == 1 ? " block " : " blocks ") + where + level;
     }
 
     private static long key(int x, int z) {

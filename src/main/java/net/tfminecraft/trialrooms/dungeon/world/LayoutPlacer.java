@@ -120,16 +120,24 @@ public final class LayoutPlacer {
             throw new IllegalStateException("Structure " + room.template().id() + " is " + size
                     + " but its footprint needs " + w + "x" + d + " within height " + kit.catalog().cellHeight());
         }
+        int baseY = originY + room.elevation();
+        if (baseY < world.getMinHeight() || baseY + size.getBlockY() > world.getMaxHeight()) {
+            throw new IllegalStateException("Room " + room.template().id() + " at y " + baseY
+                    + " does not fit in the world's height");
+        }
         Orientation o = room.orientation();
         int[] shift = o.transform(0, 0, w, d);
-        Location at = new Location(world, originX + room.originX() * cell + shift[0], originY,
+        Location at = new Location(world, originX + room.originX() * cell + shift[0], baseY,
                 originZ + room.originZ() * cell + shift[1]);
         structure.place(at, false, rotation(o), o.mirrored() ? Mirror.LEFT_RIGHT : Mirror.NONE, 0, 1.0f,
                 new Random(0));
         BlockData seal = plugin.getServer().createBlockData(kit.sealBlock());
         RunGeometry geo = new RunGeometry(layout, cell, kit.doorHeight(), originX, originY, originZ);
-        for (Doorway door : layout.unusedDoorways(index)) {
-            for (int[] b : geo.doorBlocks(door)) {
+        for (int door = 0; door < room.doorways().size(); door++) {
+            if (layout.isConnected(index, door)) {
+                continue;
+            }
+            for (int[] b : geo.doorBlocks(index, door)) {
                 world.getBlockAt(b[0], b[1], b[2]).setBlockData(seal, false);
             }
         }
@@ -146,10 +154,13 @@ public final class LayoutPlacer {
         for (Marker m : start.template().markers()) {
             if (m.kind().equals("entry")) {
                 Marker o = m.oriented(start.orientation(), w, d);
-                return new Location(world, baseX + o.x() + 0.5, originY + o.y(), baseZ + o.z() + 0.5);
+                return new Location(world, baseX + o.x() + 0.5, originY + start.elevation() + o.y(),
+                        baseZ + o.z() + 0.5);
             }
         }
-        return new Location(world, baseX + cell / 2 + 0.5, originY + 1, baseZ + cell / 2 + 0.5);
+        RunGeometry geo = new RunGeometry(layout, cell, kit.doorHeight(), originX, originY, originZ);
+        double[] e = geo.insideDoor(0, 0);
+        return new Location(world, e[0], e[1], e[2]);
     }
 
     /** Lets go of every chunk ticket and stops any placement still running. Safe to call twice. */
