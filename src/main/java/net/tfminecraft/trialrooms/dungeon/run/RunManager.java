@@ -791,10 +791,11 @@ public final class RunManager {
                     + " seconds brings you back.");
         } else if (ar.run.canSelfRevive(p.getUniqueId())) {
             p.sendMessage("§cYou are down. §7Nobody can reach you: crouch for " + settings().selfReviveSeconds()
-                    + " seconds to get back up. You can do this once per fight.");
+                    + " seconds to get back up." + (ar.run.activeRoom() < 0 ? "" : " You can do this once per fight."));
         } else {
-            p.sendMessage("§cYou are down. §7Nobody can reach you, and you already got up once in this fight: in "
-                    + settings().aloneBleedOutSeconds() + " seconds a shared life brings you back.");
+            p.sendMessage("§cYou are down. §7Nobody can reach you, and you already got up once in this fight"
+                    + (ar.run.lives() > 0 ? ": in " + settings().aloneBleedOutSeconds()
+                    + " seconds a shared life brings you back." : ", with no lives left."));
         }
         tell(ar, "§c" + p.getName() + " is down!");
         event(ar, p.getName() + " went down");

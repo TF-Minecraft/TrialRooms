@@ -1042,7 +1042,8 @@ class RunManagerTest {
     drain(a);
     // outside a fight: crouching gets them up, with no limit
     assertTrue(runs.down(a));
-    assertTrue(drain(a).stream().anyMatch(m -> m.contains("crouch for " + settings.selfReviveSeconds() + " seconds")));
+    assertTrue(drain(a).stream().anyMatch(m -> m.endsWith("crouch for " + settings.selfReviveSeconds()
+        + " seconds to get back up.")), "outside a fight there is no once-per-fight limit");
     a.setSneaking(true);
     ticks(settings.selfReviveSeconds() * 2);
     assertFalse(runs.isDowned(a));
@@ -1071,5 +1072,10 @@ class RunManagerTest {
     assertFalse(runs.isDowned(a));
     assertEquals(0, run.lives(), "a life brought them back");
     assertEquals(DungeonRun.State.RUNNING, run.state());
+    // with the get-up spent and no lives left, the next down is the end, and they are told so
+    runs.down(a);
+    assertTrue(drain(a).stream().anyMatch(m -> m.endsWith("with no lives left.")));
+    ticks(1);
+    assertEquals(DungeonRun.State.FAILED, run.state());
   }
 }
