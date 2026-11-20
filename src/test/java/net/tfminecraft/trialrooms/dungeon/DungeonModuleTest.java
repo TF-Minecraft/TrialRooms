@@ -59,8 +59,10 @@ class DungeonModuleTest {
     when(structures.loadStructure(any(File.class))).thenAnswer(i -> {
       Structure s = mock(Structure.class);
       File f = i.getArgument(0);
-      int depth = f.getName().startsWith("combat_long") || f.getName().startsWith("boss") ? 64 : 32;
-      when(s.getSize()).thenReturn(new BlockVector(32, 12, depth));
+      String n = f.getName();
+      int width = n.startsWith("combat_ell") ? 64 : 32;
+      int depth = n.startsWith("combat_long") || n.startsWith("boss") || n.startsWith("combat_ell") ? 64 : 32;
+      when(s.getSize()).thenReturn(new BlockVector(width, 12, depth));
       return s;
     });
     plugin = mock(JavaPlugin.class);
@@ -71,6 +73,7 @@ class DungeonModuleTest {
     when(plugin.getResource(anyString()))
         .thenAnswer(i -> DungeonModule.class.getClassLoader().getResourceAsStream(i.getArgument(0)));
     world = mock(World.class);
+    when(world.getMaxHeight()).thenReturn(256);
     when(world.getName()).thenReturn(DungeonModule.WORLD_NAME);
     when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(mock(Block.class));
     when(world.getChunkAtAsync(anyInt(), anyInt(), eq(true)))
@@ -144,6 +147,9 @@ class DungeonModuleTest {
       StringBuilder y = new StringBuilder("type: " + r[1] + "\ndoorways:\n");
       for (int i = 2; i < r.length; i++) {
         y.append("  - {cell: '0,0', side: ").append(r[i]).append("}\n");
+      }
+      if (r[1].equals("boss")) {
+        y.append("markers:\n  - {kind: spawn, tag: boss, at: '16,1,16'}\n");
       }
       Files.writeString(line.resolve("rooms/" + r[0] + ".yml"), y.toString());
       Files.write(line.resolve("rooms/" + r[0] + ".nbt"), new byte[] {1});

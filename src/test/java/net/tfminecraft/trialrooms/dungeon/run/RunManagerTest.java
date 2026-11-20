@@ -170,7 +170,7 @@ class RunManagerTest {
   }
 
   void into(PlayerMock p, RoomType type) {
-    p.teleport(at(geo.centre(room(type))));
+    p.teleport(at(middle(room(type))));
   }
 
   RunManager.ActiveRun only() {
@@ -493,7 +493,7 @@ class RunManagerTest {
     when(plain.getUniqueId()).thenReturn(UUID.randomUUID());
     when(plain.getPersistentDataContainer()).thenReturn(mock(PersistentDataContainer.class));
     when(plain.isValid()).thenReturn(true);
-    when(plain.getLocation()).thenReturn(at(geo.centre(room(RoomType.BOSS))));
+    when(plain.getLocation()).thenReturn(at(middle(room(RoomType.BOSS))));
     doReturn(plain).when(mobs).spawn(anyString(), any(), anyInt());
     into(a, RoomType.BOSS);
     ticks(settings.bossCountdownSeconds() * 2 + 2);
@@ -506,7 +506,7 @@ class RunManagerTest {
     when(bare.getUniqueId()).thenReturn(UUID.randomUUID());
     when(bare.getPersistentDataContainer()).thenReturn(mock(PersistentDataContainer.class));
     when(bare.isValid()).thenReturn(true);
-    when(bare.getLocation()).thenReturn(at(geo.centre(0)));
+    when(bare.getLocation()).thenReturn(at(middle(0)));
     assertNull(bare.getAttribute(Attribute.MAX_HEALTH));
     runs.end(only(), false, "bye");
     assertTrue(RunManager.json(new RunManager.ActiveRun(run, geo, placer, kit, rules, a.getUniqueId(), "", null),
@@ -579,7 +579,7 @@ class RunManagerTest {
     assertEquals(DungeonRun.Room.ACTIVE, run.room(room(RoomType.COMBAT)));
     assertEquals(room(RoomType.COMBAT), geo.roomAt(runs.downedSpot(b).getX(), runs.downedSpot(b).getZ()));
     // a crouching member too far away doesn't revive
-    a.teleport(at(geo.centre(room(RoomType.COMBAT))).add(10, 0, 10));
+    a.teleport(at(middle(room(RoomType.COMBAT))).add(10, 0, 10));
     ticks(1);
     assertTrue(runs.isDowned(b));
     // a member who died in the run respawns inside it, once; not on another character
@@ -605,6 +605,39 @@ class RunManagerTest {
     // tryExit far from the exit of a finished run
     runs.end(runs.runs().getFirst(), false, null);
     assertTrue(runs.runs().isEmpty());
+  }
+
+  @Test
+  void aClearedRoomWithTwoWaysOnNamesTheNearerDoor() {
+    // a layout where the fight room leads on through two doorways (the trunk and a branch)
+    DungeonRecipe branchy = new DungeonRecipe("delve", 1, 1, Map.of(RoomType.COMBAT, 1), true, true, 1, 1, 1, 1,
+        null, 20, 20000);
+    DungeonLayout found = null;
+    int fight = -1;
+    for (long seed = 0; seed < 200 && found == null; seed++) {
+      DungeonLayout l = DungeonGenerator.generate(kit.catalog(), branchy, seed);
+      for (int i = 0; i < l.rooms().size(); i++) {
+        int from = i;
+        if (l.rooms().get(i).node().type() == RoomType.COMBAT
+            && l.connections().stream().filter(c -> c.roomA() == from).count() >= 2) {
+          found = l;
+          fight = i;
+        }
+      }
+    }
+    assertNotNull(found);
+    layout = found;
+    geo = new RunGeometry(layout, 32, 4, 0, 64, 0);
+    when(module.generate(eq("delve"), anyLong())).thenReturn(layout);
+    placed = CompletableFuture.completedFuture(at(geo.entry(0)));
+    PlayerMock a = player("Ann");
+    runs.startRun(a, "delve", 1);
+    a.teleport(at(middle(fight)));
+    ticks(2);
+    assertEquals(DungeonRun.Room.ACTIVE, only().run().room(fight));
+    killAll();
+    ticks(1);
+    assertEquals(DungeonRun.Room.CLEARED, only().run().room(fight));
   }
 
   @Test
@@ -635,7 +668,7 @@ class RunManagerTest {
     when(bare.getUniqueId()).thenReturn(UUID.randomUUID());
     when(bare.getPersistentDataContainer()).thenReturn(mock(PersistentDataContainer.class));
     when(bare.isValid()).thenReturn(true);
-    when(bare.getLocation()).thenReturn(at(geo.centre(1)));
+    when(bare.getLocation()).thenReturn(at(middle(1)));
     doReturn(bare).when(mobs).spawn(anyString(), any(), anyInt());
     PlayerMock b = player("Bo");
     runs.startRun(b, "delve", 3);
@@ -702,7 +735,7 @@ class RunManagerTest {
     assertEquals(DungeonRun.Room.ACTIVE, run.room(room(RoomType.COMBAT)));
     runs.sweep(b);
     // Bo waits in another room when the fight is cleared
-    b.teleport(at(geo.centre(0)));
+    b.teleport(at(middle(0)));
     ticks(1);
     killAll();
     ticks(1);
@@ -747,7 +780,7 @@ class RunManagerTest {
     assertEquals(room(RoomType.COMBAT), geo.roomAt(a.getLocation().getX(), a.getLocation().getZ()));
     assertEquals(room(RoomType.COMBAT), geo.roomAt(runs.rescuePoint(a).getX(), runs.rescuePoint(a).getZ()));
     // coming back to the dungeon world outside the fight pulls her into it
-    a.teleport(at(geo.centre(0)));
+    a.teleport(at(middle(0)));
     runs.sweep(a);
     assertEquals(room(RoomType.COMBAT), geo.roomAt(a.getLocation().getX(), a.getLocation().getZ()));
     // moved out of the dungeon world by staff: she counts as away, and a sweep there leaves her be
@@ -757,7 +790,7 @@ class RunManagerTest {
     runs.sweep(a);
     assertFalse(run.member(a.getUniqueId()).online());
     assertNull(runs.rescuePoint(a), "no dungeon rescue outside the dungeon world");
-    a.teleport(at(geo.centre(room(RoomType.COMBAT))));
+    a.teleport(at(middle(room(RoomType.COMBAT))));
     runs.sweep(a);
     assertTrue(run.member(a.getUniqueId()).online());
     killAll();
@@ -833,7 +866,7 @@ class RunManagerTest {
     // Bo can still go down while the run is won; the vault again changes nothing
     assertTrue(runs.down(b));
     runs.died(b);
-    a.teleport(at(geo.centre(0)));
+    a.teleport(at(middle(0)));
     ticks(1);
     into(a, RoomType.VAULT);
     ticks(1);
@@ -952,8 +985,8 @@ class RunManagerTest {
     assertTrue(fights.size() >= 2, "the test layout has two fight rooms");
     int first = fights.get(0);
     int second = fights.get(1);
-    a.teleport(at(geo.centre(first)));
-    b.teleport(at(geo.centre(second)));
+    a.teleport(at(middle(first)));
+    b.teleport(at(middle(second)));
     ticks(settings.countdownSeconds() * 2 + 2);
     assertEquals(DungeonRun.Room.ACTIVE, run.room(first));
     assertEquals(DungeonRun.Room.ACTIVE, run.room(second));
@@ -973,7 +1006,7 @@ class RunManagerTest {
     int fight = room(RoomType.COMBAT);
     // Bo stands in the fight room's doorway when it seals: he is moved inside before the doors close
     into(a, RoomType.COMBAT);
-    double[] door = geo.insideDoor(layout.rooms().get(fight).doorways().getFirst());
+    double[] door = geo.insideDoor(fight, 0);
     var dw = layout.rooms().get(fight).doorways().getFirst();
     double[] edge = switch (dw.side()) {
       case NORTH -> new double[] {door[0], door[1], door[2] - 3};
@@ -987,12 +1020,12 @@ class RunManagerTest {
     assertEquals(DungeonRun.Room.ACTIVE, run.room(fight));
     assertTrue(geo.safelyInside(fight, b.getLocation().getX(), b.getLocation().getZ(), 2));
     // pushed out (lag, a stray teleport): the next step brings him back, down or not
-    b.teleport(at(geo.centre(0)));
+    b.teleport(at(middle(0)));
     ticks(1);
     assertEquals(fight, geo.roomAt(b.getLocation().getX(), b.getLocation().getZ()));
     // a downed player moved out after going down (inside) is brought back, and so is their downed spot
     runs.down(b);
-    b.teleport(at(geo.centre(0)));
+    b.teleport(at(middle(0)));
     ticks(1);
     assertEquals(fight, geo.roomAt(b.getLocation().getX(), b.getLocation().getZ()));
     assertEquals(fight, geo.roomAt(runs.downedSpot(b).getX(), runs.downedSpot(b).getZ()));
@@ -1001,7 +1034,7 @@ class RunManagerTest {
     ticks(1);
     assertEquals(main, b.getWorld());
     // a member who is out, or offline, is not pulled in; the room clears with them elsewhere
-    b.teleport(at(geo.centre(0)));
+    b.teleport(at(middle(0)));
     runs.sweep(b);
     run.member(b.getUniqueId()).room(0);
     PlayerMock c = player("Cy");
@@ -1015,7 +1048,7 @@ class RunManagerTest {
     run.down(c.getUniqueId(), 0);
     run.bleedOut(c.getUniqueId());
     assertEquals(DungeonRun.Status.OUT, run.member(c.getUniqueId()).status());
-    c.teleport(at(geo.centre(0)));
+    c.teleport(at(middle(0)));
     UUID ghost = UUID.randomUUID();
     run.add(ghost, "ghost");
     run.offline(ghost, 0);
@@ -1077,5 +1110,11 @@ class RunManagerTest {
     assertTrue(drain(a).stream().anyMatch(m -> m.endsWith("with no lives left.")));
     ticks(1);
     assertEquals(DungeonRun.State.FAILED, run.state());
+  }
+
+  /** The middle of a room's footprint box at standing height (the tests' rooms are rectangles). */
+  double[] middle(int room) {
+    var r = layout.rooms().get(room);
+    return new double[] {(r.originX() + r.widthCells() / 2.0) * 32, 65, (r.originZ() + r.depthCells() / 2.0) * 32};
   }
 }

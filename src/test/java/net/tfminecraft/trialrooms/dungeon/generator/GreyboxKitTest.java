@@ -32,7 +32,7 @@ public class GreyboxKitTest {
   @Test
   void bundledKitAndRecipeGenerateValidLayouts() {
     DungeonKit kit = kit();
-    assertEquals(11, kit.catalog().templates().size());
+    assertEquals(14, kit.catalog().templates().size());
     assertNotNull(kit.fights());
     assertEquals("The Bone Warden", kit.fights().boss("").name());
     List<String> problems = new ArrayList<>();
@@ -48,6 +48,72 @@ public class GreyboxKitTest {
           LayoutMap.render(layout), LayoutMap.render(DungeonGenerator.generate(kit.catalog(), recipe, seed)));
     }
     assertTrue(retries < 30, "too many retries: " + retries);
+  }
+
+  /** A shaped room's structure has no blocks at all in the cells it doesn't fill, so it never overwrites a neighbour. */
+  @Test
+  void shapedRoomsLeaveTheirEmptyCellsUntouched() throws Exception {
+    DungeonKit kit = kit();
+    int shaped = 0;
+    for (var t : kit.catalog().templates()) {
+      List<int[]> positions = blockPositions(kit.structures().get(t.id()));
+      assertFalse(positions.isEmpty(), t.id());
+      for (int[] pos : positions) {
+        assertTrue(t.occupies(pos[0] / 32, pos[2] / 32), t.id() + " has a block at " + pos[0] + "," + pos[2]);
+      }
+      if (!t.cells().isEmpty()) {
+        shaped++;
+      }
+    }
+    assertTrue(shaped > 0);
+  }
+
+  /** The block positions of a vanilla structure file (gzipped NBT). */
+  @SuppressWarnings("unchecked")
+  static List<int[]> blockPositions(File nbt) throws java.io.IOException {
+    try (var in = new java.io.DataInputStream(new java.util.zip.GZIPInputStream(new java.io.FileInputStream(nbt)))) {
+      in.readByte();
+      in.readUTF();
+      Map<String, Object> root = (Map<String, Object>) tag(in, 10);
+      List<int[]> out = new ArrayList<>();
+      for (Object b : (List<Object>) root.get("blocks")) {
+        List<Object> pos = (List<Object>) ((Map<String, Object>) b).get("pos");
+        out.add(new int[] {(Integer) pos.get(0), (Integer) pos.get(1), (Integer) pos.get(2)});
+      }
+      return out;
+    }
+  }
+
+  private static Object tag(java.io.DataInputStream in, int type) throws java.io.IOException {
+    switch (type) {
+      case 1: return in.readByte();
+      case 2: return in.readShort();
+      case 3: return in.readInt();
+      case 4: return in.readLong();
+      case 5: return in.readFloat();
+      case 6: return in.readDouble();
+      case 7: { byte[] a = new byte[in.readInt()]; in.readFully(a); return a; }
+      case 8: return in.readUTF();
+      case 9: {
+        int inner = in.readByte();
+        int n = in.readInt();
+        List<Object> list = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+          list.add(tag(in, inner));
+        }
+        return list;
+      }
+      case 10: {
+        Map<String, Object> map = new HashMap<>();
+        for (int t = in.readByte(); t != 0; t = in.readByte()) {
+          String name = in.readUTF();
+          map.put(name, tag(in, t));
+        }
+        return map;
+      }
+      case 11: { int[] a = new int[in.readInt()]; for (int i = 0; i < a.length; i++) { a[i] = in.readInt(); } return a; }
+      default: { long[] a = new long[in.readInt()]; for (int i = 0; i < a.length; i++) { a[i] = in.readLong(); } return a; }
+    }
   }
 
   public static void assertValid(DungeonLayout layout) {
@@ -68,6 +134,8 @@ public class GreyboxKitTest {
       assertEquals(a.cellX() + a.side().dx(), b.cellX());
       assertEquals(a.cellZ() + a.side().dz(), b.cellZ());
       assertEquals(a.width(), b.width());
+      assertEquals(rooms.get(c.roomA()).elevation() + a.floor(), rooms.get(c.roomB()).elevation() + b.floor(),
+          "joined doorways meet at the same height");
       assertEquals(rooms.get(c.roomB()).node().parent(), c.roomA());
       assertTrue(reached.contains(c.roomA()), "parent placed before child");
       reached.add(c.roomB());

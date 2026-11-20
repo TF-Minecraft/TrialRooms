@@ -17,6 +17,7 @@ class LoadTest {
   @TempDir Path temp;
 
   static final String ROOM = "type: combat\nfootprint: 1x1\ndoorways:\n  - {cell: '0,0', side: north, width: 4}\n";
+  static final String MARKED = ROOM + "markers:\n  - {kind: spawn, at: '1,1,1'}\n";
 
   private Path kit(String kitYml) throws IOException {
     Path dir = temp.resolve("k");
@@ -64,7 +65,7 @@ class LoadTest {
     Path mobs = temp.resolve("mobs");
     java.nio.file.Files.createDirectories(mobs.resolve("rooms"));
     java.nio.file.Files.writeString(mobs.resolve("kit.yml"), "mobs:\n  melee: foot\n");
-    room(mobs, "good", ROOM, true);
+    room(mobs, "good", MARKED, true);
     List<String> none = new ArrayList<>();
     DungeonKit simple = KitLoader.load(mobs.toFile(), none);
     assertEquals(java.util.Map.of("melee", "foot"), simple.mobs());
@@ -72,7 +73,7 @@ class LoadTest {
     Path roster = temp.resolve("roster");
     java.nio.file.Files.createDirectories(roster.resolve("rooms"));
     java.nio.file.Files.writeString(roster.resolve("kit.yml"), "roster:\n  foot: {mob: f}\n");
-    room(roster, "good", ROOM, true);
+    room(roster, "good", MARKED, true);
     DungeonKit fights = KitLoader.load(roster.toFile(), none);
     assertNotNull(fights.fights());
     assertEquals(java.util.Map.of(), fights.mobs());
@@ -93,6 +94,45 @@ class LoadTest {
       room(dir, "a", ROOM, true);
       assertNull(KitLoader.load(dir.toFile(), problems), bad);
     }
+  }
+
+  @Test
+  void loadsShapesFloorsAndRequiresMarkers() throws IOException {
+    Path dir = kit("max-rise: 12\n");
+    room(dir, "ell", "type: combat\nfootprint: 2x2\ncells: ['0,0', '1,0', '0,1']\n"
+        + "doorways:\n  - {cell: '0,0', side: north, width: 4, floor: 6, height: 5}\n"
+        + "markers:\n  - {kind: spawn, at: '8,7,8'}\n", true);
+    room(dir, "outside", "type: corridor\nfootprint: 1x1\ncells: ['1,0']\n"
+        + "doorways:\n  - {cell: '0,0', side: north}\n", true);
+    for (String c : List.of("-1,0", "0,-1", "0,1")) {
+      room(dir, "out" + c.replace(",", "_").replace("-", "m"), "type: corridor\nfootprint: 1x1\ncells: ['" + c
+          + "']\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
+    }
+    room(dir, "notalist", "type: corridor\ncells: '0,0'\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
+    room(dir, "toohigh", "type: corridor\ndoorways:\n  - {cell: '0,0', side: north, floor: 20}\n", true);
+    room(dir, "nospawn", "type: elite\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
+    room(dir, "noboss", "type: boss\ndoorways:\n  - {cell: '0,0', side: north}\n"
+        + "markers:\n  - {kind: spawn, at: '8,1,8'}\n", true);
+    room(dir, "norest", "type: rest\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
+    room(dir, "hall", "type: corridor\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
+    List<String> problems = new ArrayList<>();
+    DungeonKit kit = KitLoader.load(dir.toFile(), problems);
+    assertEquals(12, kit.catalog().maxRise());
+    assertEquals(List.of("ell", "hall"), kit.catalog().templates().stream().map(t -> t.id()).sorted().toList());
+    var ell = kit.catalog().templates().stream().filter(t -> t.id().equals("ell")).findFirst().orElseThrow();
+    assertEquals(3, ell.cellList().size());
+    assertEquals(6, ell.doorways().getFirst().floor());
+    assertEquals(5, ell.doorways().getFirst().height());
+    String all = problems.toString();
+    assertTrue(all.contains("outside: cell 1,0 is outside the footprint"), all);
+    assertTrue(all.contains("nospawn: a elite room needs a spawn marker"), all);
+    assertTrue(all.contains("noboss: a boss room needs a spawn marker tagged boss"), all);
+    assertTrue(all.contains("norest: a rest room needs a rest marker"), all);
+    assertTrue(all.contains("notalist: cells must be a list"), all);
+    assertTrue(all.contains("toohigh: doorway"), all);
+    List<String> rise = new ArrayList<>();
+    assertNull(KitLoader.load(kit("max-rise: 61\n").toFile(), rise));
+    assertTrue(rise.getLast().contains("max-rise must be at most 60"), rise.toString());
   }
 
   @Test

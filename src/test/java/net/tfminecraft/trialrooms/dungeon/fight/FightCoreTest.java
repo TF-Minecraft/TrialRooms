@@ -151,8 +151,11 @@ class FightCoreTest {
   @Test
   void telegraphsKnowWhoIsInside() {
     Telegraph t = new Telegraph(Telegraph.Kind.SLAM, 10, 64, 10, 4, 1000, 4000);
-    assertTrue(t.inside(12, 12));
-    assertFalse(t.inside(15, 10));
+    assertTrue(t.inside(12, 64, 12));
+    assertFalse(t.inside(15, 64, 10));
+    assertTrue(t.inside(12, 67, 12), "a step up is still hit");
+    assertFalse(t.inside(12, 68, 12), "a balcony above is not");
+    assertFalse(t.inside(12, 60, 12), "nor a pit below");
     assertFalse(t.due(3999));
     assertTrue(t.due(4000));
     assertEquals(3, t.secondsLeft(1000));

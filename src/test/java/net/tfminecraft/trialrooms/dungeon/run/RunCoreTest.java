@@ -211,15 +211,21 @@ public class RunCoreTest {
     DungeonLayout l = line();
     RunGeometry g = new RunGeometry(l, 32, 4, 1000, 64, 0);
     assertSame(l, g.layout());
-    assertEquals(64, g.floorY());
+    assertEquals(64, g.baseY(0));
     assertEquals(0, g.roomAt(1016, 16));
     assertEquals(-1, g.roomAt(-5000, 16));
-    for (Side s : Side.values()) {
-      Doorway d = new Doorway(0, 0, s, 4);
-      assertEquals(16, g.doorBlocks(d).size());
-      double[] in = g.insideDoor(d);
-      assertEquals(0, g.roomAt(in[0], in[2]), s.name());
+    java.util.Set<Side> sides = java.util.EnumSet.noneOf(Side.class);
+    for (int r = 0; r < l.rooms().size(); r++) {
+      for (int d = 0; d < l.rooms().get(r).doorways().size(); d++) {
+        sides.add(l.rooms().get(r).doorways().get(d).side());
+        assertEquals(16, g.doorBlocks(r, d).size());
+        double[] in = g.insideDoor(r, d);
+        assertEquals(r, g.roomAt(in[0], in[2]), r + "/" + d);
+        assertEquals(65, in[1]);
+      }
     }
+    assertEquals(4, sides.size(), "every side is covered");
+    assertArrayEquals(g.entry(0), g.centre(0));
     double[] entry = g.entry(index(l, RoomType.COMBAT));
     assertEquals(index(l, RoomType.COMBAT), g.roomAt(entry[0], entry[2]));
     double[] start = g.entry(0);
@@ -232,12 +238,12 @@ public class RunCoreTest {
     for (double[] p : spawns) {
       assertEquals(fight, g.roomAt(p[0], p[2]));
     }
-    double[] c = g.centre(fight);
+    double[] c = boxMiddle(l, fight);
     assertEquals(fight, g.roomAt(c[0], c[2]));
     assertTrue(g.safelyInside(fight, c[0], c[2], 2));
     assertFalse(g.safelyInside(0, c[0], c[2], 2));
     // next to each outer wall of the start room is not safely inside; next to an inner join is
-    double[] s0 = g.centre(0);
+    double[] s0 = boxMiddle(l, 0);
     for (double[] d : new double[][] {{-15, 0}, {14, 0}, {0, -15}, {0, 14}}) {
       double x = s0[0] + d[0];
       double z = s0[2] + d[1];
@@ -249,6 +255,17 @@ public class RunCoreTest {
     assertEquals("1 block behind you", RunGeometry.direction(0, 0, 0f, 0, -1));
     assertEquals("3 blocks to your right", RunGeometry.direction(0, 0, 0f, -3, 0));
     assertEquals("3 blocks to your left", RunGeometry.direction(0, 0, 0f, 3, 0));
+    // and up or down from two blocks
+    assertEquals("5 blocks ahead, above", RunGeometry.direction(0, 64, 0, 0f, 0, 70, 5));
+    assertEquals("5 blocks ahead, below", RunGeometry.direction(0, 64, 0, 0f, 0, 60, 5));
+    assertEquals("5 blocks ahead", RunGeometry.direction(0, 64, 0, 0f, 0, 65.5, 5));
+  }
+
+  /** The middle of a room's footprint box at standing height, for a layout placed at (1000, 64, 0). */
+  static double[] boxMiddle(DungeonLayout l, int room) {
+    var r = l.rooms().get(room);
+    return new double[] {1000 + (r.originX() + r.widthCells() / 2.0) * 32, 65,
+        (r.originZ() + r.depthCells() / 2.0) * 32};
   }
 
   @Test

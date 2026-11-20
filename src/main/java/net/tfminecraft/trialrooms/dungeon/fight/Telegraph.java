@@ -18,8 +18,11 @@ public record Telegraph(Kind kind, double x, double y, double z, double radius, 
         SLAM, SHOCKWAVE, BURST
     }
 
-    public boolean inside(double px, double pz) {
-        return Math.hypot(px - x, pz - z) <= radius;
+    /** How far above or below the marked ground a player can stand and still be hit. */
+    public static final double BAND = 3;
+
+    public boolean inside(double px, double py, double pz) {
+        return Math.abs(py - y) <= BAND && Math.hypot(px - x, pz - z) <= radius;
     }
 
     public boolean due(long now) {
