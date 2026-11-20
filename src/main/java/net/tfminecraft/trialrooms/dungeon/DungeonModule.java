@@ -53,7 +53,8 @@ public final class DungeonModule {
     /** Blocks between slot centres; a layout must fit within half of it around its start room. */
     public static final int SLOT_SPACING = 1024;
     /** Bundled default files, copied only when missing. */
-    static final List<String> DEFAULT_LISTS = List.of("dungeons/kits/greybox/files.txt");
+    static final List<String> DEFAULT_LISTS = List.of("dungeons/kits/greybox/files.txt",
+            "dungeons/kits/seithr/files.txt");
     static final List<String> DEFAULT_FILES = List.of("dungeons/recipes.yml", "dungeons/settings.yml");
 
     private final JavaPlugin plugin;
