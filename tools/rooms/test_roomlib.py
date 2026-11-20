@@ -72,9 +72,77 @@ def main():
     r.fill(12, 1, 16, 19, 1, 16, "minecraft:campfire")
     results.append(expect("a row of campfires across the hall", r, True))
 
+    # stair halves only touch where they touch
+    r = corridor(12)
+    r.doors[1] = (0, 0, "south", 2)
+    r.fill(12, 1, 14, 19, 1, 14, "minecraft:stone_brick_stairs[facing=north]")   # climbs north...
+    r.fill(12, 1, 15, 19, 1, 15, "minecraft:stone_slab[type=bottom]")           # ...but the hall goes on south
+    r.fill(12, 2, 15, 19, 2, 15, "minecraft:stone_slab[type=bottom]")
+    r.fill(12, 1, 16, 19, 2, 31, STONE)
+    results.append(expect("off a stair's back over its front step onto a higher slab", r, True))
+    r = corridor(12)
+    r.doors[1] = (0, 0, "south", 2)
+    r.fill(12, 1, 14, 15, 1, 14, "minecraft:stone_brick_stairs[facing=south]")  # a flight on the west half,
+    r.fill(16, 1, 14, 19, 1, 14, STONE)                                        # a block on the east,
+    r.fill(16, 2, 14, 19, 2, 14, "minecraft:stone_brick_stairs[facing=south]")  # a higher flight beside it
+    r.fill(12, 1, 15, 19, 2, 31, STONE)
+    r.fill(12, 2, 14, 15, 2, 14, None)
+    r.fill(12, 1, 15, 15, 2, 31, STONE)
+    results.append(expect("from one flight's back sideways onto a higher flight's step", r, True,
+                          "south doorway"))
+    results.append(expect("stairs without a facing face north (a jump when climbed south)",
+                          ramp_props("minecraft:stone_brick_stairs"), True))
+    results.append(expect("slabs without a type are bottom slabs", ramp_props("minecraft:stone_slab"), False))
+    r = corridor()
+    r.fill(12, 0, 16, 19, 0, 16, "minecraft:stone_brick_wall")
+    r.fill(12, 1, 16, 19, 1, 16, "minecraft:stone_brick_wall")
+    results.append(expect("a wall row across the hall", r, True))
+    r = corridor()
+    r.put(16, 1, 20, "minecraft:stone_slab[type=bottom]")
+    r.marker("spawn", 16, 1, 20)
+    results.append(expect("a spawn point standing in a slab", r, False))
+    r = corridor()
+    r.fill(12, 0, 16, 19, 0, 16, "minecraft:lava")
+    results.append(expect("a lava channel", r, True))
+    r = corridor()
+    r.put(16, 1, 20, "minecraft:campfire")
+    r.marker("rest", 16, 1, 20)
+    results.append(expect("a rest point on a campfire", r, True, "rest"))
+    r = corridor()
+    r.put(17, 1, 4, STONE)
+    results.append(expect("a block on the landing's edge, 4 in", r, True, "landing"))
+    results.append(expect("a 6-block drop with stairs back passes", drop(6), False))
+
     if not all(results):
         sys.exit("walk check tests failed")
     print("all walk check tests passed")
+
+
+def ramp_props(block):
+    """A hall climbing 1 block south over a single step block with no properties set."""
+    r = corridor(12)
+    r.doors[1] = (0, 0, "south", 1)
+    r.fill(12, 1, 14, 19, 1, 14, block)
+    r.fill(12, 1, 15, 19, 1, 31, STONE)
+    return r
+
+
+def drop(depth):
+    """A ledge at y depth, a drop to the floor at y 0 midway, and stairs back up beside it."""
+    r = Room("t", "corridor", 1, 1, depth + 8)
+    r.door(0, 0, "north", depth)
+    r.door(0, 0, "south", 0)
+    r.fill(0, 0, 0, 31, 0, 31, STONE)
+    r.fill(0, depth + 7, 0, 31, depth + 7, 31, STONE)
+    r.fill(0, 1, 0, 11, depth + 6, 31, STONE)
+    r.fill(20, 1, 0, 31, depth + 6, 31, STONE)
+    r.fill(12, 1, 0, 19, depth, 9, STONE)                     # the ledge, z 0-9
+    for k in range(depth):                                     # stairs back up along the east side, top by the ledge
+        z, top = 10 + k, depth - k
+        if top > 1:
+            r.fill(18, 1, z, 19, top - 1, z, STONE)
+        r.fill(18, top, z, 19, top, z, "minecraft:stone_brick_stairs[facing=north]")
+    return r
 
 
 def raised(pit=False, overhang=False):

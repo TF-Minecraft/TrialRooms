@@ -192,6 +192,8 @@ HAZARD_BASES = {
     "minecraft:soul_fire", "minecraft:powder_snow", "minecraft:magma_block",
 }
 FACING = {"north": (0, -1), "south": (0, 1), "west": (-1, 0), "east": (1, 0)}
+TALL_SUFFIXES = ("_wall", "_fence", "_fence_gate", "_pane")
+TALL_BASES = {"minecraft:iron_bars", "minecraft:glass_pane"}
 
 
 def _props(name):
@@ -218,11 +220,12 @@ def _stand_options(room, x, z):
     for y in range(0, room.h):
         name = room.get(x, y, z)
         base, props = _props(name)
-        if _passable(name) or base in HAZARD_BASES:
-            continue
+        if _passable(name) or base in HAZARD_BASES or base.endswith(TALL_SUFFIXES) or base in TALL_BASES:
+            continue  # walls, fences and panes are 1.5 tall: never stood on without a jump
         if base.endswith("_stairs") and props.get("half", "bottom") == "bottom":
-            options = [(y * 2 + 1, "low", props.get("facing")), (y * 2 + 2, "high", props.get("facing"))]
-        elif base.endswith("_slab") and props.get("type") == "bottom":
+            facing = props.get("facing", "north")  # Minecraft's defaults
+            options = [(y * 2 + 1, "low", facing), (y * 2 + 2, "high", facing)]
+        elif base.endswith("_slab") and props.get("type", "bottom") == "bottom":
             options = [(y * 2 + 1, "flat", None)]
         else:
             options = [(y * 2 + 2, "flat", None)]
@@ -260,11 +263,25 @@ def walk_check(room, max_drop=6):
         dh = h2 - h
         if dh > 1 or -dh > max_drop * 2:
             return False
+        kind, facing = options(x, z)[h]
         kind2, facing2 = options(x2, z2)[h2]
+        stair, stair2 = kind in ("low", "high"), kind2 in ("low", "high")
         if (x, z) == (x2, z2):
-            return abs(dh) == 1 and kind2 in ("low", "high") and options(x, z)[h][0] in ("low", "high")
-        if dh == 1 and kind2 == "low" and FACING.get(facing2) == (x - x2, z - z2):
+            return abs(dh) == 1 and stair and stair2  # between a stair's front step and its back
+        # A stair's front step (low) is on the side it climbs from, its back (high) on the side it
+        # climbs to. A move only counts as a half step where the halves touch.
+        d = (x2 - x, z2 - z)
+        back, back2 = FACING.get(facing), FACING.get(facing2)
+        ahead = lambda f: f is not None and d == f
+        behind = lambda f: f is not None and d == (-f[0], -f[1])
+        if kind == "high" and behind(back) or kind == "low" and ahead(back):
+            return False  # leaving through the other half: go over this stair's own step first
+        if kind2 == "high" and ahead(back2):
+            return False  # walking onto a stair's back from its front: its step comes first
+        if dh == 1 and kind2 == "low" and behind(back2):
             return False  # walking into a stair's back: it needs a jump
+        if stair and stair2 and back == back2 and kind != kind2 and not ahead(back) and not behind(back):
+            return False  # side by side, one stair's step only touches the other's step
         if dh < 0 and not _clear(room, x2, z2, h2, h):
             return False  # no room to step over and drop down
         if dh > 0 and not _clear(room, x, z, h, h2):
@@ -324,7 +341,7 @@ def walk_check(room, max_drop=6):
             continue
         # the run stands players one block above a rest marker (it marks the block they wake on)
         feet = y + 1 if kind == "rest" else y
-        if not any(c in reach for c in ((x, feet * 2, z), (x, feet * 2 - 1, z))):
+        if not any(c in reach for c in ((x, feet * 2, z), (x, feet * 2 - 1, z), (x, feet * 2 + 1, z))):
             problems.append(f"{room.id}: the {kind} {tag} marker at {x},{y},{z} can't be walked to")
     traps = sorted(reach - back)
     if traps:
