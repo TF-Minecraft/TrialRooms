@@ -172,10 +172,13 @@ public final class RunListener implements Listener {
     }
 
     /**
-     * A lethal hit on a run member downs them instead. This runs before RPCharacters' own
-     * knockout handler (HIGHEST, skips cancelled hits), so neither its knockouts nor deaths happen.
+     * A lethal hit on a run member downs them instead. It looks last (HIGHEST), once every other
+     * plugin has changed the damage: armour, damage stats and the like can raise a hit that looked
+     * survivable earlier into a killing blow. RPCharacters' knockout also runs at HIGHEST but only
+     * for hits from players, which never land in a dungeon (they are cancelled first), and it skips
+     * hits this cancels.
      */
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onLethal(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player p) || runs.runOf(p) == null || !runs.inDungeonWorld(p)) {
             return;
