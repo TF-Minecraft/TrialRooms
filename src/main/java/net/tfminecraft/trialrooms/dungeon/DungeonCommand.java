@@ -147,7 +147,8 @@ public final class DungeonCommand {
                     double[] c = ar.geometry().centre(i);
                     sender.sendMessage("§7room " + i + " " + r.layout().rooms().get(i).node().type() + " " + r.room(i)
                             + " at " + (int) c[0] + " " + (int) c[1] + " " + (int) c[2] + " ("
-                            + r.layout().rooms().get(i).template().id() + ")");
+                            + r.layout().rooms().get(i).template().id() + ")"
+                            + (ar.event(i) == null ? "" : " [" + ar.event(i).id() + "]"));
                 }
                 return;
             }

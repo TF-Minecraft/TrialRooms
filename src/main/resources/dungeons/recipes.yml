@@ -13,6 +13,8 @@
 #   never changes enemy damage.
 # tier: difficulty from 1: bigger fights (the kit's tier-factors) and harder boss mechanics.
 # boss: which of the kit's bosses ends the dungeon (blank for the kit's first).
+# event-chance: chance that a plain fight room gets one of the kit's room events (0 = none).
+# max-events: the most room events in one dungeon.
 delve_greybox:
   kit: greybox
   trunk: 3-5
@@ -63,3 +65,5 @@ delve_seithr:
   enemies-per-extra-player: 0.25
   tier: 1
   boss: ice_golem
+  event-chance: 0.4
+  max-events: 2

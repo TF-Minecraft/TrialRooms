@@ -33,6 +33,8 @@ import org.bukkit.scheduler.BukkitTask;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.tfminecraft.trialrooms.dungeon.DungeonModule;
+import net.tfminecraft.trialrooms.dungeon.event.EventKind;
+import net.tfminecraft.trialrooms.dungeon.event.EventPlanner;
 import net.tfminecraft.trialrooms.dungeon.generator.DungeonLayout;
 import net.tfminecraft.trialrooms.dungeon.load.DungeonKit;
 import net.tfminecraft.trialrooms.dungeon.load.RecipeLoader;
@@ -62,6 +64,7 @@ public final class RunManager {
     private final Ports.Keys keys;
     private final Ports.Mobs mobs;
     private final Fights fights;
+    private final Events events;
     /** One action bar line per player, warnings first. */
     final Bars bars = new Bars();
     private final RunFiles files;
@@ -121,6 +124,10 @@ public final class RunManager {
         /** Where each player's last hint pointed, shown with particles until hintUntilMs. */
         final Map<UUID, double[]> hintAt = new HashMap<>();
         long hintUntilMs;
+        /** The room event planned for each room that has one, by room index. */
+        Map<Integer, EventKind> planned = Map.of();
+        /** Room events under way or done, by room index, until their room clears. */
+        final Map<Integer, Events.RoomEvent> events = new HashMap<>();
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -136,6 +143,11 @@ public final class RunManager {
 
         public DungeonRun run() {
             return run;
+        }
+
+        /** The event planned for a room, or null. */
+        public EventKind event(int room) {
+            return planned.get(room);
         }
 
         public RunGeometry geometry() {
@@ -156,6 +168,7 @@ public final class RunManager {
         this.keys = keys;
         this.mobs = mobs;
         this.fights = new Fights(this, plugin, mobs, fx, clock);
+        this.events = new Events(this, plugin, fights, clock);
         this.files = files;
         this.gates = gates;
         this.clock = clock;
@@ -355,6 +368,7 @@ public final class RunManager {
             RunGeometry geo = new RunGeometry(layout, kit.catalog().cellSize(), kit.doorHeight(), placer.originX(),
                     placer.originY(), placer.originZ());
             ActiveRun ar = new ActiveRun(run, geo, placer, kit, entry.rules(), leader.getUniqueId(), keyPath, arrival);
+            ar.planned = EventPlanner.plan(layout, kit.events(), entry.rules().eventChance(), entry.rules().maxEvents());
             runs.put(run.id(), ar);
             if (!keyPath.isBlank()) {
                 files.saveActive(run.id(), leader.getUniqueId(), keyPath);
@@ -586,7 +600,9 @@ public final class RunManager {
             for (Player p : online(ar)) {
                 p.playSound(p.getLocation(), "minecraft:block.iron_door.close", 1f, 0.8f);
             }
-            fights.start(ar, room);
+            if (!events.start(ar, room)) {
+                fights.start(ar, room);
+            }
             return;
         }
         int spawned = spawn(ar, room);
@@ -705,6 +721,7 @@ public final class RunManager {
                     mob.teleport(new Location(module.world(), home[0], home[1], home[2]));
                 }
             }
+            events.step(ar, room);
             if (fights.step(ar, room)) {
                 clear(ar, room);
             }
@@ -731,6 +748,7 @@ public final class RunManager {
     }
 
     private void clear(ActiveRun ar, int room) {
+        events.cleared(ar, room);
         fights.cleared(ar, room);
         ar.run.clearRoom(room);
         ar.roomMobs.remove(room);
@@ -1120,6 +1138,7 @@ public final class RunManager {
         boolean here = inDungeonWorld(p) && isPlayingMember(ar, p);
         ar.run.leave(p.getUniqueId());
         fights.left(ar, p);
+        events.left(ar, p);
         if (here) {
             clearDowned(ar, p);
             sendBack(p, ar.run.member(p.getUniqueId()).characterId());
@@ -1131,6 +1150,12 @@ public final class RunManager {
     }
 
     /** A player right-clicked inside the dungeon world: at the vault's exit, they leave. */
+    /** A right-click on a block: true when it was a room event's prop (the click is used up). */
+    public boolean propClick(Player p, org.bukkit.block.Block b) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        return ar != null && events.click(ar, p, b.getX(), b.getY(), b.getZ());
+    }
+
     public boolean tryExit(Player p) {
         ActiveRun ar = byPlayer.get(p.getUniqueId());
         if (ar == null || ar.run.state() != DungeonRun.State.COMPLETE) {
@@ -1203,6 +1228,7 @@ public final class RunManager {
             }
         }
         ar.roomMobs.clear();
+        events.ended(ar);
         fights.ended(ar);
         ar.placer.release();
         files.clearActive(ar.run.id());
