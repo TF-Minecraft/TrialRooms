@@ -1095,15 +1095,30 @@ class RunManagerTest {
     now.addAndGet(61_000);
     ticks(1);
     assertEquals(DungeonRun.Room.IDLE, run.room(room(RoomType.BOSS)));
-    assertTrue(lost(a), "past the shut vault, back to the fight still to do");
+    assertFalse(lost(a), "she already stands in the room still to do");
     assertFalse(lost(b), "outside every room there is no doorway to name");
-    // every fight done: the way on is the vault
+    // nobody was shown a way, so the hint is not used up: Bo, back in the start room, gets it next step
+    b.teleport(at(geo.entry(0)));
+    ticks(1);
+    assertTrue(lost(b));
+    assertFalse(lost(a));
+    // every fight done: the way on is the vault, and only the vault
     for (int i = 0; i < layout.rooms().size(); i++) {
       if (DungeonRun.isFight(layout.rooms().get(i).node().type())) {
         run.clearRoom(i);
       }
     }
-    now.addAndGet(121_000);
+    now.addAndGet(119_000);
+    ticks(1);
+    assertFalse(lost(b), "the second hint since the last progress waits twice as long");
+    now.addAndGet(2_000);
+    ticks(1);
+    assertTrue(lost(a));
+    assertTrue(lost(b));
+    now.addAndGet(239_000);
+    ticks(1);
+    assertFalse(lost(a), "then four times as long");
+    now.addAndGet(2_000);
     ticks(1);
     assertTrue(lost(a));
   }

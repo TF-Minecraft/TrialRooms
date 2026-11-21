@@ -115,6 +115,9 @@ public final class RunManager {
         /** When the party last got anywhere (a new room, a fight); -1 until the first step. */
         long progressMs = -1;
         long nextHintMs;
+        long lastHintMs = -1;
+        /** Hints since the party last got anywhere: each one waits twice as long as the one before. */
+        int hints;
         /** Where each player's last hint pointed, shown with particles until hintUntilMs. */
         final Map<UUID, double[]> hintAt = new HashMap<>();
         long hintUntilMs;
@@ -176,6 +179,7 @@ public final class RunManager {
         for (ActiveRun ar : new ArrayList<>(runs.values())) {
             end(ar, true, "§cThe dungeon fades as the world shifts. Your key is returned.");
         }
+        bars.hideOlder(Long.MAX_VALUE); // no tick will take them down any more
     }
 
     public GateStore gates() {
@@ -746,8 +750,8 @@ public final class RunManager {
     /**
      * A party that has got nowhere for a while (no new room, no fight) gets one quiet hint: the
      * doorway on the way to the nearest room still to clear (or the vault once the boss is down),
-     * named in chat and marked with snow particles for a few seconds. It comes again only after
-     * twice as long.
+     * named in chat and marked with snow particles for a few seconds. While they still get nowhere,
+     * each further hint waits twice as long as the one before (up to 16 times).
      */
     private void hint(ActiveRun ar, long now) {
         if (now < ar.hintUntilMs) {
@@ -759,10 +763,12 @@ public final class RunManager {
             }
         }
         long wait = settings().hintSeconds() * 1000L;
+        if (ar.progressMs > ar.lastHintMs) {
+            ar.hints = 0;
+        }
         if (ar.run.state() != DungeonRun.State.RUNNING || now - ar.progressMs < wait || now < ar.nextHintMs) {
             return;
         }
-        ar.nextHintMs = now + 2 * wait;
         ar.hintAt.clear();
         for (Player p : online(ar)) {
             Member m = ar.run.member(p.getUniqueId());
@@ -777,17 +783,23 @@ public final class RunManager {
             p.playSound(new Location(module.world(), d[0], d[1], d[2]), "minecraft:block.amethyst_block.chime", 1f,
                     1f);
         }
-        ar.hintUntilMs = now + 6000;
+        if (!ar.hintAt.isEmpty()) { // nobody had a way to be shown: the hint is not used up
+            ar.hints++;
+            ar.lastHintMs = now;
+            ar.nextHintMs = now + wait * (1L << Math.min(4, ar.hints));
+            ar.hintUntilMs = now + 6000;
+        }
     }
 
     /**
      * The spot just inside the doorway of {@code from} that leads toward the nearest room still to
-     * do: a fight room not cleared yet, or the vault once the boss has fallen. Null when there is none.
+     * do: a fight room not cleared yet, or the vault once the boss has fallen. Null when there is none,
+     * or when the player already stands in such a room (a boss room waiting for the rest of the party).
      */
     private static double[] wayOn(ActiveRun ar, int from) {
         DungeonLayout layout = ar.run.layout();
         int n = layout.rooms().size();
-        if (from < 0) {
+        if (from < 0 || wanted(ar, from)) {
             return null;
         }
         int[] firstDoor = new int[n];
@@ -811,10 +823,11 @@ public final class RunManager {
         return null;
     }
 
+    /** Before the boss falls: fight rooms not cleared yet. After: only the vault (side fights are optional). */
     private static boolean wanted(ActiveRun ar, int room) {
         RoomType type = ar.run.layout().rooms().get(room).node().type();
-        if (type == RoomType.VAULT) {
-            return ar.run.bossDefeated();
+        if (ar.run.bossDefeated()) {
+            return type == RoomType.VAULT;
         }
         return DungeonRun.isFight(type) && ar.run.room(room) != DungeonRun.Room.CLEARED;
     }
