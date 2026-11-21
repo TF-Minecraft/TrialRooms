@@ -248,6 +248,25 @@ final class Fights {
         }
     }
 
+    /**
+     * A room's spawn points for its fight: a point under a room event's brazier or stone is swapped
+     * for a free one, so no enemy spawns, returns or is moved into a prop. Same order and count.
+     */
+    List<double[]> points(ActiveRun ar, int room) {
+        List<double[]> all = ar.geo.markers(room, "spawn");
+        Events.RoomEvent ev = ar.events.get(room);
+        if (ev == null) {
+            return all;
+        }
+        List<double[]> out = new ArrayList<>();
+        int k = 0;
+        for (double[] m : all) {
+            boolean prop = ev.prop((int) Math.floor(m[0]), (int) Math.floor(m[1]), (int) Math.floor(m[2])) >= 0;
+            out.add(prop ? ev.spawnAt.get(k++ % ev.spawnAt.size()) : m);
+        }
+        return out;
+    }
+
     /** A fight with no planned enemies, for a room event that brings its own; the doors stay shut while it holds. */
     Encounter startHeld(ActiveRun ar, int room, String what) {
         long now = clock.getAsLong();
@@ -279,7 +298,7 @@ final class Fights {
             }
             n++;
             enc.alive.add(mob);
-            enc.waveOf.put(mob.getUniqueId(), enc.wave);
+            enc.waveOf.put(mob.getUniqueId(), -1); // their own wave: no elite's shield or rally counts them
             scale(mob, Math.min(ar.healthFactor, ar.kit.fights().tuning().healthCap()));
         }
         for (Player p : inRoom(ar, room)) {
@@ -297,7 +316,7 @@ final class Fights {
         if (w >= enc.plan.waves().size()) {
             return 0;
         }
-        List<double[]> points = ar.geo.markers(enc.room, "spawn");
+        List<double[]> points = points(ar, enc.room);
         int n = 0;
         for (Director.Spawn s : enc.plan.waves().get(w)) {
             Location at = spawnPoint(ar, enc.room, points, s);
@@ -477,7 +496,7 @@ final class Fights {
             return;
         }
         enc.nextWaveAtMs = now + t.waveWarningSeconds() * 1000L;
-        List<double[]> points = ar.geo.markers(enc.room, "spawn");
+        List<double[]> points = points(ar, enc.room);
         Director.Spawn first = enc.plan.waves().get(enc.wave + 1).getFirst();
         double[] from = first.marker() >= 0 ? points.get(first.marker()) : ar.geo.centre(enc.room);
         Location at = new Location(runs.world(), from[0], from[1], from[2]);
@@ -535,7 +554,7 @@ final class Fights {
             return;
         }
         List<Player> here = inRoom(ar, enc.room);
-        List<double[]> points = ar.geo.markers(enc.room, "spawn");
+        List<double[]> points = points(ar, enc.room);
         enc.lastHitMs = now;
         if (here.isEmpty() || points.isEmpty()) {
             return;
@@ -562,7 +581,8 @@ final class Fights {
 
     /** With two or fewer enemies left in the last wave: they glow, so players can find them. */
     private void lastFew(ActiveRun ar, Encounter enc) {
-        if (enc.alive.isEmpty() || enc.alive.size() > 2 || enc.wave < enc.plan.waves().size() - 1) {
+        if (enc.alive.isEmpty() || enc.alive.size() > 2 || enc.wave < enc.plan.waves().size() - 1
+                || enc.hold.getAsBoolean()) { // a room event still brings more
             return;
         }
         if (!enc.lastFew) {

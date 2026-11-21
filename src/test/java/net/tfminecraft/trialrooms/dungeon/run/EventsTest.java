@@ -145,6 +145,55 @@ class EventsTest {
     // a stranger to the run clicking a prop: not ours to handle
     PlayerMock stranger = h.player("Cy");
     assertFalse(click(stranger, ev.props.get(0)));
+    assertTrue(h.runs.leave(a), "leaving a brazier room: no event bar to take down");
+  }
+
+  /** Every fight room cut down to its first spawn point. */
+  void oneSpawnPoint() {
+    var cat = h.kit.catalog();
+    List<net.tfminecraft.trialrooms.dungeon.template.RoomTemplate> ts = new ArrayList<>();
+    for (var t : cat.templates()) {
+      List<net.tfminecraft.trialrooms.dungeon.template.Marker> ms = new ArrayList<>();
+      boolean one = false;
+      for (var m : t.markers()) {
+        if (!m.kind().equals("spawn") || t.type() != RoomType.COMBAT || !one) {
+          ms.add(m);
+          one |= m.kind().equals("spawn");
+        }
+      }
+      ts.add(new net.tfminecraft.trialrooms.dungeon.template.RoomTemplate(t.id(), t.type(), t.widthCells(),
+          t.depthCells(), t.doorways(), ms, t.weight(), t.minDepth(), t.maxDepth(), t.maxPerRun(), t.tags(),
+          t.cells(), t.threat()));
+    }
+    var small = new net.tfminecraft.trialrooms.dungeon.template.RoomCatalog(cat.cellSize(), 24, 24, ts);
+    DungeonKit b = h.kit;
+    h.kit = new DungeonKit(b.id(), small, b.structures(), b.doorHeight(), b.sealBlock(), b.doorBlock(), Map.of(),
+        b.fights(), b.events());
+    h.layout = net.tfminecraft.trialrooms.dungeon.generator.DungeonGenerator.generate(small,
+        new net.tfminecraft.trialrooms.dungeon.generator.DungeonRecipe("delve", 1, 1, Map.of(RoomType.COMBAT, 1),
+            true, true, 0, 0, 1, 1, null, 20, 20000), 4);
+    h.geo = new RunGeometry(h.layout, 32, 4, 0, 64, 0);
+    h.placed = java.util.concurrent.CompletableFuture.completedFuture(h.at(h.geo.entry(0)));
+  }
+
+  @Test
+  void aRoomWithOneSpawnPointGetsAPlainFightForRunesAndBraziersOnItsPoint() {
+    events(new EventKit(Map.of(EventKind.RUNES, 1), 3, 3, 60, 4, 4, 3, 2, 8));
+    oneSpawnPoint();
+    PlayerMock a = h.player("Ann");
+    int fight = h.room(RoomType.COMBAT);
+    RunManager.ActiveRun ar = h.enter(a, fight);
+    assertTrue(ar.events.isEmpty(), "no rune stones");
+    assertTrue(ar.encounters.get(fight).plan.enemies() > 0, "a plain fight instead");
+    h.runs.end(ar, false, null);
+    events(new EventKit(Map.of(EventKind.KINDLE, 1), 3, 3, 60, 4, 4, 3, 2, 8));
+    oneSpawnPoint();
+    ar = h.enter(a, fight);
+    Events.RoomEvent ev = ar.events.get(fight);
+    assertEquals(1, ev.props.size());
+    for (Entity e : ar.encounters.get(fight).alive) {
+      assertEquals(ev.props.getFirst()[1] + 1, e.getLocation().getY(), "the fight's enemies stand on the brazier");
+    }
   }
 
   @Test
@@ -185,6 +234,17 @@ class EventsTest {
   }
 
   @Test
+  void leavingMidHoldTakesTheBarDown() {
+    events(new EventKit(Map.of(EventKind.ENDURE, 1), 3, 3, 10, 4, 4, 3, 2, 8));
+    PlayerMock a = h.player("Ann");
+    h.enter(a, h.room(RoomType.COMBAT));
+    h.ticks(1);
+    assertEquals(1, a.getBossBars().size());
+    assertTrue(h.runs.leave(a));
+    assertTrue(a.getBossBars().isEmpty());
+  }
+
+  @Test
   void runeStonesAnswerTheirOrder() {
     events(new EventKit(Map.of(EventKind.RUNES, 1), 3, 3, 60, 3, 2, 3, 2, 1));
     PlayerMock a = h.player("Ann");
@@ -201,7 +261,7 @@ class EventsTest {
     // touches while the order shows do nothing
     assertTrue(click(a, ev.props.get(right)));
     assertEquals(0, ev.runes.progress());
-    h.ticks(7);
+    h.ticks(4 + 7);
     assertEquals(-1, ev.showStep);
     // a mistake: a group, a pause, the order again
     click(a, ev.props.get(wrong));
@@ -229,6 +289,9 @@ class EventsTest {
     click(a, ev.props.get(right));
     assertEquals(1, ev.runes.progress());
     assertEquals(right, ev.flash);
+    click(a, ev.props.get(right)); // a held click or a second player: the same stone again is ignored
+    assertEquals(1, ev.runes.progress());
+    assertFalse(h.said(a, "The stones go dark"));
     h.ticks(1);
     assertEquals(-1, ev.flash);
     click(a, ev.props.get(ev.runes.stone(1)));
@@ -240,21 +303,23 @@ class EventsTest {
   }
 
   @Test
-  void stonesOnEverySpawnPointSendEnemiesOnTopOfThem() {
+  void eventsLeaveOneSpawnPointFreeForTheirEnemies() {
     events(new EventKit(Map.of(EventKind.RUNES, 1), 3, 3, 60, 99, 2, 3, 2, 8));
     PlayerMock a = h.player("Ann");
     int fight = h.room(RoomType.COMBAT);
     RunManager.ActiveRun ar = h.enter(a, fight);
     Events.RoomEvent ev = ar.events.get(fight);
-    assertEquals(h.geo.markers(fight, "spawn").size(), ev.props.size());
-    h.ticks(7);
+    List<double[]> markers = h.geo.markers(fight, "spawn");
+    assertEquals(markers.size() - 1, ev.props.size());
+    h.ticks(4 + 7);
     int wrong = (ev.runes.stone(0) + 1) % ev.props.size();
     click(a, ev.props.get(wrong));
     List<Entity> came = new ArrayList<>(ar.encounters.get(fight).alive);
     assertFalse(came.isEmpty());
+    double[] free = ev.spawnAt.getFirst();
     for (Entity e : came) {
-      double y = e.getLocation().getY();
-      assertTrue(ev.props.stream().anyMatch(p -> p[1] + 1 == y), "on top of a stone");
+      assertEquals(free[1], e.getLocation().getY(), "at the free point, not on a stone");
+      assertEquals(free[0], e.getLocation().getX());
     }
     // a group whose enemies fail to spawn brings nobody
     h.ticks(4 + 7);

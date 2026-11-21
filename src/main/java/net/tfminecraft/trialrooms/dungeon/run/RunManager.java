@@ -1138,6 +1138,7 @@ public final class RunManager {
         boolean here = inDungeonWorld(p) && isPlayingMember(ar, p);
         ar.run.leave(p.getUniqueId());
         fights.left(ar, p);
+        events.left(ar, p);
         if (here) {
             clearDowned(ar, p);
             sendBack(p, ar.run.member(p.getUniqueId()).characterId());

@@ -93,61 +93,74 @@ final class Events {
 
     // ------------------------------------------------------------------ starting
 
-    /** The doors of a room just sealed: starts its event, fight included. False when the room has none. */
+    /**
+     * The doors of a room just sealed: starts its event, fight included. False when the room has
+     * none, or too few spawn points for it (rune stones need two): it gets a plain fight.
+     */
     boolean start(ActiveRun ar, int room) {
         EventKind kind = ar.planned.get(room);
+        List<double[]> points = ar.geo.markers(room, "spawn");
         if (kind == null) {
+            return false;
+        }
+        if (kind == EventKind.RUNES && points.size() < 2) {
+            runs.event(ar, "room " + room + " has too few spawn points for rune stones: a plain fight");
             return false;
         }
         EventKit kit = ar.kit.events();
         long now = clock.getAsLong();
         RoomEvent ev = new RoomEvent(room, kind);
-        List<double[]> points = ar.geo.markers(room, "spawn");
+        // the props go down first: the fight then keeps its enemies off them (Fights.points)
+        ar.events.put(room, ev);
         Fights.Encounter enc;
         switch (kind) {
             case KINDLE -> {
+                props(ar, ev, points, kit.braziers(), 1, COLD_BRAZIER);
+                ev.lit = new boolean[ev.props.size()];
                 fights.start(ar, room);
                 enc = ar.encounters.get(room);
-                props(ar, ev, points, kit.braziers(), COLD_BRAZIER);
-                ev.lit = new boolean[ev.props.size()];
-                ev.nextGroupMs = now + kit.everySeconds() * 1000L;
+                ev.nextGroupMs = now + kit.everySeconds() * 500L; // the first group comes sooner
                 runs.tellRoom(ar, room, "§bThe braziers in this room are cold. §7Enemies keep coming until all "
                         + ev.props.size() + " burn: right-click one and stay beside it to light it.");
             }
             case ENDURE -> {
+                spawnAt(ev, points, List.of());
                 enc = fights.startHeld(ar, room, "hold out");
                 ev.startMs = now;
                 ev.endsMs = now + kit.endureSeconds() * 1000L;
                 ev.bar = BossBar.bossBar(Component.text("Hold out"), 1f, BossBar.Color.BLUE, BossBar.Overlay.PROGRESS);
-                spawnAt(ev, points, List.of());
                 runs.tellRoom(ar, room, "§bThe ice seals the doors. §7Hold out for " + kit.endureSeconds()
                         + " seconds.");
                 group(ar, ev, enc, kit.budget() * 1.5);
                 ev.nextGroupMs = now + kit.everySeconds() * 1000L;
             }
             default -> {
+                props(ar, ev, points, kit.stones(), 2, STONE);
                 enc = fights.startHeld(ar, room, "rune stones");
-                props(ar, ev, points, kit.stones(), STONE);
                 ev.runes = new RuneSequence(ev.props.size(), kit.runeLength() + ar.rules.tier() - 1,
                         new Random(ar.run.layout().seed() * 31 + room));
                 ev.showStep = 0;
+                ev.pause = 4; // two seconds to look round before the first stone lights
                 ev.lastTouchMs = now;
                 runs.tellRoom(ar, room, "§bRune stones wake as the doors close. §7Watch the order they light in,"
                         + " then right-click them in that order. A mistake wakes the ice.");
             }
         }
         enc.hold = () -> !ev.done;
-        ar.events.put(room, ev);
         runs.event(ar, "room " + room + " event " + kind.id() + " with " + ev.props.size() + " props");
         return true;
     }
 
-    /** Puts {@code n} props on spawn points far apart from each other; enemies come at the rest. */
-    private void props(ActiveRun ar, RoomEvent ev, List<double[]> points, int n, String block) {
+    /**
+     * Puts up to {@code want} props on spawn points far apart from each other, leaving one point free
+     * for enemies when the room has more than {@code least}; enemies come at the free ones.
+     */
+    private void props(ActiveRun ar, RoomEvent ev, List<double[]> points, int want, int least, String block) {
+        int n = Math.min(want, Math.max(least, points.size() - 1));
         double[] entry = ar.geo.entry(ev.room);
         List<double[]> chosen = new ArrayList<>();
         List<double[]> left = new ArrayList<>(points);
-        while (chosen.size() < n && !left.isEmpty()) {
+        while (chosen.size() < n) {
             double[] best = null;
             double bestD = -1;
             for (double[] p : left) {
@@ -351,7 +364,10 @@ final class Events {
                 }
                 return true;
             }
-            if (ev.showStep < 0) { // not while the order shows (or waits to, after a mistake)
+            // not while the order shows (or waits to, after a mistake); a repeat press of the stone
+            // just accepted (a held click, two players at once) is never the next one, so it is ignored
+            boolean repeat = ev.runes.progress() > 0 && ev.runes.stone(ev.runes.progress() - 1) == i;
+            if (ev.showStep < 0 && !repeat) {
                 touch(ar, ev, i);
             }
             return true;
@@ -397,6 +413,15 @@ final class Events {
         RoomEvent ev = ar.events.remove(room);
         if (ev != null) {
             hideBar(ar, ev);
+        }
+    }
+
+    /** A player left the run: the event bars go from their screen. */
+    void left(ActiveRun ar, Player p) {
+        for (RoomEvent ev : ar.events.values()) {
+            if (ev.bar != null) {
+                p.hideBossBar(ev.bar);
+            }
         }
     }
 
