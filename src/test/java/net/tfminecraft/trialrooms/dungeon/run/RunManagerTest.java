@@ -1121,6 +1121,14 @@ class RunManagerTest {
     now.addAndGet(2_000);
     ticks(1);
     assertTrue(lost(a));
+    // getting somewhere (a room not seen before) starts it over: the next stall gets a hint after a minute
+    now.addAndGet(1_000);
+    a.teleport(at(middle(room(RoomType.REST))));
+    ticks(1);
+    drain(a);
+    now.addAndGet(61_000);
+    ticks(1);
+    assertTrue(lost(a));
   }
 
   @Test

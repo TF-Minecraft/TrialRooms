@@ -763,8 +763,9 @@ public final class RunManager {
             }
         }
         long wait = settings().hintSeconds() * 1000L;
-        if (ar.progressMs > ar.lastHintMs) {
+        if (ar.progressMs > ar.lastHintMs) { // they got somewhere since: start the back-off over
             ar.hints = 0;
+            ar.nextHintMs = 0;
         }
         if (ar.run.state() != DungeonRun.State.RUNNING || now - ar.progressMs < wait || now < ar.nextHintMs) {
             return;
