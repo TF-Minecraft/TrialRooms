@@ -8,4 +8,4 @@ doorways:
   - {cell: '0,0', side: north, width: 4}
   - {cell: '0,0', side: south, width: 4}
 markers:
-  - {kind: rest, at: '16,1,16'}
+  - {kind: rest, at: '16,0,19'}

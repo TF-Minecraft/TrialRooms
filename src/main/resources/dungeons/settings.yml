@@ -15,6 +15,9 @@ revive-radius: 2.5
 # then a shared life brings them back.
 self-revive-seconds: 5
 alone-bleed-out-seconds: 10
+# A party that gets nowhere for this many seconds (no new room, no fight) is told the way on once,
+# in chat and with snow particles at the doorway; the next hint waits twice as long.
+hint-seconds: 60
 # Party members within this many blocks of the gate come along.
 gate-radius: 8
 # Seconds a disconnected player keeps their place in the run.

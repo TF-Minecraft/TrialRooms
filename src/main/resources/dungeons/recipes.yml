@@ -37,3 +37,29 @@ delve_greybox:
   enemies-per-extra-player: 0.25
   tier: 1
   boss: bone_warden
+
+# The Seithr dungeon: ice and dark stone, the Seithr Fortress enemies.
+delve_seithr:
+  kit: seithr
+  trunk: 6-9
+  trunk-pool:
+    combat: 3
+    elite: 1
+    corridor: 2
+  rest-before-boss: true
+  vault: true
+  branches: 1-3
+  branch-length: 1-2
+  branch-pool:
+    combat: 2
+    corridor: 1
+  attempts: 20
+  step-budget: 20000
+  players: 1-3
+  key: m.loot.trial_key
+  lives: 3
+  mob-level: 1
+  health-per-extra-player: 0.5
+  enemies-per-extra-player: 0.25
+  tier: 1
+  boss: ice_golem

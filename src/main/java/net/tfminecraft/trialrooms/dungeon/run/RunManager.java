@@ -30,6 +30,7 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 
+import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.tfminecraft.trialrooms.dungeon.DungeonModule;
 import net.tfminecraft.trialrooms.dungeon.generator.DungeonLayout;
@@ -62,7 +63,7 @@ public final class RunManager {
     private final Ports.Mobs mobs;
     private final Fights fights;
     /** One action bar line per player, warnings first. */
-    final Cues cues = new Cues();
+    final Bars bars = new Bars();
     private final RunFiles files;
     private final GateStore gates;
     private final LongSupplier clock;
@@ -109,6 +110,17 @@ public final class RunManager {
         /** Fight budget multiplier for the party's size. */
         double enemyFactor = 1;
         long finishAtMs = -1;
+        /** Rooms a member has stood in. */
+        final Set<Integer> visited = new HashSet<>();
+        /** When the party last got anywhere (a new room, a fight); -1 until the first step. */
+        long progressMs = -1;
+        long nextHintMs;
+        long lastHintMs = -1;
+        /** Hints since the party last got anywhere: each one waits twice as long as the one before. */
+        int hints;
+        /** Where each player's last hint pointed, shown with particles until hintUntilMs. */
+        final Map<UUID, double[]> hintAt = new HashMap<>();
+        long hintUntilMs;
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -167,6 +179,7 @@ public final class RunManager {
         for (ActiveRun ar : new ArrayList<>(runs.values())) {
             end(ar, true, "§cThe dungeon fades as the world shifts. Your key is returned.");
         }
+        bars.hideOlder(Long.MAX_VALUE); // no tick will take them down any more
     }
 
     public GateStore gates() {
@@ -477,6 +490,7 @@ public final class RunManager {
                 end(ar, false, null);
             }
         }
+        bars.hideOlder(now);
     }
 
     private void step(ActiveRun ar, long now) {
@@ -501,6 +515,9 @@ public final class RunManager {
                 m.room(room);
                 entered(ar, p, room);
             }
+            if (room >= 0 && ar.visited.add(room)) {
+                ar.progressMs = now;
+            }
         }
         for (DungeonRun.Action a : run.stepRooms(settings().countdownSeconds() * 2,
                 settings().bossCountdownSeconds() * 2)) {
@@ -510,12 +527,18 @@ public final class RunManager {
                 seal(ar, ((DungeonRun.Seal) a).room());
             }
         }
+        boolean fighting = false;
         for (int room = 0; room < run.layout().rooms().size(); room++) {
             if (run.room(room) == DungeonRun.Room.ACTIVE) {
                 fight(ar, room);
+                fighting = true;
             }
         }
+        if (fighting || ar.progressMs < 0) {
+            ar.progressMs = now;
+        }
         downed(ar, now);
+        hint(ar, now);
         if (run.state() != DungeonRun.State.RUNNING) {
             return;
         }
@@ -536,9 +559,6 @@ public final class RunManager {
             tell(ar, "§aA quiet room. Anyone who falls will wake here.");
         } else if (type == RoomType.VAULT && ar.run.bossDefeated() && ar.run.state() == DungeonRun.State.RUNNING) {
             complete(ar);
-        } else if (type == RoomType.TREASURE) {
-            cues.send(p, Cues.Level.INFO, "A treasure room (treasure comes in a later update).", clock.getAsLong(),
-                    2000);
         }
     }
 
@@ -548,9 +568,9 @@ public final class RunManager {
         }
         for (Player p : online(ar)) {
             if (ar.run.member(p.getUniqueId()).room() == c.room()) {
-                cues.send(p, Cues.Level.INFO, "The doors close in " + c.stepsLeft() / 2 + "...", clock.getAsLong(),
-                        900);
-                p.playSound(p.getLocation(), "minecraft:block.note_block.hat", 1f, 1f);
+                // a tick each second, rising as the doors come to close
+                p.playSound(p.getLocation(), "minecraft:block.note_block.hat", 1f,
+                        (float) Math.max(0.6, 1.6 - 0.2 * (c.stepsLeft() / 2)));
             }
         }
     }
@@ -724,32 +744,93 @@ public final class RunManager {
             } else if (m.room() == room) {
                 p.sendMessage("§aThe room is clear. The doors open.");
             }
-            if (m.room() == room) {
-                String next = nextDoor(ar, room, p);
-                if (next != null) {
-                    cues.send(p, Cues.Level.INFO, "Next door: " + next, clock.getAsLong(), 3000);
-                }
-            }
         }
     }
 
-    /** Text direction to the nearest doorway leading deeper from a room, for players who navigate by text. */
-    private String nextDoor(ActiveRun ar, int room, Player p) {
-        String best = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (DungeonLayout.Connection c : ar.run.layout().connections()) {
-            if (c.roomA() != room) {
-                continue;
-            }
-            double[] d = ar.geo.insideDoor(room, c.doorA());
-            Location l = p.getLocation();
-            double dist = Math.hypot(d[0] - l.getX(), d[2] - l.getZ());
-            if (dist < bestDistance) {
-                bestDistance = dist;
-                best = RunGeometry.direction(l.getX(), l.getY(), l.getZ(), l.getYaw(), d[0], d[1], d[2]);
+    /**
+     * A party that has got nowhere for a while (no new room, no fight) gets one quiet hint: the
+     * doorway on the way to the nearest room still to clear (or the vault once the boss is down),
+     * named in chat and marked with snow particles for a few seconds. While they still get nowhere,
+     * each further hint waits twice as long as the one before (up to 16 times).
+     */
+    private void hint(ActiveRun ar, long now) {
+        if (now < ar.hintUntilMs) {
+            for (Player p : online(ar)) {
+                double[] d = ar.hintAt.get(p.getUniqueId());
+                if (d != null) {
+                    p.spawnParticle(org.bukkit.Particle.SNOWFLAKE, d[0], d[1] + 1.5, d[2], 6, 0.6, 1.2, 0.6, 0);
+                }
             }
         }
-        return best;
+        long wait = settings().hintSeconds() * 1000L;
+        if (ar.progressMs > ar.lastHintMs) { // they got somewhere since: start the back-off over
+            ar.hints = 0;
+            ar.nextHintMs = 0;
+        }
+        if (ar.run.state() != DungeonRun.State.RUNNING || now - ar.progressMs < wait || now < ar.nextHintMs) {
+            return;
+        }
+        ar.hintAt.clear();
+        for (Player p : online(ar)) {
+            Member m = ar.run.member(p.getUniqueId());
+            double[] d = m.playing() ? wayOn(ar, m.room()) : null;
+            if (d == null) {
+                continue;
+            }
+            Location l = p.getLocation();
+            ar.hintAt.put(p.getUniqueId(), d);
+            p.sendMessage("§7Lost? The way on is " + RunGeometry.direction(l.getX(), l.getY(), l.getZ(), l.getYaw(),
+                    d[0], d[1], d[2]) + ".");
+            p.playSound(new Location(module.world(), d[0], d[1], d[2]), "minecraft:block.amethyst_block.chime", 1f,
+                    1f);
+        }
+        if (!ar.hintAt.isEmpty()) { // nobody had a way to be shown: the hint is not used up
+            ar.hints++;
+            ar.lastHintMs = now;
+            ar.nextHintMs = now + wait * (1L << Math.min(4, ar.hints));
+            ar.hintUntilMs = now + 6000;
+        }
+    }
+
+    /**
+     * The spot just inside the doorway of {@code from} that leads toward the nearest room still to
+     * do: a fight room not cleared yet, or the vault once the boss has fallen. Null when there is none,
+     * or when the player already stands in such a room (a boss room waiting for the rest of the party).
+     */
+    private static double[] wayOn(ActiveRun ar, int from) {
+        DungeonLayout layout = ar.run.layout();
+        int n = layout.rooms().size();
+        if (from < 0 || wanted(ar, from)) {
+            return null;
+        }
+        int[] firstDoor = new int[n];
+        java.util.Arrays.fill(firstDoor, -2);
+        firstDoor[from] = -1;
+        java.util.ArrayDeque<Integer> todo = new java.util.ArrayDeque<>(List.of(from));
+        while (!todo.isEmpty()) {
+            int r = todo.poll();
+            if (r != from && wanted(ar, r)) {
+                return ar.geo.insideDoor(from, firstDoor[r]);
+            }
+            for (DungeonLayout.Connection c : layout.connections()) {
+                int next = c.roomA() == r ? c.roomB() : c.roomB() == r ? c.roomA() : -1;
+                if (next >= 0 && firstDoor[next] == -2) {
+                    int door = c.roomA() == r ? c.doorA() : c.doorB();
+                    firstDoor[next] = r == from ? door : firstDoor[r];
+                    todo.add(next);
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Before the boss falls: fight rooms not cleared yet. After: only the vault (side fights are optional). */
+    private static boolean wanted(ActiveRun ar, int room) {
+        RoomType type = ar.run.layout().rooms().get(room).node().type();
+        if (ar.run.bossDefeated()) {
+            return type == RoomType.VAULT;
+        }
+        return DungeonRun.isFight(type) && ar.run.room(room) != DungeonRun.Room.CLEARED;
     }
 
     /**
@@ -827,9 +908,9 @@ public final class RunManager {
                     tell(ar, "§a" + reviver.getName() + " brings " + d.getName() + " back up.");
                     event(ar, reviver.getName() + " revived " + d.getName());
                 } else {
-                    int pct = (int) (100 * ar.run.member(m.id()).reviveMs() / needed);
-                    cues.send(reviver, Cues.Level.DOWNED, "Reviving " + d.getName() + "... " + pct + "%", now, 600);
-                    cues.send(d, Cues.Level.DOWNED, reviver.getName() + " is reviving you... " + pct + "%", now, 600);
+                    double done = (double) ar.run.member(m.id()).reviveMs() / needed;
+                    bars.show(reviver, "Reviving " + d.getName(), done, BossBar.Color.GREEN, now);
+                    bars.show(d, reviver.getName() + " is reviving you", done, BossBar.Color.GREEN, now);
                 }
                 continue;
             }
@@ -844,8 +925,8 @@ public final class RunManager {
                             : " §7If you go down again in this fight, you can't get up on your own."));
                     event(ar, d.getName() + " got back up alone");
                 } else {
-                    cues.send(d, Cues.Level.DOWNED, "Getting up... " + (int) (100 * ar.run.member(m.id()).reviveMs()
-                            / selfNeeded) + "%", now, 600);
+                    bars.show(d, "Getting up", (double) ar.run.member(m.id()).reviveMs() / selfNeeded,
+                            BossBar.Color.GREEN, now);
                 }
                 continue;
             }
@@ -856,17 +937,8 @@ public final class RunManager {
                 bleedOut(ar, d);
                 continue;
             }
-            String secs = (left + 999) / 1000 + "s";
-            cues.send(d, Cues.Level.DOWNED, self ? "You are down: crouch to get back up. " + secs + " left"
-                    : "You are down: " + secs + ". Lives left: " + ar.run.lives(), now, 600);
-            for (Player a : online(ar)) {
-                if (ar.run.member(a.getUniqueId()).playing()) {
-                    Location l = a.getLocation();
-                    Location dl = d.getLocation();
-                    cues.send(a, Cues.Level.DOWNED, d.getName() + " is down, " + RunGeometry.direction(l.getX(),
-                            l.getY(), l.getZ(), l.getYaw(), dl.getX(), dl.getY(), dl.getZ()), now, 600);
-                }
-            }
+            bars.show(d, self ? "You are down: crouch to get up" : "You are down. Lives left: " + ar.run.lives(),
+                    (double) left / limit, self ? BossBar.Color.YELLOW : BossBar.Color.RED, now);
         }
     }
 

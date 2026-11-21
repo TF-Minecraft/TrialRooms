@@ -5,29 +5,14 @@ Usage: python tools/rooms/build_greybox.py [output-dir]
 Default output: src/main/resources/dungeons/kits/greybox
 Needs nbtlib (pip install nbtlib).
 
-Kit rules (the plugin checks the same ones):
-- Cells are CELL x CELL blocks. A room template is a whole number of cells wide and deep.
-- Each room has its own walls inside its cells. Doorways are DOOR_W wide and DOOR_H tall, centred
-  on a cell edge (blocks 14-17 for a 32 cell), starting one block above their floor (y = floor + 1).
-  A doorway's floor may be above the room's base: joined doorways meet at the same height, so the
-  plugin raises or lowers the next room to match.
-- A room may fill only some cells of its box (L, T, U shapes). Nothing is written in the other cells,
-  not even air, so placing the room never touches a neighbour there.
-- No jumps: height changes use stairs, and each doorway has a flat landing at least 4 blocks deep.
-  Mobs get at least 3 blocks of headroom.
+Kit rules: see roomlib.py.
 """
-import gzip
-import io
 import os
 import sys
 
-import nbtlib
-from nbtlib import Compound, Int, List, String
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from roomlib import CELL, DOOR_H, DOOR_W, Room as BaseRoom, walk_check  # noqa: E402
 
-DATA_VERSION = 4556  # Minecraft 1.21.10
-CELL = 32
-DOOR_W = 4
-DOOR_H = 4
 KIT = "greybox"
 
 FLOOR = "minecraft:polished_andesite"
@@ -35,6 +20,7 @@ WALL = "minecraft:stone_bricks"
 CEIL = "minecraft:stone_bricks"
 LIGHT = "minecraft:sea_lantern"
 PILLAR = "minecraft:polished_deepslate"
+
 # one wall band colour per room type, so greybox rooms read at a glance
 BAND = {
     "start": "minecraft:light_blue_concrete",
@@ -50,143 +36,30 @@ BAND = {
 SIDES = {"north", "east", "south", "west"}
 
 
-class Room:
+class Room(BaseRoom):
+    """A greybox room: plain walls with one colour band per room type."""
+
     def __init__(self, rid, rtype, wc, dc, height, cells=None):
-        self.id, self.type, self.wc, self.dc, self.h = rid, rtype, wc, dc, height
-        self.w, self.d = wc * CELL, dc * CELL
-        # the cells of the box the room fills; None = all of them
-        self.cells = None if cells is None else set(cells)
-        self.blocks = {}
-        self.doors = []  # (cx, cz, side, floor)
-        self.markers = []  # (kind, tag, x, y, z, facing)
-        self.weight = 1
-        self.max_per_run = 0
+        super().__init__(rid, rtype, wc, dc, height, cells, kit=KIT)
 
-    def fills(self, cx, cz):
-        return 0 <= cx < self.wc and 0 <= cz < self.dc and (self.cells is None or (cx, cz) in self.cells)
-
-    def put(self, x, y, z, name):
-        if 0 <= x < self.w and 0 <= y < self.h and 0 <= z < self.d and self.fills(x // CELL, z // CELL):
-            self.blocks[(x, y, z)] = name
-
-    def clear(self, x, y, z):
-        self.blocks.pop((x, y, z), None)
-
-    def fill(self, x0, y0, z0, x1, y1, z1, name):
-        for x in range(min(x0, x1), max(x0, x1) + 1):
-            for y in range(min(y0, y1), max(y0, y1) + 1):
-                for z in range(min(z0, z1), max(z0, z1) + 1):
-                    if name is None:
-                        self.clear(x, y, z)
-                    else:
-                        self.put(x, y, z, name)
-
-    def door(self, cx, cz, side, floor=0):
-        assert side in SIDES
-        self.doors.append((cx, cz, side, floor))
-
-    def marker(self, kind, x, y, z, tag="", facing=None):
-        self.markers.append((kind, tag, x, y, z, facing))
-
-    # ---- building ----
     def shell(self):
         """Floor, outer walls with a colour band, ceiling with lights, and doorway openings."""
         w, d, h = self.w, self.d, self.h
         self.fill(0, 0, 0, w - 1, 0, d - 1, FLOOR)
         self.fill(0, h - 1, 0, w - 1, h - 1, d - 1, CEIL)
         band = BAND[self.type]
-        # walls on every cell side that faces out of the room (put() skips cells the room doesn't fill)
-        for cx in range(self.wc):
-            for cz in range(self.dc):
-                if not self.fills(cx, cz):
-                    continue
-                x0, z0, x1, z1 = cx * CELL, cz * CELL, cx * CELL + CELL - 1, cz * CELL + CELL - 1
-                for y in range(1, h - 1):
-                    mat = band if y == 6 else WALL
-                    if not self.fills(cx, cz - 1):
-                        self.fill(x0, y, z0, x1, y, z0, mat)
-                    if not self.fills(cx, cz + 1):
-                        self.fill(x0, y, z1, x1, y, z1, mat)
-                    if not self.fills(cx - 1, cz):
-                        self.fill(x0, y, z0, x0, y, z1, mat)
-                    if not self.fills(cx + 1, cz):
-                        self.fill(x1, y, z0, x1, y, z1, mat)
+        for cx, cz, side in self.outer_edges():
+            for y in range(1, h - 1):
+                mat = band if y == 6 else WALL
+                for x, z in self.edge_blocks(cx, cz, side):
+                    self.put(x, y, z, mat)
         for x in range(4, w - 3, 6):
             for z in range(4, d - 3, 6):
                 self.put(x, h - 1, z, LIGHT)
         self.open_doors()
 
-    def open_doors(self):
-        start = (CELL - DOOR_W) // 2
-        for cx, cz, side, floor in self.doors:
-            bx, bz = cx * CELL, cz * CELL
-            for k in range(start, start + DOOR_W):
-                for y in range(floor + 1, floor + 1 + DOOR_H):
-                    if side == "north":
-                        self.clear(bx + k, y, bz)
-                    elif side == "south":
-                        self.clear(bx + k, y, bz + CELL - 1)
-                    elif side == "west":
-                        self.clear(bx, y, bz + k)
-                    else:
-                        self.clear(bx + CELL - 1, y, bz + k)
-
     def pillar(self, x, z):
         self.fill(x, 1, z, x + 1, self.h - 2, z + 1, PILLAR)
-
-    # ---- output ----
-    def write(self, out_dir):
-        palette = sorted(set(self.blocks.values()))
-        index = {n: i for i, n in enumerate(palette)}
-        root = Compound({
-            "DataVersion": Int(DATA_VERSION),
-            "size": List[Int]([Int(self.w), Int(self.h), Int(self.d)]),
-            "palette": List[Compound]([state(n) for n in palette]),
-            "blocks": List[Compound]([
-                Compound({"state": Int(index[n]), "pos": List[Int]([Int(x), Int(y), Int(z)])})
-                for (x, y, z), n in sorted(self.blocks.items())
-            ]),
-            "entities": List[Compound]([]),
-        })
-        # gzip with a fixed timestamp, so rebuilding an unchanged room gives the same bytes
-        raw = io.BytesIO()
-        nbtlib.File(root).write(raw)
-        with open(os.path.join(out_dir, self.id + ".nbt"), "wb") as f:
-            f.write(gzip.compress(raw.getvalue(), mtime=0))
-        lines = [
-            "# Generated by tools/rooms/build_greybox.py. Edit the script, not this file.",
-            f"type: {self.type}",
-            f"footprint: {self.wc}x{self.dc}",
-        ] + ([] if self.cells is None else
-             ["cells: [" + ", ".join(f"'{cx},{cz}'" for cx, cz in sorted(self.cells)) + "]"]) + [
-            f"weight: {self.weight}",
-            f"max-per-run: {self.max_per_run}",
-            f"tags: [{KIT}]",
-            "doorways:",
-        ]
-        for cx, cz, side, floor in self.doors:
-            lines.append(f"  - {{cell: '{cx},{cz}', side: {side}, width: {DOOR_W}"
-                         + (f", floor: {floor}" if floor else "") + "}")
-        lines.append("markers:" if self.markers else "markers: []")
-        for kind, tag, x, y, z, facing in self.markers:
-            entry = f"  - {{kind: {kind}, at: '{x},{y},{z}'"
-            if tag:
-                entry += f", tag: {tag}"
-            if facing:
-                entry += f", facing: {facing}"
-            lines.append(entry + "}")
-        with open(os.path.join(out_dir, self.id + ".yml"), "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(lines) + "\n")
-        return self.id
-
-
-def state(name):
-    """A palette entry from 'minecraft:block' or 'minecraft:block[key=value,...]'."""
-    if "[" not in name:
-        return Compound({"Name": String(name)})
-    base, props = name[:-1].split("[", 1)
-    pairs = dict(p.split("=", 1) for p in props.split(","))
-    return Compound({"Name": String(base), "Properties": Compound({k: String(v) for k, v in pairs.items()})})
 
 
 def all_doors(room):
@@ -283,7 +156,7 @@ def build():
     r.door(0, 0, "south")
     r.shell()
     r.put(16, 1, 16, "minecraft:campfire")
-    r.marker("rest", 16, 1, 16)
+    r.marker("rest", 16, 0, 19)  # the floor beside the fire: players wake standing on it, not in the fire
     rooms.append(r)
 
     r = Room("treasure_nook", "treasure", 1, 1, 8)
@@ -436,7 +309,11 @@ def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(repo, "src", "main", "resources", "dungeons", "kits", KIT)
     rooms_dir = os.path.join(out, "rooms")
     os.makedirs(rooms_dir, exist_ok=True)
-    ids = [r.write(rooms_dir) for r in build()]
+    rooms = build()
+    problems = [p for r in rooms for p in walk_check(r)]
+    if problems:
+        sys.exit("Walk check failed:\n" + "\n".join(problems))
+    ids = [r.write(rooms_dir) for r in rooms]
     with open(os.path.join(out, "kit.yml"), "w", encoding="utf-8", newline="\n") as f:
         f.write("# Generated by tools/rooms/build_greybox.py.\n"
                 f"cell-size: {CELL}\ncell-height: 24\ndoor-height: {DOOR_H}\nseal-block: {WALL}\n"
