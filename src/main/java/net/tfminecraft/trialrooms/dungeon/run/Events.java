@@ -95,7 +95,8 @@ final class Events {
 
     /**
      * The doors of a room just sealed: starts its event, fight included. False when the room has
-     * none, or too few spawn points for it (rune stones need two): it gets a plain fight.
+     * none, or too few spawn points for it (rune stones need three: over two stones an order that
+     * never repeats a stone gives itself away): it gets a plain fight.
      */
     boolean start(ActiveRun ar, int room) {
         EventKind kind = ar.planned.get(room);
@@ -103,7 +104,7 @@ final class Events {
         if (kind == null) {
             return false;
         }
-        if (kind == EventKind.RUNES && points.size() < 2) {
+        if (kind == EventKind.RUNES && points.size() < 3) {
             runs.event(ar, "room " + room + " has too few spawn points for rune stones: a plain fight");
             return false;
         }
@@ -135,7 +136,7 @@ final class Events {
                 ev.nextGroupMs = now + kit.everySeconds() * 1000L;
             }
             default -> {
-                props(ar, ev, points, kit.stones(), 2, STONE);
+                props(ar, ev, points, kit.stones(), 3, STONE);
                 enc = fights.startHeld(ar, room, "rune stones");
                 ev.runes = new RuneSequence(ev.props.size(), kit.runeLength() + ar.rules.tier() - 1,
                         new Random(ar.run.layout().seed() * 31 + room));
