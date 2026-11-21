@@ -404,6 +404,12 @@ class RunListenerTest {
     l.onInteract(exit);
     verify(runs, times(2)).tryExit(p);
     assertTrue(exit.useInteractedBlock() == org.bukkit.event.Event.Result.DENY);
+    // a room event's brazier or rune stone takes the click first
+    when(runs.propClick(p, block)).thenReturn(true);
+    PlayerInteractEvent prop = new PlayerInteractEvent(p, Action.RIGHT_CLICK_BLOCK, null, block, null, EquipmentSlot.HAND);
+    l.onInteract(prop);
+    assertTrue(prop.useInteractedBlock() == org.bukkit.event.Event.Result.DENY);
+    verify(runs, times(2)).tryExit(p);
   }
 
   @Test

@@ -106,8 +106,10 @@ class DungeonRunCommandsTest {
     verify(runs).end(eq(ar), eq(true), anyString());
     c.run(console, new String[] {"rooms"});
     c.run(console, new String[] {"rooms", "ffff"});
+    when(ar.event(1)).thenReturn(net.tfminecraft.trialrooms.dungeon.event.EventKind.RUNES);
     c.run(console, new String[] {"rooms", "1234"});
     verify(console).sendMessage(startsWith("§7room 0 START IDLE at "));
+    verify(console).sendMessage(endsWith(" [runes]"));
   }
 
   @Test

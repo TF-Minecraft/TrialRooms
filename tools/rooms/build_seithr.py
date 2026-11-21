@@ -773,6 +773,19 @@ bosses:
       - {at: 100, adds: 0, mechanics: [slam], every: 12}
       - {at: 66, adds: 5, mechanics: [slam, shockwave], every: 10}
       - {at: 33, adds: 6, mechanics: [shockwave, slam, rally-call], every: 9}
+# Room events: some plain fight rooms get one (the recipe's event-chance and max-events).
+# kindle: cold braziers stand on spawn points; enemies keep coming until all are lit (a player stays
+#   beside one for light-seconds). endure: the doors stay shut for seconds while enemies keep coming.
+# runes: stones light in an order (length, one more per tier above 1); players touch them in that
+#   order; a mistake brings a group. every-seconds and budget: how often groups come and their
+#   threat budget (scaled for the party); most-enemies: no group comes while this many stand.
+events:
+  kindle: {weight: 2, braziers: 3, light-seconds: 3}
+  endure: {weight: 1, seconds: 60}
+  runes: {weight: 2, stones: 4, length: 4}
+  every-seconds: 15
+  budget: 2
+  most-enemies: 8
 """
 
 

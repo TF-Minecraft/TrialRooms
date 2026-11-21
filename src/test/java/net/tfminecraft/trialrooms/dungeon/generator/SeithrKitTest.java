@@ -25,6 +25,11 @@ class SeithrKitTest {
     var recipes = RecipeLoader.load(new File(GreyboxKitTest.RES, "recipes.yml"), problems);
     assertEquals(List.of(), problems);
     assertEquals("seithr", recipes.get("delve_seithr").kit());
+    assertEquals(0.4, recipes.get("delve_seithr").rules().eventChance());
+    assertEquals(2, recipes.get("delve_seithr").rules().maxEvents());
+    assertEquals(java.util.Map.of(net.tfminecraft.trialrooms.dungeon.event.EventKind.KINDLE, 2,
+        net.tfminecraft.trialrooms.dungeon.event.EventKind.ENDURE, 1,
+        net.tfminecraft.trialrooms.dungeon.event.EventKind.RUNES, 2), kit.events().weights());
     DungeonRecipe recipe = recipes.get("delve_seithr").recipe();
     int retries = 0;
     boolean raised = false;

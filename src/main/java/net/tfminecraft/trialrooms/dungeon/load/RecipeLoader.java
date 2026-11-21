@@ -60,7 +60,8 @@ public final class RecipeLoader {
         int[] players = range(s.getString("players", "1-3"), "players");
         return new RunRules(players[0], players[1], s.getString("key", "m.loot.trial_key"), s.getInt("lives", 3),
                 s.getInt("mob-level", 1), s.getDouble("health-per-extra-player", 0.5), s.getInt("tier", 1),
-                s.getString("boss", ""), s.getDouble("enemies-per-extra-player", 0.25));
+                s.getString("boss", ""), s.getDouble("enemies-per-extra-player", 0.25), s.getDouble("event-chance", 0),
+                s.getInt("max-events", 2));
     }
 
     private static Map<RoomType, Integer> pool(ConfigurationSection s) {
