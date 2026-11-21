@@ -340,19 +340,31 @@ public class RunCoreTest {
     alone.set("alone-bleed-out-seconds", 7);
     assertEquals(1, RunSettings.from(alone).selfReviveSeconds());
     assertEquals(7, RunSettings.from(alone).aloneBleedOutSeconds());
+    assertEquals(60, RunSettings.from(alone).hintSeconds());
+    alone.set("hint-seconds", 3);
+    assertEquals(10, RunSettings.from(alone).hintSeconds(), "at least 10");
   }
 
   @Test
-  void actionBarsKeepWarningsOnTop() {
+  void progressBarsComeAndGo() {
     org.mockbukkit.mockbukkit.ServerMock server = org.mockbukkit.mockbukkit.MockBukkit.mock();
     try {
       var p = server.addPlayer();
-      Cues cues = new Cues();
-      assertTrue(cues.send(p, Cues.Level.WARNING, "move", 0, 1000));
-      assertFalse(cues.send(p, Cues.Level.INFO, "info", 500, 1000), "a warning holds the bar");
-      assertTrue(cues.send(p, Cues.Level.WARNING, "again", 600, 1000), "the same level may replace it");
-      assertTrue(cues.send(p, Cues.Level.INFO, "info", 1700, 1000), "once the hold runs out");
-      assertTrue(cues.send(p, Cues.Level.DOWNED, "down", 1800, 1000), "a higher level goes over a lower one");
+      var q = server.addPlayer();
+      Bars bars = new Bars();
+      bars.show(p, "Getting up", 0.5, net.kyori.adventure.bossbar.BossBar.Color.GREEN, 0);
+      bars.show(p, "Getting up", 1.5, net.kyori.adventure.bossbar.BossBar.Color.YELLOW, 500);
+      var bar = p.getBossBars().iterator().next();
+      assertEquals(1f, bar.progress(), "clamped to full");
+      assertEquals(net.kyori.adventure.bossbar.BossBar.Color.YELLOW, bar.color());
+      bars.show(q, "Reviving", -1, net.kyori.adventure.bossbar.BossBar.Color.GREEN, 400);
+      bars.hideOlder(500);
+      assertEquals(1, p.getBossBars().size(), "refreshed at 500: kept");
+      assertTrue(q.getBossBars().isEmpty(), "not refreshed: gone");
+      bars.show(q, "Reviving", 0, net.kyori.adventure.bossbar.BossBar.Color.GREEN, 600);
+      q.disconnect();
+      bars.hideOlder(2000); // q is offline now: nothing to take down for them
+      assertTrue(p.getBossBars().isEmpty());
     } finally {
       org.mockbukkit.mockbukkit.MockBukkit.unmock();
     }

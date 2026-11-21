@@ -18,7 +18,8 @@ class SeithrKitTest {
     List<String> problems = new ArrayList<>();
     DungeonKit kit = KitLoader.load(new File(GreyboxKitTest.RES, "kits/seithr"), problems);
     assertEquals(List.of(), problems);
-    assertEquals(13, kit.catalog().templates().size());
+    assertEquals(36, kit.catalog().templates().size());
+    assertEquals(16, kit.catalog().cellSize());
     assertEquals("The Elite Ice Golem", kit.fights().boss("ice_golem").name());
     assertEquals(10, kit.fights().roster().size());
     var recipes = RecipeLoader.load(new File(GreyboxKitTest.RES, "recipes.yml"), problems);
@@ -33,13 +34,15 @@ class SeithrKitTest {
       GreyboxKitTest.assertValid(layout);
       raised |= layout.rooms().stream().anyMatch(r -> r.elevation() != 0);
     }
-    assertTrue(retries < 30, "too many retries: " + retries);
+    assertTrue(retries < 300, "more than one retry per layout on average: " + retries);
     assertTrue(raised, "some layouts change level");
-    // the shaped cavern leaves its empty cell untouched
+    // shaped rooms leave their empty cells untouched, and small rooms bring smaller fights
     for (var t : kit.catalog().templates()) {
       for (int[] pos : GreyboxKitTest.blockPositions(kit.structures().get(t.id()))) {
-        assertTrue(t.occupies(pos[0] / 32, pos[2] / 32), t.id());
+        assertTrue(t.occupies(pos[0] / 16, pos[2] / 16), t.id());
       }
     }
+    assertEquals(0.5, kit.catalog().templates().stream().filter(t -> t.id().equals("guard_post")).findFirst()
+        .orElseThrow().threat());
   }
 }

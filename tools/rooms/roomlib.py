@@ -1,7 +1,8 @@
 """Shared room-building code for the dungeon kits: rooms, structure output, and the walk check.
 
 Kit rules (the plugin checks the same ones):
-- Cells are CELL x CELL blocks. A room template is a whole number of cells wide and deep.
+- Cells are cell x cell blocks (CELL = 32 by default; a kit may use another even size, the same for
+  all its rooms). A room template is a whole number of cells wide and deep.
 - Each room has its own walls inside its cells. Doorways are DOOR_W wide and DOOR_H tall, centred
   on a cell edge (blocks 14-17 for a 32 cell), starting one block above their floor (y = floor + 1).
   A doorway's floor may be above the room's base: joined doorways meet at the same height, so the
@@ -38,10 +39,11 @@ def state(name):
 class Room:
     """One room template: blocks, doorways and markers, written as a structure plus a sidecar."""
 
-    def __init__(self, rid, rtype, wc, dc, height, cells=None, kit="greybox"):
+    def __init__(self, rid, rtype, wc, dc, height, cells=None, kit="greybox", cell=CELL):
         self.id, self.type, self.wc, self.dc, self.h = rid, rtype, wc, dc, height
         self.kit = kit
-        self.w, self.d = wc * CELL, dc * CELL
+        self.cell = cell
+        self.w, self.d = wc * cell, dc * cell
         # the cells of the box the room fills; None = all of them
         self.cells = None if cells is None else set(cells)
         self.blocks = {}
@@ -49,13 +51,14 @@ class Room:
         self.markers = []  # (kind, tag, x, y, z, facing)
         self.weight = 1
         self.max_per_run = 0
+        self.threat = 1.0  # share of a fight's budget: small rooms below 1, big ones above
         self.rng = random.Random(rid)
 
     def fills(self, cx, cz):
         return 0 <= cx < self.wc and 0 <= cz < self.dc and (self.cells is None or (cx, cz) in self.cells)
 
     def put(self, x, y, z, name):
-        if 0 <= x < self.w and 0 <= y < self.h and 0 <= z < self.d and self.fills(x // CELL, z // CELL):
+        if 0 <= x < self.w and 0 <= y < self.h and 0 <= z < self.d and self.fills(x // self.cell, z // self.cell):
             self.blocks[(x, y, z)] = name
 
     def get(self, x, y, z):
@@ -93,43 +96,43 @@ class Room:
 
     def edge_blocks(self, cx, cz, side):
         """The (x, z) positions along one outer cell side, in order."""
-        x0, z0 = cx * CELL, cz * CELL
-        for k in range(CELL):
+        x0, z0 = cx * self.cell, cz * self.cell
+        for k in range(self.cell):
             if side == "north":
                 yield x0 + k, z0
             elif side == "south":
-                yield x0 + k, z0 + CELL - 1
+                yield x0 + k, z0 + self.cell - 1
             elif side == "west":
                 yield x0, z0 + k
             else:
-                yield x0 + CELL - 1, z0 + k
+                yield x0 + self.cell - 1, z0 + k
 
     def open_doors(self):
-        start = (CELL - DOOR_W) // 2
+        start = (self.cell - DOOR_W) // 2
         for cx, cz, side, floor in self.doors:
-            bx, bz = cx * CELL, cz * CELL
+            bx, bz = cx * self.cell, cz * self.cell
             for k in range(start, start + DOOR_W):
                 for y in range(floor + 1, floor + 1 + DOOR_H):
                     if side == "north":
                         self.clear(bx + k, y, bz)
                     elif side == "south":
-                        self.clear(bx + k, y, bz + CELL - 1)
+                        self.clear(bx + k, y, bz + self.cell - 1)
                     elif side == "west":
                         self.clear(bx, y, bz + k)
                     else:
-                        self.clear(bx + CELL - 1, y, bz + k)
+                        self.clear(bx + self.cell - 1, y, bz + k)
 
     def landing(self, cx, cz, side, floor, depth=5):
         """Spot (x, y, z) a door's landing starts at, and the inward step (dx, dz)."""
-        mid = CELL // 2
-        bx, bz = cx * CELL, cz * CELL
+        mid = self.cell // 2
+        bx, bz = cx * self.cell, cz * self.cell
         if side == "north":
             return (bx + mid, floor + 1, bz + 1), (0, 1)
         if side == "south":
-            return (bx + mid, floor + 1, bz + CELL - 2), (0, -1)
+            return (bx + mid, floor + 1, bz + self.cell - 2), (0, -1)
         if side == "west":
             return (bx + 1, floor + 1, bz + mid), (1, 0)
-        return (bx + CELL - 2, floor + 1, bz + mid), (-1, 0)
+        return (bx + self.cell - 2, floor + 1, bz + mid), (-1, 0)
 
     # ---- output ----
     def write(self, out_dir):
@@ -159,6 +162,7 @@ class Room:
              ["cells: [" + ", ".join(f"'{cx},{cz}'" for cx, cz in sorted(self.cells)) + "]"]) + [
             f"weight: {self.weight}",
             f"max-per-run: {self.max_per_run}",
+        ] + ([] if self.threat == 1.0 else [f"threat: {self.threat:g}"]) + [
             f"tags: [{self.kit}]",
             "doorways:",
         ]
@@ -309,24 +313,24 @@ def walk_check(room, max_drop=6):
         return seen
 
     starts = []
-    start = (CELL - DOOR_W) // 2
+    start = (room.cell - DOOR_W) // 2
     for cx, cz, side, floor in room.doors:
-        bx, bz = cx * CELL, cz * CELL
+        bx, bz = cx * room.cell, cz * room.cell
         h = floor * 2 + 2
         bad = None
         for k in range(5):  # 0 = the doorway itself, then 4 blocks in
             for j in range(DOOR_W):
-                x, z = {"north": (bx + start + j, bz + k), "south": (bx + start + j, bz + CELL - 1 - k),
-                        "west": (bx + k, bz + start + j), "east": (bx + CELL - 1 - k, bz + start + j)}[side]
+                x, z = {"north": (bx + start + j, bz + k), "south": (bx + start + j, bz + room.cell - 1 - k),
+                        "west": (bx + k, bz + start + j), "east": (bx + room.cell - 1 - k, bz + start + j)}[side]
                 if k == 0 and not all(_passable(room.get(x, y, z)) for y in range(floor + 1, floor + 1 + DOOR_H)):
                     bad = "its opening is blocked"
                 elif options(x, z).get(h, ("", None))[0] != "flat":
                     bad = bad or f"no flat landing {k} blocks in" if k else bad or "no floor in its opening"
         if bad:
             problems.append(f"{room.id}: the {side} doorway at {cx},{cz}: {bad}")
-        mid = CELL // 2
-        sx, sz = {"north": (bx + mid, bz + 1), "south": (bx + mid, bz + CELL - 2),
-                  "west": (bx + 1, bz + mid), "east": (bx + CELL - 2, bz + mid)}[side]
+        mid = room.cell // 2
+        sx, sz = {"north": (bx + mid, bz + 1), "south": (bx + mid, bz + room.cell - 2),
+                  "west": (bx + 1, bz + mid), "east": (bx + room.cell - 2, bz + mid)}[side]
         starts.append(((sx, h, sz), f"{side} doorway at {cx},{cz}"))
     if not starts or problems:
         return problems

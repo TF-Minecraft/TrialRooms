@@ -61,6 +61,13 @@ class TemplateTest {
         () -> new RoomTemplate("x", RoomType.COMBAT, 1, 1, one, List.of(), 1, 0, 0, -1, Set.of()));
     assertThrows(IllegalArgumentException.class,
         () -> new RoomTemplate("x", RoomType.COMBAT, 1, 1, one, List.of(), 1, 3, 2, 0, Set.of()));
+    // a room's threat share stays between a quarter and three times the budget
+    assertEquals(0.5, new RoomTemplate("x", RoomType.COMBAT, 1, 1, one, List.of(), 1, 0, 0, 0, Set.of(), Set.of(),
+        0.5).threat());
+    for (double threat : new double[] {0.2, 3.5, Double.NaN}) {
+      assertThrows(IllegalArgumentException.class, () -> new RoomTemplate("x", RoomType.COMBAT, 1, 1, one,
+          List.of(), 1, 0, 0, 0, Set.of(), Set.of(), threat));
+    }
     assertThrows(IllegalArgumentException.class,
         () -> room("x", RoomType.COMBAT, 1, 1, List.of(door(0, 0, Side.NORTH), door(0, 0, Side.NORTH))));
     // doorways must sit on the outer edge of their own side

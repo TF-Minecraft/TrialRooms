@@ -4,18 +4,19 @@ footprint: 2x2
 cells: ['0,0', '0,1', '1,0']
 weight: 1
 max-per-run: 0
+threat: 0.85
 tags: [seithr]
 doorways:
   - {cell: '0,0', side: north, width: 4}
   - {cell: '1,0', side: east, width: 4}
-  - {cell: '1,0', side: south, width: 4}
   - {cell: '0,1', side: south, width: 4}
 markers:
-  - {kind: spawn, at: '14,1,18', tag: melee}
-  - {kind: spawn, at: '34,1,20', tag: melee}
-  - {kind: spawn, at: '46,1,14', tag: melee}
-  - {kind: spawn, at: '18,1,34', tag: melee}
-  - {kind: spawn, at: '14,1,48', tag: melee}
-  - {kind: spawn, at: '24,1,56', tag: melee}
-  - {kind: spawn, at: '56,1,24', tag: ranged}
-  - {kind: spawn, at: '6,1,36', tag: ranged}
+  - {kind: spawn, at: '13,1,25', tag: ranged}
+  - {kind: spawn, at: '6,1,22', tag: ranged}
+  - {kind: spawn, at: '24,1,10', tag: ranged}
+  - {kind: spawn, at: '13,1,20', tag: melee}
+  - {kind: spawn, at: '3,1,17', tag: melee}
+  - {kind: spawn, at: '19,1,7', tag: melee}
+  - {kind: spawn, at: '9,1,14', tag: melee}
+  - {kind: spawn, at: '4,1,11', tag: melee}
+  - {kind: spawn, at: '12,1,6', tag: melee}

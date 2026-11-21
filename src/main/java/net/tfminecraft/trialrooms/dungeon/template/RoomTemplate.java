@@ -22,10 +22,19 @@ import net.tfminecraft.trialrooms.dungeon.grid.Side;
  * @param cells       the cells of the footprint box the room fills, as {@code z * widthCells + x}; empty
  *                    = the whole box. Lets a room be L, T, U or cross shaped. Its structure must leave
  *                    the other cells without blocks (not even air), or it would overwrite a neighbour.
+ * @param threat      multiplier on a fight's threat budget in this room: below 1 for a small room,
+ *                    above 1 for a big one; between 0.25 and 3
  */
 public record RoomTemplate(String id, RoomType type, int widthCells, int depthCells, List<Doorway> doorways,
         List<Marker> markers, int weight, int minDepth, int maxDepth, int maxPerRun, Set<String> tags,
-        Set<Integer> cells) {
+        Set<Integer> cells, double threat) {
+
+    public RoomTemplate(String id, RoomType type, int widthCells, int depthCells, List<Doorway> doorways,
+            List<Marker> markers, int weight, int minDepth, int maxDepth, int maxPerRun, Set<String> tags,
+            Set<Integer> cells) {
+        this(id, type, widthCells, depthCells, doorways, markers, weight, minDepth, maxDepth, maxPerRun, tags, cells,
+                1);
+    }
 
     public RoomTemplate(String id, RoomType type, int widthCells, int depthCells, List<Doorway> doorways,
             List<Marker> markers, int weight, int minDepth, int maxDepth, int maxPerRun, Set<String> tags) {
@@ -48,6 +57,9 @@ public record RoomTemplate(String id, RoomType type, int widthCells, int depthCe
         }
         if (minDepth < 0 || maxDepth < 0 || maxPerRun < 0) {
             throw new IllegalArgumentException(id + ": depth and limits cannot be negative");
+        }
+        if (!(threat >= 0.25 && threat <= 3)) {
+            throw new IllegalArgumentException(id + ": threat must be between 0.25 and 3");
         }
         if (maxDepth != 0 && maxDepth < minDepth) {
             throw new IllegalArgumentException(id + ": max-depth is below min-depth");

@@ -819,7 +819,6 @@ class FightsTest {
     enc.wave = enc.plan.waves().size() - 1;
     enc.nextWaveAtMs = -1;
     enc.lastFew = false;
-    enc.nextPingMs = 0;
     Entity ghost = mock(Entity.class);
     when(ghost.getUniqueId()).thenReturn(UUID.randomUUID());
     when(ghost.isValid()).thenReturn(true);

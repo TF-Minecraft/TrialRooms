@@ -41,14 +41,14 @@ delve_greybox:
 # The Seithr dungeon: ice and dark stone, the Seithr Fortress enemies.
 delve_seithr:
   kit: seithr
-  trunk: 4-6
+  trunk: 6-9
   trunk-pool:
     combat: 3
     elite: 1
     corridor: 2
   rest-before-boss: true
   vault: true
-  branches: 1-2
+  branches: 1-3
   branch-length: 1-2
   branch-pool:
     combat: 2

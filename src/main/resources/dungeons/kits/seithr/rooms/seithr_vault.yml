@@ -7,5 +7,5 @@ tags: [seithr]
 doorways:
   - {cell: '0,0', side: south, width: 4}
 markers:
-  - {kind: chest, at: '16,1,10', facing: south}
-  - {kind: exit, at: '16,1,6', facing: south}
+  - {kind: chest, at: '11,1,4', facing: south}
+  - {kind: exit, at: '8,1,13', facing: south}
