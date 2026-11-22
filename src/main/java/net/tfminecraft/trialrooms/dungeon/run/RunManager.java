@@ -400,6 +400,7 @@ public final class RunManager {
             }
             boolean lobby = settings().lobbySeconds() > 0;
             if (lobby) {
+                // the arrival is in the START room, never a fight room (the generator always starts there)
                 ar.lobbyRoom = geo.roomAt(arrival.getX(), arrival.getZ());
                 ar.lobbyUntilMs = clock.getAsLong() + settings().lobbySeconds() * 1000L;
                 setDoors(ar, ar.lobbyRoom, false, true);

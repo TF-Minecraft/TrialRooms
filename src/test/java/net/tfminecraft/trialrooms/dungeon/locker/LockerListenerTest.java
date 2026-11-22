@@ -100,10 +100,38 @@ class LockerListenerTest {
   @Test
   void dungeonItemsNeverGoIntoOtherInventories() {
     Inventory chest = inventory(InventoryType.CHEST);
-    InventoryClickEvent own = click(inventory(InventoryType.CRAFTING), p);
+    Inventory grid = inventory(InventoryType.CRAFTING);
+    InventoryClickEvent own = click(grid, p);
     when(own.getCurrentItem()).thenReturn(bound);
+    when(own.getClickedInventory()).thenReturn(inv);
     l.onClick(own);
-    verify(own, never()).setCancelled(anyBoolean());
+    verify(own, never()).setCancelled(anyBoolean()); // moving it about the own inventory is fine
+    InventoryClickEvent intoGrid = click(grid, p);
+    when(intoGrid.getCursor()).thenReturn(bound);
+    when(intoGrid.getClickedInventory()).thenReturn(grid);
+    l.onClick(intoGrid);
+    verify(intoGrid).setCancelled(true);
+    ItemStack bundle = mock(ItemStack.class);
+    when(bundle.getItemMeta()).thenReturn(mock(org.bukkit.inventory.meta.BundleMeta.class));
+    when(plain.getItemMeta()).thenReturn(mock(org.bukkit.inventory.meta.ItemMeta.class));
+    InventoryClickEvent intoBundle = click(grid, p);
+    when(intoBundle.getCursor()).thenReturn(bound);
+    when(intoBundle.getCurrentItem()).thenReturn(bundle);
+    when(intoBundle.getClickedInventory()).thenReturn(inv);
+    l.onClick(intoBundle);
+    verify(intoBundle).setCancelled(true);
+    InventoryClickEvent scoop = click(grid, p);
+    when(scoop.getCursor()).thenReturn(bundle);
+    when(scoop.getCurrentItem()).thenReturn(bound);
+    when(scoop.getClickedInventory()).thenReturn(inv);
+    l.onClick(scoop);
+    verify(scoop).setCancelled(true);
+    InventoryClickEvent plainSwap = click(grid, p);
+    when(plainSwap.getCursor()).thenReturn(plain);
+    when(plainSwap.getCurrentItem()).thenReturn(bound);
+    when(plainSwap.getClickedInventory()).thenReturn(inv);
+    l.onClick(plainSwap);
+    verify(plainSwap, never()).setCancelled(anyBoolean());
     InventoryClickEvent notAPlayer = click(chest, mock(HumanEntity.class));
     when(notAPlayer.getCurrentItem()).thenReturn(bound);
     l.onClick(notAPlayer);
@@ -113,7 +141,7 @@ class LockerListenerTest {
     when(current.getCurrentItem()).thenReturn(bound);
     l.onClick(current);
     verify(current).setCancelled(true);
-    verify(p).sendMessage("§cDungeon items stay with you.");
+    verify(p, times(4)).sendMessage("§cDungeon items stay with you.");
     InventoryClickEvent cursor = click(chest, p);
     when(cursor.getCursor()).thenReturn(bound);
     l.onClick(cursor);
@@ -143,9 +171,14 @@ class LockerListenerTest {
     InventoryDragEvent plainDrag = drag(chest, plain, Set.of(2));
     l.onDrag(plainDrag);
     verify(plainDrag, never()).setCancelled(anyBoolean());
-    InventoryDragEvent ownDrag = drag(inventory(InventoryType.CRAFTING), bound, Set.of(2));
+    Inventory craft = inventory(InventoryType.CRAFTING);
+    when(craft.getSize()).thenReturn(5);
+    InventoryDragEvent ownDrag = drag(craft, bound, Set.of(12, 20));
     l.onDrag(ownDrag);
     verify(ownDrag, never()).setCancelled(anyBoolean());
+    InventoryDragEvent gridDrag = drag(craft, bound, Set.of(12, 3));
+    l.onDrag(gridDrag);
+    verify(gridDrag).setCancelled(true);
   }
 
   @Test

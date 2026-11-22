@@ -230,7 +230,9 @@ class LockerServiceTest {
     String spare = lockers.add(ann, new ItemStack(Material.SHIELD));
     ann.getInventory().setItem(10, lockers.show(l, spare)); // a plain locker copy, never worn
     ann.getInventory().setItem(11, lockers.show(l, l.loadout(0).get(0))); // a plain copy of a worn item
+    ann.getInventory().setItem(12, new ItemStack(Material.STONE)); // not ours at all
     lockers.settle(ann, true);
+    assertEquals(Material.STONE, ann.getInventory().getItem(12).getType());
     assertNull(ann.getInventory().getItem(11), "only the copies this wear put on count");
     assertNull(ann.getInventory().getItem(9), "a copy from another wear is thrown away");
     assertNull(ann.getInventory().getItem(10), "and one the wear never put on");
@@ -273,7 +275,8 @@ class LockerServiceTest {
   void aWornCopyAloneProvesTheWear() {
     Locker l = kitted();
     lockers.wear(ann, 0);
-    ann.getPersistentDataContainer().remove(new org.bukkit.NamespacedKey(plugin, "dungeon_locker"));
+    // a mark from some other wear proves nothing; the worn copy does
+    ann.getPersistentDataContainer().set(lockers.markKey("c1"), org.bukkit.persistence.PersistentDataType.LONG, 999L);
     lockers.settle(ann, false);
     assertEquals(-1, l.worn());
     assertFalse(lockers.isDungeonItem(ann.getInventory().getHelmet()));
@@ -301,7 +304,7 @@ class LockerServiceTest {
         org.bukkit.persistence.PersistentDataType.LONG, l.wornAt());
     spareCopy.setItemMeta(sm);
     ann.getInventory().setItem(21, spareCopy);
-    ann.getPersistentDataContainer().remove(new org.bukkit.NamespacedKey(plugin, "dungeon_locker"));
+    ann.getPersistentDataContainer().remove(lockers.markKey("c1"));
     lockers.settle(ann, false);
     assertEquals(-1, l.worn());
     assertEquals("own sword", name(ann.getInventory().getItem(0)));
@@ -318,7 +321,7 @@ class LockerServiceTest {
     l.wear(0, Map.of(), l.revision() + 1);
     lockers.saveLocker(ann, l);
     ann.getInventory().clear();
-    ann.getPersistentDataContainer().remove(new org.bukkit.NamespacedKey(plugin, "dungeon_locker"));
+    ann.getPersistentDataContainer().remove(lockers.markKey("c1"));
     lockers.settle(ann, false);
     assertEquals(-1, l.worn());
     try (var files = Files.list(temp.resolve("quarantine"))) {
@@ -332,7 +335,7 @@ class LockerServiceTest {
     ann.getInventory().setItem(0, named(Material.IRON_SWORD, "own sword"));
     lockers.wear(ann, 0);
     ann.getInventory().clear();
-    ann.getPersistentDataContainer().remove(new org.bukkit.NamespacedKey(plugin, "dungeon_locker"));
+    ann.getPersistentDataContainer().remove(lockers.markKey("c1"));
     Files.writeString(temp.resolve("quarantine"), "a file where the folder goes");
     lockers.settle(ann, false);
     assertEquals(0, l.worn(), "nothing is thrown away while quarantine fails");
@@ -352,5 +355,121 @@ class LockerServiceTest {
     assertNull(lockers.locker(ann));
     Player other = server.addPlayer("Bo");
     assertNull(lockers.add(other, new ItemStack(Material.STONE)));
+  }
+
+  static ItemStack bundleOf(ItemStack... items) {
+    ItemStack bundle = new ItemStack(Material.BUNDLE);
+    org.bukkit.inventory.meta.BundleMeta meta = (org.bukkit.inventory.meta.BundleMeta) bundle.getItemMeta();
+    meta.setItems(List.of(items));
+    bundle.setItemMeta(meta);
+    return bundle;
+  }
+
+  static List<ItemStack> inside(ItemStack bundle) {
+    return ((org.bukkit.inventory.meta.BundleMeta) bundle.getItemMeta()).getItems();
+  }
+
+  @Test
+  void dungeonItemsHiddenInBundlesComeOutToo() {
+    Locker l = kitted();
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    ItemStack sword = ann.getInventory().getItem(0);
+    ann.getInventory().setItem(0, null);
+    ann.getInventory().setItem(9, bundleOf(sword, new ItemStack(Material.STRING)));
+    ItemStack helm = ann.getInventory().getHelmet();
+    ann.getInventory().setHelmet(null);
+    ann.setItemOnCursor(bundleOf(helm));
+    // the copy in the bundle is still proof of the wear
+    ann.getPersistentDataContainer().remove(lockers.markKey("c1"));
+    lockers.settle(ann, false);
+    assertEquals(-1, l.worn());
+    assertEquals(List.of(Material.STRING), inside(ann.getInventory().getItem(9)).stream().map(ItemStack::getType).toList());
+    assertTrue(inside(ann.getItemOnCursor()).isEmpty());
+    // a bundle with nothing of ours is left alone, as is a plain item
+    ann.getInventory().setItem(10, bundleOf(new ItemStack(Material.STRING)));
+    ann.getInventory().setItem(11, new ItemStack(Material.STONE));
+    ann.setItemOnCursor(new ItemStack(Material.STONE));
+    lockers.settle(ann, false);
+    assertEquals(1, inside(ann.getInventory().getItem(10)).size());
+
+    // and from a bundle in the crafting grid
+    org.bukkit.inventory.Inventory grid = org.mockito.Mockito.mock(org.bukkit.inventory.Inventory.class);
+    org.mockito.Mockito.when(grid.getType()).thenReturn(org.bukkit.event.inventory.InventoryType.CRAFTING);
+    org.mockito.Mockito.when(grid.getSize()).thenReturn(2);
+    ItemStack gridBundle = bundleOf(lockers.show(l, l.loadout(0).get(0)));
+    org.mockito.Mockito.when(grid.getItem(1)).thenReturn(gridBundle);
+    org.bukkit.inventory.InventoryView view = org.mockito.Mockito.mock(org.bukkit.inventory.InventoryView.class);
+    org.mockito.Mockito.when(view.getTopInventory()).thenReturn(grid);
+    PlayerMock spied = org.mockito.Mockito.spy(ann);
+    org.mockito.Mockito.doReturn(view).when(spied).getOpenInventory();
+    spied.setItemOnCursor(null);
+    assertEquals(LockerService.Result.DONE, lockers.wear(spied, 0));
+    spied.getPersistentDataContainer().remove(lockers.markKey("c1"));
+    org.mockito.Mockito.when(grid.getItem(1)).thenReturn(gridBundle);
+    lockers.settle(spied, false);
+    assertEquals(-1, l.worn());
+    org.mockito.Mockito.verify(grid).setItem(1, gridBundle);
+    assertTrue(inside(gridBundle).isEmpty());
+  }
+
+  @Test
+  void anUnreadableLockerStillTakesEveryDungeonItemAway() throws Exception {
+    kitted();
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    Path f = store.file(ann.getUniqueId(), "c1");
+    Files.writeString(f, "junk");
+    Files.writeString(f.resolveSibling("c1.locker.prev"), "junk");
+    lockers.forget(ann);
+    assertEquals(LockerService.Result.BROKEN, lockers.takeOff(ann));
+    assertFalse(lockers.isDungeonItem(ann.getInventory().getHelmet()), "nothing leaves with the player");
+    assertFalse(lockers.isDungeonItem(ann.getInventory().getItem(0)));
+    ann.getInventory().setItem(3, ann.getInventory().getItem(3)); // nothing else to take: no log
+    lockers.settle(ann, true);
+    characterOf.remove("Ann");
+    lockers.settle(ann, false); // no character: nothing at all
+  }
+
+  @Test
+  void aBackupOneSaveBehindAWearIsRefused() throws Exception {
+    kitted();
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    Path f = store.file(ann.getUniqueId(), "c1");
+    Files.writeString(f, "junk"); // the worn save is lost; the backup says nothing is worn
+    lockers.forget(ann);
+    assertNull(lockers.locker(ann), "the mark names a newer wear");
+    ann.getPersistentDataContainer().remove(lockers.markKey("c1"));
+    assertNull(lockers.locker(ann), "so do the worn copies");
+    ann.getInventory().clear();
+    ann.getInventory().setItem(5, new ItemStack(Material.STONE));
+    ItemStack unworn = new ItemStack(Material.SHIELD); // a dungeon item that was never worn
+    ItemMeta um = unworn.getItemMeta();
+    um.getPersistentDataContainer().set(new org.bukkit.NamespacedKey(plugin, "dungeon_item"),
+        org.bukkit.persistence.PersistentDataType.STRING, "x");
+    unworn.setItemMeta(um);
+    ann.getInventory().setItem(6, unworn);
+    Locker back = lockers.locker(ann);
+    assertNotNull(back, "with no proof of a newer wear the backup is used");
+    assertEquals(-1, back.worn());
+    ann.getPersistentDataContainer().set(lockers.markKey("c1"), org.bukkit.persistence.PersistentDataType.LONG, 1L);
+    lockers.forget(ann);
+    assertNotNull(lockers.locker(ann), "an older mark proves nothing");
+  }
+
+  @Test
+  void charactersSharingAnInventoryKeepTheirOwnMarks() {
+    kitted();
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    characterOf.put("Ann", "c2");
+    assertFalse(lockers.marked(ann), "c2 wears nothing");
+    lockers.settle(ann, false); // c1's copies are strays for c2
+    characterOf.put("Ann", "c1");
+    assertTrue(lockers.marked(ann), "c1's mark is still there");
+    lockers.settle(ann, false);
+    assertEquals(-1, lockers.locker(ann).worn(), "taken off the normal way, not quarantined");
+    assertFalse(Files.exists(temp.resolve("quarantine")));
+    characterOf.remove("Ann");
+    assertFalse(lockers.marked(ann));
+    assertNotEquals(lockers.markKey("A b"), lockers.markKey("c1"));
+    assertEquals("dungeon_locker_a_b", lockers.markKey("A b").getKey());
   }
 }

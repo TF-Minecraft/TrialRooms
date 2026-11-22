@@ -38,6 +38,8 @@ public final class Locker {
     /** Own items that found no room when a loadout came off: handed over later. */
     private final List<byte[]> owed = new ArrayList<>();
     private long revision;
+    /** Set by the store when this locker came from its backup file (one save behind). */
+    boolean fromBackup;
 
     public Locker() {
         for (int i = 0; i < LOADOUTS; i++) {

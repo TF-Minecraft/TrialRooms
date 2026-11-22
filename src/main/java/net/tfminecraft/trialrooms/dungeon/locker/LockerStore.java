@@ -79,6 +79,7 @@ public final class LockerStore {
         }
         try {
             Locker l = parse(Files.readString(prev(f), StandardCharsets.UTF_8));
+            l.fromBackup = true;
             log.warning("[dungeons] locker " + f + " was read from its backup");
             return l;
         } catch (IOException | IllegalArgumentException e) {
