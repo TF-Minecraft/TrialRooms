@@ -72,7 +72,8 @@ public class RewardsTest {
   @BeforeEach
   void setUp() {
     when(lockers.locker(ann)).thenReturn(locker);
-    when(lockers.add(eq(ann), any())).thenReturn("id");
+    when(lockers.file(eq(locker), any())).thenReturn("id");
+    when(lockers.saveLocker(ann, locker)).thenReturn(true);
     when(sword.effectiveName()).thenReturn(Component.text("Rimebound Sword"));
     when(gem.effectiveName()).thenReturn(Component.text("Glacial Rimestone"));
     when(loot.roll(eq(ann), anyInt(), any(), any())).thenReturn(new DungeonLoot.Rolled(sword, null));
@@ -122,12 +123,12 @@ public class RewardsTest {
   @Test
   void theVaultAlwaysGivesSomethingAndPaysMarks() {
     rewards(doubles(0.9)).reward(ann, "delve_seithr", 1, Moment.VAULT, run);
-    verify(lockers).add(ann, sword);
+    verify(lockers).file(locker, sword);
     assertEquals(10, locker.marks());
     assertEquals(1, locker.weekRuns("delve_seithr"));
     assertEquals(DungeonRewards.week(now.get(), ZoneId.of("UTC")), locker.week());
     verify(ann).sendMessage("§6You found Rimebound Sword§6! §7It is in your dungeon locker.");
-    verify(lockers).saveLocker(ann, locker);
+    verify(lockers).saveLocker(ann, locker); // one write for the find, the marks and the counters
   }
 
   @Test
@@ -139,7 +140,7 @@ public class RewardsTest {
     assertEquals(0.2, locker.pity(), 1e-9);
     r.reward(ann, "d", 1, Moment.BOSS, run); // 0.5 < 0.55: a win (then 0.9: an item, not a gem)
     assertEquals(0, locker.pity());
-    verify(lockers).add(ann, sword);
+    verify(lockers).file(locker, sword);
     assertEquals(1, locker.weekRuns("d"), "one run, however many rewards in it");
     assertEquals(15, locker.marks());
   }
@@ -147,11 +148,11 @@ public class RewardsTest {
   @Test
   void someWinsAreGemsAndClassesWithNoItemGetGems() {
     rewards(doubles(0.0, 0.1)).reward(ann, "d", 1, Moment.VAULT, run); // vault (no chance roll), 0.0 < gem-chance
-    verify(lockers).add(ann, gem);
+    verify(lockers).file(locker, gem);
     verify(loot, never()).roll(any(), anyInt(), any(), any());
     when(loot.roll(eq(ann), anyInt(), any(), any())).thenReturn(new DungeonLoot.Rolled(null, "No dungeon item fits"));
     rewards(doubles(0.9)).reward(ann, "d", 1, Moment.VAULT, UUID.randomUUID());
-    verify(lockers, times(2)).add(ann, gem);
+    verify(lockers, times(2)).file(locker, gem);
   }
 
   @Test
@@ -160,20 +161,24 @@ public class RewardsTest {
     for (int i = 0; i < 5; i++) {
       r.reward(ann, "d", 1, Moment.VAULT, UUID.randomUUID());
     }
-    verify(lockers, times(3)).add(ann, sword);
+    verify(lockers, times(3)).file(locker, sword);
     assertEquals(50, locker.marks());
     verify(ann, times(2)).sendMessage(startsWith("§7You have had this week's loot from this dungeon"));
     r.reward(ann, "other", 1, Moment.VAULT, UUID.randomUUID());
-    verify(lockers, times(4)).add(ann, sword);
+    verify(lockers, times(4)).file(locker, sword);
     assertEquals(60, locker.marks(), "the weekly cap");
     r.reward(ann, "other", 1, Moment.VAULT, UUID.randomUUID());
     assertEquals(60, locker.marks());
-    verify(lockers, times(5)).add(ann, sword); // its second run this week: still an item run
-    // a new week starts the counts over
+    verify(lockers, times(5)).file(locker, sword); // its second run this week: still an item run
+    // a new week starts the counts over, and a run going on over the turn is judged again
+    UUID overTheTurn = UUID.randomUUID();
+    r.reward(ann, "other", 1, Moment.ELITE, overTheTurn);
     now.addAndGet(7L * 24 * 3600 * 1000);
+    r.reward(ann, "other", 1, Moment.VAULT, overTheTurn);
+    assertEquals(1, locker.weekRuns("other"), "counted once in the new week");
     r.reward(ann, "d", 1, Moment.VAULT, UUID.randomUUID());
-    verify(lockers, times(6)).add(ann, sword);
-    assertEquals(70, locker.marks());
+    verify(lockers, times(7)).file(locker, sword);
+    assertEquals(80, locker.marks(), "60 last week, 10 from the run over the turn, 10 now");
   }
 
   @Test
@@ -185,9 +190,15 @@ public class RewardsTest {
     rewards(doubles(0.9)).reward(ann, "d", 1, Moment.VAULT, run);
     verify(lockers, never()).add(any(), any());
     when(lockers.locker(ann)).thenReturn(locker);
-    when(lockers.add(eq(ann), any())).thenReturn(null);
+    when(lockers.saveLocker(ann, locker)).thenReturn(false);
+    locker.put("id", new byte[] {1});
     rewards(doubles(0.9)).reward(ann, "d", 1, Moment.VAULT, run);
     verify(ann).sendMessage("§cYou found something, but your locker could not keep it. Tell staff.");
+    assertNull(locker.item("id"), "the find is taken back out with the failed save");
+    clearInvocations(ann);
+    rewards(doubles(0.9)).reward(ann, "d", 1, Moment.ELITE, UUID.randomUUID()); // nothing found, save fails quietly
+    verify(ann, never()).sendMessage("§cYou found something, but your locker could not keep it. Tell staff.");
+    when(lockers.saveLocker(ann, locker)).thenReturn(true);
     // a moment worth nothing and no marks: no message at all about marks
     clearInvocations(ann);
     rules = new RewardRules(new EnumMap<>(Moment.class), 0, 0, 3, 0, Map.of(), Map.of(), 1, "t", "jewellery");
@@ -212,8 +223,11 @@ public class RewardsTest {
     when(loot.roll(ann, 1, "epic", "heavy_helmet")).thenReturn(new DungeonLoot.Rolled(null, "nope"));
     assertEquals("§cnope", r.buy(ann, "heavy_helmet", "epic"));
     when(loot.roll(ann, 1, "epic", "heavy_helmet")).thenReturn(new DungeonLoot.Rolled(sword, null));
-    when(lockers.add(eq(ann), any())).thenReturn(null);
+    when(lockers.saveLocker(ann, locker)).thenReturn(false);
+    locker.put("id", new byte[] {1});
     assertTrue(r.buy(ann, "heavy_helmet", "epic").contains("no marks were spent"));
+    assertNull(locker.item("id"));
+    when(lockers.saveLocker(ann, locker)).thenReturn(true);
     assertEquals(200, locker.marks());
     when(lockers.locker(ann)).thenReturn(null);
     assertEquals("§cThat can't be bought.", r.buy(ann, "heavy_helmet", "rare"));

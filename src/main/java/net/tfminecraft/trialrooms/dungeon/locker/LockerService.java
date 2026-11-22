@@ -164,17 +164,21 @@ public final class LockerService {
         if (l == null || empty(item)) {
             return null;
         }
-        String id = UUID.randomUUID().toString();
-        ItemStack copy = item.clone();
-        ItemMeta meta = copy.getItemMeta();
-        meta.getPersistentDataContainer().set(itemKey, PersistentDataType.STRING, id);
-        meta.getPersistentDataContainer().remove(wornKey);
-        copy.setItemMeta(meta);
-        l.put(id, codec.encode(copy));
+        String id = file(l, item);
         if (!save(p, l)) {
             l.remove(id);
             return null;
         }
+        return id;
+    }
+
+    /**
+     * Files a copy of an item in a locker as a new dungeon item without saving, so a caller can save
+     * it together with other changes in one write. Returns its id.
+     */
+    public String file(Locker l, ItemStack item) {
+        String id = UUID.randomUUID().toString();
+        replace(l, id, item);
         return id;
     }
 

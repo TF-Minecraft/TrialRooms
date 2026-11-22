@@ -55,12 +55,12 @@ public final class LockerListener implements Listener {
             return;
         }
         // On the player's own screen dungeon items move about freely, but never into the crafting
-        // grid (a recipe could turn them into plain items), into or out of a bundle, or dropped onto
-        // another item from the cursor (that is how MMOItems sockets gems).
+        // grid (a recipe could turn them into plain items), into or out of a bundle, and a dungeon gem
+        // is never dropped onto an item from the cursor (that is how MMOItems sockets gems).
         boolean own = top.getType() == InventoryType.CRAFTING;
         if (!own || event.getClickedInventory() == top || bundle(current) || bundle(cursor)
                 || event.getAction() == org.bukkit.event.inventory.InventoryAction.SWAP_WITH_CURSOR
-                        && lockers.isDungeonItem(cursor)) {
+                        && lockers.isDungeonItem(cursor) && LockerMenu.gem(cursor)) {
             event.setCancelled(true);
             p.sendMessage("§cDungeon items stay with you.");
         }

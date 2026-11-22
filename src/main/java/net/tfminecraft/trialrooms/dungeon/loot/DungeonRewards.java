@@ -96,12 +96,16 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
                 found = drop(p, r, tier);
             }
         }
-        lockers.saveLocker(p, l);
-        if (found != null) {
-            if (lockers.add(p, found) == null) {
+        // The find, the marks and the counters go to disk in one write: none can be kept without the rest.
+        String id = found == null ? null : lockers.file(l, found);
+        if (!lockers.saveLocker(p, l)) {
+            if (id != null) {
+                l.remove(id);
                 p.sendMessage("§cYou found something, but your locker could not keep it. Tell staff.");
-                return;
             }
+            return;
+        }
+        if (found != null) {
             p.sendMessage("§6You found " + name(found) + "§6! §7It is in your dungeon locker.");
             p.playSound(p.getLocation(), "minecraft:entity.player.levelup", 1f, 1.4f);
         }
@@ -149,11 +153,14 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         if (rolled.item() == null) {
             return "§c" + rolled.problem();
         }
-        if (lockers.add(p, rolled.item()) == null) {
+        // The item and the price go to disk in one write.
+        l.marks(l.marks() - price);
+        String id = lockers.file(l, rolled.item());
+        if (!lockers.saveLocker(p, l)) {
+            l.remove(id);
+            l.marks(l.marks() + price);
             return "§cThe locker could not keep it, so no marks were spent. Tell staff if this keeps happening.";
         }
-        l.marks(l.marks() - price);
-        lockers.saveLocker(p, l);
         return "§aBought " + name(rolled.item()) + "§a for " + price + " marks.";
     }
 

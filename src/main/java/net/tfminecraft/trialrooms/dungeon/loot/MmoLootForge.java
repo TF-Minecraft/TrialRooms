@@ -38,6 +38,7 @@ import net.tfminecraft.advancedcrafting.objects.ingredients.Ingredient;
 import net.tfminecraft.advancedcrafting.objects.stats.StatModifier;
 import net.tfminecraft.advancedcrafting.utils.CraftStatCalculator;
 import net.tfminecraft.tlibs.TLibs;
+import net.tfminecraft.tlibs.objects.api.subapi.ItemRebuildMerger;
 
 /**
  * Loot on the server's item plugins. Stats come from AdvancedCrafting's own calculator, so a
@@ -158,12 +159,27 @@ public final class MmoLootForge implements LootForge {
         return builder.apply(mmo);
     }
 
+    /** True while the locker sockets a gem: the one time a dungeon gem may go into an item. */
+    static boolean socketing;
+
+    static boolean socketing() {
+        return socketing;
+    }
+
     @Override
     public Socketed socket(Player player, ItemStack item, ItemStack gem) {
         NBTItem host = NBTItem.get(item);
-        GemStone.ApplyResult r = new GemStone(PlayerData.get(player), NBTItem.get(gem)).applyOntoItem(host, Type.get(host));
+        GemStone.ApplyResult r;
+        socketing = true;
+        try {
+            r = new GemStone(PlayerData.get(player), NBTItem.get(gem)).applyOntoItem(host, Type.get(host));
+        } finally {
+            socketing = false;
+        }
         return switch (r.getType()) {
-            case SUCCESS -> new Socketed(Socketing.DONE, r.getResult());
+            // MMOItems rebuilds the item from its template: TLibs puts its look (skin, model) back
+            case SUCCESS -> new Socketed(Socketing.DONE,
+                    ItemRebuildMerger.applyBaseline(item, r.getResult(), TLibs.getRebuildConfig()));
             case FAILURE -> new Socketed(Socketing.BROKE, null);
             default -> new Socketed(Socketing.NO_FIT, null);
         };

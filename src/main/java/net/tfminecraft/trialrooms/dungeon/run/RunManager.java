@@ -233,7 +233,12 @@ public final class RunManager {
         }
         for (Player p : online(ar)) {
             if (isPlayingMember(ar, p)) { // (the step counts anyone outside the dungeon world as away)
-                rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id());
+                try {
+                    rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id());
+                } catch (RuntimeException e) {
+                    // one player's failed reward never stops the others' or the run
+                    plugin.getLogger().warning("[dungeons] the " + moment + " reward for " + p.getName() + " failed: " + e);
+                }
             }
         }
     }
@@ -1323,10 +1328,10 @@ public final class RunManager {
 
     private void complete(ActiveRun ar) {
         ar.run.state(DungeonRun.State.COMPLETE);
-        reward(ar, RunRewards.Moment.VAULT);
         ar.finishAtMs = clock.getAsLong() + settings().finishSeconds() * 1000L;
         tell(ar, "§6The vault is yours. §7Right-click by the exit to leave; everyone is sent back in "
                 + settings().finishSeconds() + " seconds.");
+        reward(ar, RunRewards.Moment.VAULT);
     }
 
     private void fail(ActiveRun ar) {

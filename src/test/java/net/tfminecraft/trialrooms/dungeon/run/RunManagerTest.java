@@ -225,9 +225,17 @@ class RunManagerTest {
     killAll();
     ticks(4);
     assertTrue(told.contains("Ann delve 1 BOSS"), told.toString());
+    // a reward that throws for one player stops neither the others' nor the run
+    runs.rewards((p, recipe, tier, moment, run) -> {
+      told.add(p.getName() + " " + moment);
+      if (p.getName().equals("Ann")) {
+        throw new IllegalStateException("broken item plugin");
+      }
+    });
     into(a, RoomType.VAULT);
     ticks(2);
-    assertTrue(told.contains("Ann delve 1 VAULT"), told.toString());
+    assertTrue(told.contains("Ann VAULT") && told.contains("Bo VAULT"), told.toString());
+    assertTrue(ar.finishAtMs > 0, "the run still ends in its own time");
     assertTrue(told.contains("Bo delve 1 BOSS"), told.toString());
     runs.runs().forEach(r -> runs.end(r, false, null));
   }

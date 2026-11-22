@@ -110,6 +110,8 @@ class LockerCoreTest {
     assertEquals(0, back.marks(), "never below nothing");
     assertEquals(0, back.pity());
     back.newWeek("2026-W48");
+    assertEquals("", back.lastRun(), "a run over the turn of the week is judged again");
+    assertFalse(back.lastRunRewarded());
     assertEquals(0, back.weekRuns("delve"));
     assertEquals(0, back.weekMarks());
     assertTrue(Files.exists(store.file(who, "c1").resolveSibling("c1.locker.prev")));

@@ -271,6 +271,9 @@ class MmoLootForgeTest {
     ItemStack item = mock(ItemStack.class);
     ItemStack gem = mock(ItemStack.class);
     ItemStack socketed = mock(ItemStack.class);
+    // (TLibs' merger hands back the rebuilt item as it is when the old one is empty, as this stand-in is)
+    when(item.getType()).thenReturn(Material.AIR);
+    ItemStack merged = socketed;
     try (MockedStatic<PlayerData> pd = mockStatic(PlayerData.class);
         MockedStatic<net.Indyuce.mmoitems.api.Type> types = mockStatic(net.Indyuce.mmoitems.api.Type.class)) {
       pd.when(() -> PlayerData.get(p)).thenReturn(mock(PlayerData.class));
@@ -282,16 +285,64 @@ class MmoLootForgeTest {
         when(applied.getResult()).thenReturn(socketed);
         try (MockedConstruction<net.Indyuce.mmoitems.api.interaction.GemStone> stones =
             mockConstruction(net.Indyuce.mmoitems.api.interaction.GemStone.class,
-                (s, c) -> when(s.applyOntoItem(any(NBTItem.class), any())).thenReturn(applied))) {
+                (s, c) -> when(s.applyOntoItem(any(NBTItem.class), any())).thenAnswer(i -> {
+                  assertTrue(MmoLootForge.socketing(), "the guard lets the locker's own socketing through");
+                  return applied;
+                }))) {
           LootForge.Socketed s = forge.socket(p, item, gem);
           assertEquals(switch (result) {
             case SUCCESS -> LootForge.Socketing.DONE;
             case FAILURE -> LootForge.Socketing.BROKE;
             default -> LootForge.Socketing.NO_FIT;
           }, s.result());
-          assertEquals(result == net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.SUCCESS ? socketed : null, s.item());
+          assertEquals(result == net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.SUCCESS ? merged : null, s.item(),
+              "the look TLibs keeps is put back on the rebuilt item");
+          assertFalse(MmoLootForge.socketing());
         }
       }
+    }
+  }
+
+  @Test
+  void gemsNeverComeOutOfOrGoIntoDungeonItemsOutsideTheLocker() {
+    ItemStack dungeon = mock(ItemStack.class);
+    var guard = new ReforgeGuard(it -> it == dungeon);
+    var read = mock(net.Indyuce.mmoitems.api.item.mmoitem.VolatileMMOItem.class, RETURNS_DEEP_STUBS);
+    when(read.getNBT().getItem()).thenReturn(dungeon);
+    var plainRead = mock(net.Indyuce.mmoitems.api.item.mmoitem.VolatileMMOItem.class, RETURNS_DEEP_STUBS);
+    when(plainRead.getNBT().getItem()).thenReturn(mock(ItemStack.class));
+    var fresh = mock(net.Indyuce.mmoitems.api.item.mmoitem.MMOItem.class);
+    var unsocket = mock(net.Indyuce.mmoitems.api.event.item.UnsocketGemStoneEvent.class);
+    when(unsocket.getTargetItem()).thenReturn(read);
+    guard.onUnsocket(unsocket);
+    verify(unsocket).setCancelled(true);
+    var unsocketPlain = mock(net.Indyuce.mmoitems.api.event.item.UnsocketGemStoneEvent.class);
+    when(unsocketPlain.getTargetItem()).thenReturn(fresh);
+    guard.onUnsocket(unsocketPlain);
+    verify(unsocketPlain, never()).setCancelled(anyBoolean());
+    var gemIn = mock(net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent.class);
+    when(gemIn.getGemStone()).thenReturn(read);
+    guard.onSocket(gemIn);
+    verify(gemIn).setCancelled(true);
+    verify(gemIn).setResult(net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.NONE);
+    var into = mock(net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent.class);
+    when(into.getGemStone()).thenReturn(plainRead);
+    when(into.getTargetItem()).thenReturn(read);
+    guard.onSocket(into);
+    verify(into).setCancelled(true);
+    var normal = mock(net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent.class);
+    when(normal.getGemStone()).thenReturn(plainRead);
+    when(normal.getTargetItem()).thenReturn(plainRead);
+    guard.onSocket(normal);
+    verify(normal, never()).setCancelled(anyBoolean());
+    MmoLootForge.socketing = true;
+    try {
+      var locker = mock(net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent.class);
+      when(locker.getGemStone()).thenReturn(read);
+      guard.onSocket(locker);
+      verify(locker, never()).setCancelled(anyBoolean());
+    } finally {
+      MmoLootForge.socketing = false;
     }
   }
 

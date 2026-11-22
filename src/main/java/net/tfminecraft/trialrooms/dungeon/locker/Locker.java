@@ -201,6 +201,8 @@ public final class Locker {
         week = w;
         weekRuns.clear();
         weekMarks = 0;
+        lastRun = ""; // a run going on over the turn of the week is judged again for the new week
+        lastRunRewarded = false;
     }
 
     public int weekRuns(String recipe) {
