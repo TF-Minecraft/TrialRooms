@@ -239,6 +239,10 @@ class RunManagerTest {
     assertTrue(ar.finishAtMs > 0, "the run still ends in its own time");
     assertTrue(told.contains("Bo delve 1 BOSS"), told.toString());
     runs.runs().forEach(r -> runs.end(r, false, null));
+    assertEquals(RunRewards.Moment.ELITE, RunManager.clearedMoment(RoomType.ELITE, true));
+    assertEquals(RunRewards.Moment.BOSS, RunManager.clearedMoment(RoomType.BOSS, true));
+    assertEquals(RunRewards.Moment.EVENT, RunManager.clearedMoment(RoomType.COMBAT, true));
+    assertNull(RunManager.clearedMoment(RoomType.COMBAT, false));
   }
 
   @Test

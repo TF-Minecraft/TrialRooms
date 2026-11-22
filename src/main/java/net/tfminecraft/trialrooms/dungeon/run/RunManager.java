@@ -884,13 +884,21 @@ public final class RunManager {
                 p.sendMessage("§aThe room is clear. The doors open.");
             }
         }
-        if (boss) {
-            reward(ar, RunRewards.Moment.BOSS);
-        } else if (type == RoomType.ELITE) {
-            reward(ar, RunRewards.Moment.ELITE);
-        } else if (ar.planned.containsKey(room)) {
-            reward(ar, RunRewards.Moment.EVENT);
+        RunRewards.Moment moment = clearedMoment(type, ar.planned.containsKey(room));
+        if (moment != null) {
+            reward(ar, moment);
         }
+    }
+
+    /** What clearing a room of this type pays out: the boss, an elite room, or a finished event. */
+    static RunRewards.Moment clearedMoment(RoomType type, boolean event) {
+        if (type == RoomType.BOSS) {
+            return RunRewards.Moment.BOSS;
+        }
+        if (type == RoomType.ELITE) {
+            return RunRewards.Moment.ELITE;
+        }
+        return event ? RunRewards.Moment.EVENT : null;
     }
 
     /**
