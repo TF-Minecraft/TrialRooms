@@ -279,6 +279,7 @@ public final class LockerService {
     /** With no usable locker: every dungeon item still goes (the locker, or staff, has them). */
     private void strip(Player p) {
         int n = remove(p, this::isDungeonItem).size();
+        Accessories.refill.accept(p);
         if (n > 0) {
             log.warning("[dungeons] took " + n + " dungeon item(s) from " + p.getName() + " whose locker can't be read");
         }
@@ -316,7 +317,7 @@ public final class LockerService {
         Map<Integer, byte[]> own = new LinkedHashMap<>();
         for (int slot : copies.keySet()) {
             ItemStack it = inv.getItem(slot);
-            if (!empty(it)) {
+            if (!vacant(slot, it)) {
                 own.put(slot, codec.encode(it));
             }
         }
@@ -348,10 +349,15 @@ public final class LockerService {
         Map<Integer, ItemStack> back = new LinkedHashMap<>();
         l.displaced().forEach((slot, data) -> back.put(slot, codec.decode(data)));
         collect(p, l, true);
+        // MMOInventory's placeholders go back first, so no own item lands in an accessory slot by chance
+        Accessories.refill.accept(p);
         PlayerInventory inv = p.getInventory();
         List<ItemStack> left = new ArrayList<>();
         back.forEach((slot, own) -> {
-            if (empty(inv.getItem(slot))) {
+            if (Accessories.placeholder(own)) {
+                return; // kept by an older version: never a player's item
+            }
+            if (vacant(slot, inv.getItem(slot))) {
                 inv.setItem(slot, own);
             } else {
                 left.addAll(inv.addItem(own).values());
@@ -421,6 +427,7 @@ public final class LockerService {
                 remove(p, it -> isDungeonItem(it) && !thisWear(l, it))
                         .forEach(it -> take(p, l, it, false));
             }
+            Accessories.refill.accept(p);
             return;
         }
         if (l.worn() >= 0) {
@@ -447,6 +454,7 @@ public final class LockerService {
             l.clearOwed();
             save(p, l);
         }
+        Accessories.refill.accept(p);
         deliver(p, l);
     }
 
@@ -462,7 +470,10 @@ public final class LockerService {
         }
         List<byte[]> still = new ArrayList<>();
         for (byte[] data : l.owed()) {
-            p.getInventory().addItem(codec.decode(data)).values().forEach(left -> still.add(codec.encode(left)));
+            ItemStack own = codec.decode(data);
+            if (!Accessories.placeholder(own)) { // (an older version could owe a placeholder)
+                p.getInventory().addItem(own).values().forEach(left -> still.add(codec.encode(left)));
+            }
         }
         l.clearOwed();
         still.forEach(l::owe);
@@ -480,5 +491,10 @@ public final class LockerService {
 
     private static boolean empty(ItemStack it) {
         return it == null || it.getType() == Material.AIR;
+    }
+
+    /** Whether a slot holds nothing of the player's: empty, or an accessory slot holding MMOInventory's placeholder. */
+    static boolean vacant(int slot, ItemStack it) {
+        return empty(it) || Accessories.slot(slot) && Accessories.placeholder(it);
     }
 }

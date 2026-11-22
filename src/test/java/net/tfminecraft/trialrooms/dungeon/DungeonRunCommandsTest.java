@@ -221,6 +221,37 @@ class DungeonRunCommandsTest {
     c.run(ann, new String[] {"locker", "give", "Ann"});
     assertEquals("§aA copy is in Ann's dungeon locker.", ann.nextMessage());
 
+    // loot: rolled for the player's class and filed in their locker
+    c.run(console, new String[] {"loot", "Ann"});
+    verify(console).sendMessage("§cDungeon loot is off (it needs MMOItems and AdvancedCrafting).");
+    net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot loot = mock(net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot.class);
+    when(module.loot()).thenReturn(loot);
+    when(runs.lockers()).thenReturn(null);
+    c.run(console, new String[] {"loot", "Ann"});
+    verify(console, times(2)).sendMessage("§cDungeon loot is off (it needs MMOItems and AdvancedCrafting).");
+    when(runs.lockers()).thenReturn(lockers);
+    c.run(console, new String[] {"loot"});
+    c.run(console, new String[] {"loot", "Nobody"});
+    verify(console, times(2)).sendMessage("§cUsage: /tr dungeon loot <player> [tier] [rarity|any] [item]");
+    c.run(console, new String[] {"loot", "Ann", "two"});
+    verify(console).sendMessage("§cThe tier must be a whole number.");
+    when(loot.roll(ann, 1, null, null)).thenReturn(new net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot.Rolled(null, "nope"));
+    c.run(console, new String[] {"loot", "Ann"});
+    verify(console).sendMessage("§cnope");
+    org.bukkit.inventory.ItemStack rolled = mock(org.bukkit.inventory.ItemStack.class); // (MockBukkit has no effectiveName)
+    when(rolled.effectiveName()).thenReturn(net.kyori.adventure.text.Component.text("Rimebound Sword"));
+    when(loot.roll(ann, 3, "epic", "sword")).thenReturn(new net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot.Rolled(rolled, null));
+    when(lockers.add(ann, rolled)).thenReturn(null);
+    c.run(console, new String[] {"loot", "Ann", "3", "epic", "sword"});
+    verify(console).sendMessage("§cAnn has no usable locker (no character played?).");
+    when(lockers.add(ann, rolled)).thenReturn("id");
+    c.run(console, new String[] {"loot", "Ann", "3", "epic", "sword"});
+    verify(console).sendMessage("§aRimebound Sword is in Ann's dungeon locker.");
+    when(loot.roll(ann, 2, null, null)).thenReturn(new net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot.Rolled(rolled, null));
+    c.run(console, new String[] {"loot", "Ann", "2", "ANY"});
+    verify(console, times(2)).sendMessage("§aRimebound Sword is in Ann's dungeon locker.");
+    assertTrue(c.complete(new String[] {"lo"}).containsAll(List.of("locker", "loot")));
+
     assertEquals(List.of("give"), c.complete(new String[] {"locker", "g"}));
     assertEquals(List.of(), c.complete(new String[] {"locker", "x"}));
     assertTrue(c.complete(new String[] {"rea"}).contains("ready"));
@@ -246,6 +277,13 @@ class DungeonRunCommandsTest {
     assertNotNull(m.runs());
     verify(pm, times(2)).registerEvents(any(), eq(plugin)); // runs and lockers
     assertNotNull(m.runs().lockers());
+    assertNull(m.loot(), "no item plugins here");
+    when(pm.isPluginEnabled("MMOItems")).thenReturn(true);
+    m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
+    assertNull(m.loot(), "MMOItems alone is not enough");
+    when(pm.isPluginEnabled("AdvancedCrafting")).thenReturn(true);
+    m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
+    assertNotNull(m.loot());
     // the ally filter and its staff report
     DungeonCommand dc = new DungeonCommand(m);
     CommandSender staff = mock(CommandSender.class);

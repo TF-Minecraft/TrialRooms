@@ -99,6 +99,8 @@ class DungeonModuleTest {
     assertEquals(java.util.Set.of("delve_greybox", "delve_seithr"), m.recipes().keySet());
     assertEquals(List.of(), m.problems());
     assertSame(world, m.world());
+    assertNotNull(m.lootKit(), "the bundled loot.yml");
+    assertEquals(30, m.lootKit().bases().size());
     // a second start keeps edited files
     Files.writeString(data.resolve("dungeons/recipes.yml"), "x: 1\n");
     Files.delete(data.resolve("dungeons/kits/greybox/rooms/rest_camp.yml"));
@@ -137,6 +139,9 @@ class DungeonModuleTest {
     Files.writeString(data.resolve("dungeons/recipes.yml"), "typo:\n  kit: greybox\n  boss: bone_wardn\n  trunk-pool: {combat: 1}\n");
     m.reload();
     assertTrue(m.problems().stream().anyMatch(p -> p.contains("has no boss 'bone_wardn'")), m.problems().toString());
+    Files.delete(data.resolve("dungeons/loot.yml"));
+    m.reload();
+    assertNull(m.lootKit(), "no loot.yml: no loot");
     assertTrue(m.recipes().containsKey("typo"));
     // a kit that can only grow in a straight line: 20 corridors reach 700 blocks north
     Path line = data.resolve("dungeons/kits/line");

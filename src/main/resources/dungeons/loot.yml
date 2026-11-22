@@ -1,0 +1,124 @@
+# Dungeon loot. Shipped once; never overwritten. /tr dungeon reload applies changes.
+#
+# A dungeon item starts as an AdvancedCrafting recipe made of the act's standard material (so a
+# common piece matches what a player crafts this act), then its rarity and the dungeon's tier make
+# it stronger and add bonus stats, sockets for dungeon gems, a name and a look. Items are limited to
+# the classes their template allows, like crafted gear. They never break and never leave dungeons.
+
+# The act's standard ingredient for each recipe main type (AdvancedCrafting ingredient ids).
+# At an act change, move these with it.
+standard:
+  metal: steel_ingot
+  wood: refined_maplewood
+
+# From the most common up. weight: how often (a tier's luck favours the rarer ones); power: how much
+# stronger than the standard piece; bonus: extra stats from the item's pool; sockets: empty sockets
+# that take dungeon gems; colour: the name's colour.
+rarities:
+  uncommon: {name: Uncommon, weight: 60, power: 1.15, bonus: 1, sockets: 0, colour: "#5fd35f"}
+  rare: {name: Rare, weight: 28, power: 1.3, bonus: 2, sockets: 1, colour: "#4f9cff"}
+  epic: {name: Epic, weight: 10, power: 1.5, bonus: 3, sockets: 2, colour: "#b05cff"}
+  legendary: {name: Legendary, weight: 2, power: 1.75, bonus: 4, sockets: 3, colour: "#ff9c2a"}
+
+# Dungeon tiers (a recipe's tier). power multiplies with the rarity's; luck makes each step up the
+# rarity list (1 + luck) times as likely.
+tiers:
+  1: {power: 1.0, luck: 0}
+  2: {power: 1.25, luck: 0.5}
+  3: {power: 1.55, luck: 1.0}
+
+# The socket colour dungeon items carry: only dungeon gems fit it (TLibs socket-tier-groups).
+socket: Dungeon Gem
+
+# Stats rarity and tier never change: how a weapon handles, not how strong it is.
+unscaled: [movement_speed, attack_speed, arrow_velocity, entity_interaction_range, critical_strike_chance, blunt_power]
+
+# Bonus stat pools: stat: [min, max] at tier 1, before the rarity's power.
+bonus:
+  armour:
+    max_health: [0.6, 1.2]
+    armor: [0.3, 0.6]
+    physical_damage_reduction: [2, 4]
+    projectile_damage_reduction: [2, 4]
+    magic_damage_reduction: [2, 4]
+  melee:
+    physical_damage: [3, 6]
+    max_health: [0.5, 1.0]
+    lifesteal: [1, 2]
+    physical_damage_reduction: [1, 2]
+  ranged:
+    projectile_damage: [3, 6]
+    max_health: [0.5, 1.0]
+    lifesteal: [1, 2]
+    projectile_damage_reduction: [1, 2]
+  jewellery:
+    max_health: [0.6, 1.2]
+    physical_damage: [2, 4]
+    projectile_damage: [2, 4]
+    magic_damage: [2, 4]
+    physical_damage_reduction: [1.5, 3]
+    projectile_damage_reduction: [1.5, 3]
+    magic_damage_reduction: [1.5, 3]
+
+# What can drop. recipe: an AdvancedCrafting recipe; template: an MMOItems template (file.id) with
+# its own stats: [min, max]. %material% in the name is where a prefix goes.
+items:
+  light_helmet: {recipe: light_helmet, slot: helmet, pool: armour, look: light, name: "Light %material% Helmet"}
+  light_chestplate: {recipe: light_chestplate, slot: chestplate, pool: armour, look: light, name: "Light %material% Chestplate"}
+  light_leggings: {recipe: light_leggings, slot: leggings, pool: armour, look: light, name: "Light %material% Leggings"}
+  light_boots: {recipe: light_boots, slot: boots, pool: armour, look: light, name: "Light %material% Boots"}
+  medium_helmet: {recipe: medium_helmet, slot: helmet, pool: armour, look: medium, name: "Medium %material% Helmet"}
+  medium_chestplate: {recipe: medium_chestplate, slot: chestplate, pool: armour, look: medium, name: "Medium %material% Chestplate"}
+  medium_leggings: {recipe: medium_leggings, slot: leggings, pool: armour, look: medium, name: "Medium %material% Leggings"}
+  medium_boots: {recipe: medium_boots, slot: boots, pool: armour, look: medium, name: "Medium %material% Boots"}
+  heavy_helmet: {recipe: heavy_helmet, slot: helmet, pool: armour, look: heavy, name: "Heavy %material% Helmet"}
+  heavy_chestplate: {recipe: heavy_chestplate, slot: chestplate, pool: armour, look: heavy, name: "Heavy %material% Chestplate"}
+  heavy_leggings: {recipe: heavy_leggings, slot: leggings, pool: armour, look: heavy, name: "Heavy %material% Leggings"}
+  heavy_boots: {recipe: heavy_boots, slot: boots, pool: armour, look: heavy, name: "Heavy %material% Boots"}
+  infantry_helmet: {recipe: infantry_helmet, slot: helmet, pool: armour, look: infantry, name: "Infantry %material% Cap"}
+  infantry_chestplate: {recipe: infantry_chestplate, slot: chestplate, pool: armour, look: infantry, name: "Infantry %material% Jacket"}
+  infantry_leggings: {recipe: infantry_leggings, slot: leggings, pool: armour, look: infantry, name: "Infantry %material% Leggings"}
+  infantry_boots: {recipe: infantry_boots, slot: boots, pool: armour, look: infantry, name: "Infantry %material% Boots"}
+  sword: {recipe: sword, slot: weapon, pool: melee, name: "%material% Sword"}
+  battleaxe: {recipe: battleaxe, slot: weapon, pool: melee, name: "%material% Battleaxe"}
+  dagger: {recipe: dagger, slot: weapon, pool: melee, name: "%material% Dagger"}
+  warhammer: {recipe: warhammer, slot: weapon, pool: melee, name: "%material% Warhammer"}
+  spear: {recipe: spear, slot: weapon, pool: melee, name: "%material% Spear"}
+  polearm: {recipe: polearm, slot: weapon, pool: melee, name: "%material% Polearm"}
+  longsword: {recipe: longsword, slot: weapon, pool: melee, name: "%material% Longsword"}
+  greathammer: {recipe: greathammer, slot: weapon, pool: melee, name: "%material% Greathammer"}
+  greataxe: {recipe: greataxe, slot: weapon, pool: melee, name: "%material% Greataxe"}
+  shortbow: {recipe: shortbow, slot: weapon, pool: ranged, name: "%material% Shortbow"}
+  crossbow: {recipe: crossbow, slot: weapon, pool: ranged, name: "%material% Crossbow"}
+  longbow: {recipe: longbow, slot: weapon, pool: ranged, name: "%material% Longbow"}
+  ring: {template: ring.fine_jeweled_ring, slot: ring, pool: jewellery, name: "%material% Ring", stats: {max_health: [0.4, 0.8]}}
+  amulet: {template: amulet.fine_pendant_amulet, slot: amulet, pool: jewellery, name: "%material% Amulet", stats: {max_health: [0.4, 0.8]}}
+
+# Names: a prefix in place of the material; epic and legendary items also get a suffix.
+names:
+  prefixes: [Rimebound, Frostwoven, Seithr, Hoarfrost, Glacial, Winterborn, Icebound, Palefrost, Snowmantled, Coldiron]
+  suffixes: [of the Thaw, of the Long Night, of Frozen Oaths, of the Frost Host, of Seithrin, of the Still Wind, of the White Silence, of Bitter Winds]
+
+# Armour skins: for each rarity and armour weight (an item's look), the ItemsAdder sets it may wear
+# (ia.tfmc_armor:<set>_<piece>). Rarer items get the finer metals.
+looks:
+  uncommon:
+    light: [hraftar_iron_light, imperial_iron_light, forestman_steel_light]
+    medium: [hraftar_iron_medium, imperial_iron_medium, forestman_steel_medium]
+    heavy: [hraftar_iron_heavy, imperial_iron_heavy, forestman_steel_heavy]
+    infantry: [base_metal_steel_infantry]
+  rare:
+    light: [hraftar_abyssalite_light, imperial_abyssalite_light, forestman_abyssalite_light]
+    medium: [hraftar_abyssalite_medium, imperial_abyssalite_medium, forestman_abyssalite_medium]
+    heavy: [hraftar_abyssalite_heavy, imperial_abyssalite_heavy, forestman_abyssalite_heavy]
+    infantry: [base_metal_abyssalite_infantry]
+  epic:
+    light: [hraftar_mythril_light, imperial_mythril_light, forestman_mythril_light, scale_light]
+    medium: [hraftar_mythril_medium, imperial_mythril_medium, forestman_mythril_medium]
+    heavy: [hraftar_mythril_heavy, imperial_mythril_heavy, forestman_mythril_heavy, scale_heavy]
+    infantry: [base_metal_mythril_infantry]
+  legendary:
+    light: [dwarven_light, malevorian_light, brightsteel_light]
+    medium: [dwarven_medium, cervalic_order_medium, malevorian_medium]
+    heavy: [dwarven, cervalic_order_heavy, malevorian, brightsteel_heavy]
+    infantry: [base_metal_mythril_infantry]
