@@ -27,11 +27,13 @@ import org.bukkit.configuration.ConfigurationSection;
  * @param aloneBleedOutSeconds seconds such a player waits once their own revive is spent
  * @param hintSeconds        seconds a party gets nowhere (no new room, no fight) before a hint names the way on;
  *                           the next hint waits twice as long
+ * @param lobbySeconds       seconds the entrance room stays shut while the party gets ready (opens sooner once
+ *                           everyone is ready); 0 = no lobby
  */
 public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSeconds, int bleedOutSeconds,
         int reviveSeconds, double reviveRadius, double gateRadius, int graceSeconds, int finishSeconds,
         List<String> blockedCommands, int holdSeconds, Set<String> harmfulAuras, Set<String> helpfulAuras,
-        int selfReviveSeconds, int aloneBleedOutSeconds, int hintSeconds) {
+        int selfReviveSeconds, int aloneBleedOutSeconds, int hintSeconds, int lobbySeconds) {
 
     static final List<String> DEFAULT_BLOCKED = List.of("home", "homes", "sethome", "spawn", "warp", "tpa",
             "tpahere", "tpaccept", "back", "rtp");
@@ -41,6 +43,19 @@ public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSe
     static final List<String> DEFAULT_HELPFUL = List.of("guardian_angel", "Rhapsody_aura", "Angelic_Serenade_aura",
             "TFMC_Guard_Restoration", "Guardian_Angel_Ward",
             "TFMC_Guard_Shield_Wall_Ward");
+
+    /** The lobby when settings.yml does not say: two minutes at most. */
+    static final int DEFAULT_LOBBY = 120;
+
+    /** Settings without a lobby. */
+    public RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSeconds, int bleedOutSeconds,
+            int reviveSeconds, double reviveRadius, double gateRadius, int graceSeconds, int finishSeconds,
+            List<String> blockedCommands, int holdSeconds, Set<String> harmfulAuras, Set<String> helpfulAuras,
+            int selfReviveSeconds, int aloneBleedOutSeconds, int hintSeconds) {
+        this(maxRuns, countdownSeconds, bossCountdownSeconds, bleedOutSeconds, reviveSeconds, reviveRadius, gateRadius,
+                graceSeconds, finishSeconds, blockedCommands, holdSeconds, harmfulAuras, helpfulAuras, selfReviveSeconds,
+                aloneBleedOutSeconds, hintSeconds, 0);
+    }
 
     public RunSettings {
         blockedCommands = blockedCommands.stream().map(s -> s.toLowerCase(Locale.ROOT)).toList();
@@ -52,6 +67,7 @@ public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSe
         return names.stream().map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
     }
 
+    /** Built-in settings (no lobby: the file's default turns it on). */
     public static RunSettings defaults() {
         return new RunSettings(4, 4, 5, 30, 3, 2.5, 8, 300, 60, DEFAULT_BLOCKED, 60, Set.copyOf(DEFAULT_HARMFUL),
                 Set.copyOf(DEFAULT_HELPFUL), 5, 10, 60);
@@ -74,7 +90,12 @@ public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSe
                 Math.max(10, s.getInt("queue-hold-seconds", d.holdSeconds())), Set.copyOf(harmful), Set.copyOf(helpful),
                 Math.max(1, s.getInt("self-revive-seconds", d.selfReviveSeconds())),
                 Math.max(1, s.getInt("alone-bleed-out-seconds", d.aloneBleedOutSeconds())),
-                Math.max(10, s.getInt("hint-seconds", d.hintSeconds())));
+                Math.max(10, s.getInt("hint-seconds", d.hintSeconds())), lobby(s.getInt("lobby-seconds", DEFAULT_LOBBY)));
+    }
+
+    /** 0 or less: no lobby; otherwise at least 10 seconds. */
+    static int lobby(int seconds) {
+        return seconds <= 0 ? 0 : Math.max(10, seconds);
     }
 
     /** Whether a typed command line ("/home x") starts with a blocked command, with or without a namespace. */

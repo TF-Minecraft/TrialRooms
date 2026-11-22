@@ -178,6 +178,124 @@ class RunManagerTest {
     return runs.runs().getFirst();
   }
 
+  RunSettings withLobby(int seconds) {
+    return new RunSettings(4, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 60, java.util.Set.of(), java.util.Set.of(),
+        5, 10, 60, seconds);
+  }
+
+  /** Items by index in a list: MockBukkit has no item bytes. */
+  static final class ListCodec implements net.tfminecraft.trialrooms.dungeon.locker.ItemCodec {
+    final List<org.bukkit.inventory.ItemStack> saved = new ArrayList<>();
+
+    @Override
+    public byte[] encode(org.bukkit.inventory.ItemStack item) {
+      saved.add(item.clone());
+      return java.nio.ByteBuffer.allocate(4).putInt(saved.size() - 1).array();
+    }
+
+    @Override
+    public org.bukkit.inventory.ItemStack decode(byte[] data) {
+      return saved.get(java.nio.ByteBuffer.wrap(data).getInt()).clone();
+    }
+  }
+
+  @Test
+  void aLobbyHoldsThePartyUntilEveryoneIsReady() {
+    settings = withLobby(60);
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    PlayerMock c = player("Cy");
+    assertFalse(runs.ready(c), "not in a run");
+    assertFalse(runs.inLobby(c));
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
+    assertEquals(geo.roomAt(geo.entry(0)[0], geo.entry(0)[2]), ar.lobbyRoom);
+    assertTrue(runs.inLobby(a));
+    String said;
+    boolean buttons = false;
+    while ((said = a.nextMessage()) != null) {
+      buttons |= said.contains("Get ready in this room");
+    }
+    assertTrue(buttons, "the locker and ready buttons");
+    characterOf.put("Bo", "char-other");
+    ticks(1);
+    assertTrue(ar.lobbyRoom >= 0);
+    assertFalse(runs.inLobby(b), "not on the character that came in");
+    characterOf.put("Bo", "char-Bo");
+    assertTrue(runs.ready(a));
+    assertTrue(runs.ready(a), "saying it twice changes nothing");
+    ticks(1);
+    assertTrue(ar.lobbyRoom >= 0, "Bo is not ready yet");
+    assertEquals(ar.progressMs, now.get(), "a party getting ready is not stuck");
+    into(b, RoomType.COMBAT);
+    assertFalse(runs.inLobby(b), "only in the entrance room");
+    b.teleport(new Location(main, 0, 70, 0)); // away from the dungeon: only those inside count
+    assertFalse(runs.inLobby(b));
+    ticks(1);
+    assertEquals(-1, ar.lobbyRoom, "everyone inside is ready: the doors open");
+    assertFalse(runs.inLobby(a));
+    assertFalse(runs.ready(a), "nothing to get ready for any more");
+  }
+
+  @Test
+  void aLobbyOpensWhenTimeRunsOut() {
+    settings = withLobby(10);
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
+    now.addAndGet(9_000);
+    ticks(1);
+    assertTrue(ar.lobbyRoom >= 0);
+    a.teleport(new Location(main, 0, 70, 0)); // nobody inside: still waits for the time
+    ticks(1);
+    assertTrue(ar.lobbyRoom >= 0);
+    now.addAndGet(1_000);
+    ticks(1);
+    assertEquals(-1, ar.lobbyRoom);
+  }
+
+  @Test
+  void loadoutsComeOffWheneverAPlayerLeavesTheDungeonWorld() {
+    settings = withLobby(60);
+    var lockers = new net.tfminecraft.trialrooms.dungeon.locker.LockerService(plugin,
+        new net.tfminecraft.trialrooms.dungeon.locker.LockerStore(temp.resolve("lockers"), Logger.getLogger("t")),
+        new ListCodec(), chars::activeCharacterId, p -> { });
+    runs.lockers(lockers);
+    assertSame(lockers, runs.lockers());
+    PlayerMock a = player("Ann");
+    a.getInventory().setItem(0, new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_SWORD));
+    String id = lockers.add(a, new org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND_SWORD));
+    lockers.locker(a).assign(0, 0, id);
+    GateStore.Gate gate = gates.add(main.getBlockAt(10, 69, 10), "delve");
+
+    runs.useGate(a, gate);
+    assertEquals(net.tfminecraft.trialrooms.dungeon.locker.LockerService.Result.DONE, lockers.wear(a, 0));
+    runs.sweep(a); // inside, playing: it stays on
+    assertEquals(org.bukkit.Material.DIAMOND_SWORD, a.getInventory().getItem(0).getType());
+    assertTrue(runs.leave(a));
+    assertEquals(org.bukkit.Material.IRON_SWORD, a.getInventory().getItem(0).getType(), "own sword back");
+    assertEquals(-1, lockers.locker(a).worn());
+
+    // out of the dungeon world some other way: the next sweep takes it off
+    runs.useGate(a, gate);
+    lockers.wear(a, 0);
+    a.teleport(new Location(main, 0, 70, 0));
+    runs.sweep(a);
+    assertEquals(org.bukkit.Material.IRON_SWORD, a.getInventory().getItem(0).getType());
+    runs.runs().forEach(r -> runs.end(r, false, null));
+
+    // someone outside any run, and a member back on another character: nothing worn stays
+    PlayerMock c = player("Cy");
+    runs.sweep(c);
+    runs.useGate(a, gate);
+    characterOf.put("Ann", "char-other");
+    runs.sweep(a);
+    assertFalse(runs.inRun(a));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
   @Test
   void aPartyPlaysAWholeRun() throws Exception {
     PlayerMock a = player("Ann");
@@ -323,7 +441,7 @@ class RunManagerTest {
     runs.useGate(b, gate);
     verify(keys, times(1)).take(any(), any());
     // generation that fails (for Ann, first in line): the dungeon stays held for her
-    runs.end(only(), false, null);
+    runs.runs().forEach(r -> runs.end(r, false, null));
     ticks(1);
     when(module.generate(eq("delve"), anyLong())).thenThrow(new IllegalStateException("no layout"));
     runs.useGate(a, gate);
@@ -451,7 +569,7 @@ class RunManagerTest {
     PlayerMock a = player("Ann");
     runs.startRun(a, "delve", 1);
     runs.died(a);
-    runs.end(only(), false, null);
+    runs.runs().forEach(r -> runs.end(r, false, null));
     assertNull(runs.respawnPoint(a));
   }
 

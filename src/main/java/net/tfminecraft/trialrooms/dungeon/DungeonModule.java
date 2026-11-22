@@ -32,6 +32,10 @@ import net.tfminecraft.trialrooms.dungeon.allies.AllyFilter;
 import net.tfminecraft.trialrooms.dungeon.allies.AllyRules;
 import net.tfminecraft.trialrooms.dungeon.run.GateStore;
 import net.tfminecraft.trialrooms.dungeon.run.Ports;
+import net.tfminecraft.trialrooms.dungeon.locker.ItemCodec;
+import net.tfminecraft.trialrooms.dungeon.locker.LockerListener;
+import net.tfminecraft.trialrooms.dungeon.locker.LockerService;
+import net.tfminecraft.trialrooms.dungeon.locker.LockerStore;
 import net.tfminecraft.trialrooms.dungeon.run.RunFiles;
 import net.tfminecraft.trialrooms.dungeon.run.RunListener;
 import net.tfminecraft.trialrooms.dungeon.run.RunManager;
@@ -109,8 +113,12 @@ public final class DungeonModule {
         Path root = plugin.getDataFolder().toPath().resolve("dungeons");
         runs = new RunManager(plugin, this, characters, keys, mobs, fx, new RunFiles(root, plugin.getLogger()),
                 new GateStore(root.resolve("gates.yml").toFile(), plugin.getLogger()), System::currentTimeMillis);
+        LockerService lockers = new LockerService(plugin, new LockerStore(root.resolve("lockers"), plugin.getLogger()),
+                ItemCodec.PAPER, characters::activeCharacterId, org.bukkit.entity.Player::saveData);
+        runs.lockers(lockers);
         runs.start();
         plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs), plugin);
+        plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
     }
 
     public RunManager runs() {
