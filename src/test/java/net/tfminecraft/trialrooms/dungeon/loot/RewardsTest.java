@@ -100,6 +100,11 @@ public class RewardsTest {
     assertTrue(problems.isEmpty(), "no loot at all: nothing more to say");
     assertNull(RewardRules.load(new YamlConfiguration(), kit, problems));
     assertTrue(problems.getFirst().contains("no rewards section"));
+    YamlConfiguration only = new YamlConfiguration();
+    only.loadFromString("rewards: {gems: {share: 0.5}}");
+    problems.clear();
+    assertNull(RewardRules.load(only, null, problems), "rewards without a loot kit");
+    assertTrue(problems.isEmpty());
     for (String bad : List.of("rewards: {prices: {mythic: 5}}", "rewards: {gems: {pool: nope}}",
         "rewards: {chance: {boss: 2}}")) {
       problems.clear();

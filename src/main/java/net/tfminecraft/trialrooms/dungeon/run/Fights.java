@@ -199,8 +199,11 @@ final class Fights {
     /** True while a boss mechanic lands its damage. */
     private boolean mechanic;
 
-    boolean mechanic() {
-        return mechanic;
+    /** Whether a boss mechanic's hit is landing now; true once per hit. */
+    boolean takeMechanic() {
+        boolean was = mechanic;
+        mechanic = false;
+        return was;
     }
 
     void mechanic(boolean on) {

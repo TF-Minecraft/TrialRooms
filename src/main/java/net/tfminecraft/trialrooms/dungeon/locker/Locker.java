@@ -254,6 +254,14 @@ public final class Locker {
         return cleared.computeIfAbsent(recipe, r -> new java.util.LinkedHashSet<>()).add(difficulty);
     }
 
+    /** Takes back a win that could not be saved, so a later win records (and announces) it. */
+    public void unclear(String recipe, String difficulty) {
+        var set = cleared.get(recipe);
+        if (set != null && set.remove(difficulty) && set.isEmpty()) {
+            cleared.remove(recipe);
+        }
+    }
+
     // ---- revision
 
     /** Bumped by every save. */

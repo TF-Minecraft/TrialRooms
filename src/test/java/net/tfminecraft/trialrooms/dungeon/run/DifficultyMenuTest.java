@@ -58,6 +58,7 @@ class DifficultyMenuTest {
     m.click(m.slot(0), false);
     server.getScheduler().performOneTick();
     verify(runs, never()).useGate(any(), any(), any());
+    assertEquals("§cYou are no longer at the gate.", ann.nextMessage());
     when(gates.at(any())).thenReturn(gate);
     ann.teleport(new org.bukkit.Location(server.addSimpleWorld("other"), 2, 2, 5));
     assertFalse(m.stillAtGate(), "another world");
@@ -66,6 +67,9 @@ class DifficultyMenuTest {
     assertFalse(nowhere.stillAtGate(), "the gate's world is gone");
     ann.disconnect();
     assertFalse(m.stillAtGate(), "offline");
+    m.click(m.slot(0), false);
+    server.getScheduler().performOneTick();
+    verify(runs, never()).useGate(any(), any(), any());
   }
 
   @AfterEach
@@ -105,7 +109,7 @@ class DifficultyMenuTest {
   void manyDifficultiesShowTheFirstFive() {
     Difficulty[] six = new Difficulty[6];
     for (int i = 0; i < 6; i++) {
-      six[i] = new Difficulty("d" + i, "D" + i, i + 1, 1, 1, null, "");
+      six[i] = new Difficulty("d" + i, "D" + i, i + 1, 1, i == 0 ? 1.2 : 1, null, "");
       when(runs.unlocked(ann, "delve", six[i])).thenReturn(true);
     }
     DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(six)));
@@ -113,6 +117,8 @@ class DifficultyMenuTest {
     assertEquals(9, m.slot(0));
     assertEquals(17, m.slot(4));
     assertEquals(Material.NETHERITE_SWORD, m.getInventory().getItem(17).getType(), "the third icon and on");
+    assertTrue(String.valueOf(m.getInventory().getItem(9).getItemMeta().lore()).contains("x1.2 damage"));
+    m.click(26, false); // past the five buttons
     m.click(17, false);
     server.getScheduler().performOneTick();
     verify(runs).useGate(ann, gate, "d4");

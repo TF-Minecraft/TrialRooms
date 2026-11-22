@@ -97,6 +97,14 @@ class LockerCoreTest {
     assertTrue(l.clear("delve", "normal"));
     assertFalse(l.clear("delve", "normal"), "the second win is not news");
     assertTrue(l.clear("delve", "hard"));
+    l.clear("cave", "normal");
+    l.unclear("cave", "normal");
+    l.unclear("cave", "normal");
+    l.unclear("delve", "nightmare");
+    l.clear("delve", "extra");
+    l.unclear("delve", "extra");
+    assertFalse(l.cleared().containsKey("cave"), "an undone only win leaves no entry");
+    assertEquals(java.util.Set.of("normal", "hard"), l.cleared("delve"));
     assertTrue(store.write(who, "c1", l));
     back = store.read(who, "c1");
     assertEquals(7, back.marks());

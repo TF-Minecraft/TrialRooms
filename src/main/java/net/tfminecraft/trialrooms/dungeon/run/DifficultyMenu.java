@@ -115,6 +115,8 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
                     player.closeInventory();
                     if (stillAtGate()) {
                         runs.useGate(player, gate, d.id());
+                    } else if (player.isOnline()) {
+                        player.sendMessage("§cYou are no longer at the gate.");
                     }
                 });
                 return;

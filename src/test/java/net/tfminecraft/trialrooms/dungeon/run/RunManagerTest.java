@@ -97,7 +97,8 @@ class RunManagerTest {
     module = mock(DungeonModule.class);
     when(module.world()).thenReturn(dungeon);
     when(module.settings()).thenAnswer(i -> settings);
-    when(module.recipes()).thenAnswer(i -> Map.of("delve", new RecipeLoader.Entry(recipe, "greybox", rules, difficulties)));
+    when(module.recipes()).thenAnswer(i -> recipesNow != null ? recipesNow
+        : Map.of("delve", new RecipeLoader.Entry(recipe, "greybox", rules, difficulties)));
     when(module.kits()).thenReturn(Map.of("greybox", kit));
     when(module.generate(eq("delve"), anyLong())).thenReturn(layout);
     placer = mock(LayoutPlacer.class);
@@ -179,6 +180,8 @@ class RunManagerTest {
   }
 
   List<Difficulty> difficulties = List.of();
+  /** When set, the recipes a reload left (else the test's own). */
+  Map<String, RecipeLoader.Entry> recipesNow;
 
   @Test
   void dungeonsWithDifficultiesAreChosenAtTheGateAndOpenUpByWins() {
@@ -233,13 +236,15 @@ class RunManagerTest {
     assertEquals(1.25, runs.outgoingFactor(mob), 1e-9);
     runs.fights().mechanic(true);
     assertEquals(1, runs.outgoingFactor(mob), 1e-9, "boss mechanics grow with the tier, not the damage multiplier");
-    runs.fights().mechanic(false);
+    assertEquals(1.25, runs.outgoingFactor(mob), 1e-9, "a hit the mechanic sets off is an ordinary one");
     into(a, RoomType.BOSS);
     ticks(14);
     killAll();
     ticks(4);
+    recipesNow = Map.of(); // a reload dropped the recipe: the win still counts, with nothing to announce
     into(a, RoomType.VAULT);
     ticks(2);
+    recipesNow = null;
     assertEquals(java.util.Set.of("normal", "hard"), lockers.locker(a).cleared("delve"));
     runs.runs().forEach(r -> runs.end(r, false, null));
     // a second Normal win is no news; staff start any difficulty without having won it
@@ -287,7 +292,8 @@ class RunManagerTest {
     ticks(4);
     into(c, RoomType.VAULT);
     ticks(2);
-    assertFalse(nextMatching(c, "is now open"), "not announced: the win could not be saved");
+    assertTrue(nextMatching(c, "could not be saved"), "the player is told");
+    assertEquals(java.util.Set.of(), lockers.locker(c).cleared("delve"), "taken back, so a later win counts");
     runs.runs().forEach(r -> runs.end(r, false, null));
   }
 
@@ -362,6 +368,10 @@ class RunManagerTest {
     assertTrue(ar.finishAtMs > 0, "the run still ends in its own time");
     assertTrue(told.contains("Bo delve 1 BOSS"), told.toString());
     runs.runs().forEach(r -> runs.end(r, false, null));
+    assertEquals(RunRewards.Moment.ELITE, RunManager.clearedMoment(RoomType.ELITE, true));
+    assertEquals(RunRewards.Moment.BOSS, RunManager.clearedMoment(RoomType.BOSS, true));
+    assertEquals(RunRewards.Moment.EVENT, RunManager.clearedMoment(RoomType.COMBAT, true));
+    assertNull(RunManager.clearedMoment(RoomType.COMBAT, false));
   }
 
   @Test

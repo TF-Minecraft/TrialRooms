@@ -939,13 +939,21 @@ public final class RunManager {
                 p.sendMessage("§aThe room is clear. The doors open.");
             }
         }
-        if (boss) {
-            reward(ar, RunRewards.Moment.BOSS);
-        } else if (type == RoomType.ELITE) {
-            reward(ar, RunRewards.Moment.ELITE);
-        } else if (ar.planned.containsKey(room)) {
-            reward(ar, RunRewards.Moment.EVENT);
+        RunRewards.Moment moment = clearedMoment(type, ar.planned.containsKey(room));
+        if (moment != null) {
+            reward(ar, moment);
         }
+    }
+
+    /** What clearing a room of this type pays out: the boss, an elite room, or a finished event. */
+    static RunRewards.Moment clearedMoment(RoomType type, boolean event) {
+        if (type == RoomType.BOSS) {
+            return RunRewards.Moment.BOSS;
+        }
+        if (type == RoomType.ELITE) {
+            return RunRewards.Moment.ELITE;
+        }
+        return event ? RunRewards.Moment.EVENT : null;
     }
 
     /**
@@ -1400,11 +1408,17 @@ public final class RunManager {
         RecipeLoader.Entry entry = module.recipes().get(recipe);
         for (Player p : online(ar)) {
             var locker = isPlayingMember(ar, p) ? lockers.locker(p) : null;
-            if (locker != null && locker.clear(recipe, ar.difficulty.id()) && lockers.saveLocker(p, locker)) {
-                if (entry != null) {
-                    entry.difficulties().stream().filter(d -> ar.difficulty.id().equals(d.needs()))
-                            .forEach(d -> p.sendMessage("§6" + d.name() + " is now open for you in this dungeon."));
-                }
+            if (locker == null || !locker.clear(recipe, ar.difficulty.id())) {
+                continue;
+            }
+            if (!lockers.saveLocker(p, locker)) {
+                locker.unclear(recipe, ar.difficulty.id());
+                p.sendMessage("§cYour win could not be saved, so it does not open anything yet. Tell staff.");
+                continue;
+            }
+            if (entry != null) {
+                entry.difficulties().stream().filter(d -> ar.difficulty.id().equals(d.needs()))
+                        .forEach(d -> p.sendMessage("§6" + d.name() + " is now open for you in this dungeon."));
             }
         }
     }
@@ -1465,8 +1479,12 @@ public final class RunManager {
     /** How hard a hit from this entity on a run player lands: run mobs may be rallied, enraged or charging. */
     public double outgoingFactor(Entity source) {
         ActiveRun ar = byMob.get(source.getUniqueId());
-        // boss mechanics already grow with the tier: the difficulty's damage is for ordinary hits
-        return ar == null ? 1 : fights.outgoing(ar, source) * (fights.mechanic() ? 1 : ar.damageFactor);
+        if (ar == null) {
+            return 1;
+        }
+        // boss mechanics already grow with the tier: the difficulty's damage is for ordinary hits.
+        // Only the mechanic's own hit (this handler runs first) is spared, not hits it sets off.
+        return fights.outgoing(ar, source) * (fights.takeMechanic() ? 1 : ar.damageFactor);
     }
 
     /** How much of a hit a run mob takes (a boss between phases none, a shielded elite less). */
