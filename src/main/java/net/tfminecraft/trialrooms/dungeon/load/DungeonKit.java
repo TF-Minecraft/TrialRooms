@@ -3,6 +3,7 @@ package net.tfminecraft.trialrooms.dungeon.load;
 import java.io.File;
 import java.util.Map;
 
+import net.tfminecraft.trialrooms.dungeon.event.EventKit;
 import net.tfminecraft.trialrooms.dungeon.fight.FightKit;
 import net.tfminecraft.trialrooms.dungeon.template.RoomCatalog;
 
@@ -18,9 +19,15 @@ import net.tfminecraft.trialrooms.dungeon.template.RoomCatalog;
  * @param mobs       MythicMobs type per spawn marker tag (such as melee, ranged, boss), for kits
  *                   without a roster: one enemy per marker
  * @param fights     roster, packs, bosses and fight numbers; null for a kit that only has {@code mobs}
+ * @param events     the kit's room events and their numbers; null for none
  */
 public record DungeonKit(String id, RoomCatalog catalog, Map<String, File> structures, int doorHeight,
-        String sealBlock, String doorBlock, Map<String, String> mobs, FightKit fights) {
+        String sealBlock, String doorBlock, Map<String, String> mobs, FightKit fights, EventKit events) {
+
+    public DungeonKit(String id, RoomCatalog catalog, Map<String, File> structures, int doorHeight, String sealBlock,
+            String doorBlock, Map<String, String> mobs, FightKit fights) {
+        this(id, catalog, structures, doorHeight, sealBlock, doorBlock, mobs, fights, null);
+    }
 
     public DungeonKit(String id, RoomCatalog catalog, Map<String, File> structures, int doorHeight, String sealBlock,
             String doorBlock, Map<String, String> mobs) {

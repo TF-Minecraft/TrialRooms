@@ -298,6 +298,11 @@ public final class RunListener implements Listener {
                 return;
             }
         }
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
+                && runs.inDungeonWorld(p) && runs.propClick(p, event.getClickedBlock())) {
+            event.setCancelled(true); // a brazier or rune stone of a room event
+            return;
+        }
         if ((event.getAction() == Action.RIGHT_CLICK_BLOCK || event.getAction() == Action.RIGHT_CLICK_AIR)
                 && runs.inDungeonWorld(p) && runs.tryExit(p)) {
             event.setCancelled(true);

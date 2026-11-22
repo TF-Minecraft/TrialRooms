@@ -14,6 +14,7 @@ import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import net.tfminecraft.trialrooms.dungeon.grid.Side;
+import net.tfminecraft.trialrooms.dungeon.event.EventKit;
 import net.tfminecraft.trialrooms.dungeon.fight.FightKit;
 import net.tfminecraft.trialrooms.dungeon.template.Doorway;
 import net.tfminecraft.trialrooms.dungeon.template.Marker;
@@ -105,7 +106,7 @@ public final class KitLoader {
         }
         return new DungeonKit(id, new RoomCatalog(cellSize, cellHeight, maxRise, templates), structures, doorHeight,
                 kit.getString("seal-block", "minecraft:stone_bricks"), kit.getString("door-block", "minecraft:iron_bars"),
-                mobs, fights);
+                mobs, fights, fights == null ? null : EventKit.load(kit, id, problems));
     }
 
     /** Reads a YAML file, turning syntax and read errors into a reportable problem. */

@@ -82,6 +82,8 @@ final class Fights {
         /** Names this fight gave its elites and boss, kept against MythicMobs' own display names. */
         final Map<Entity, Component> names = new HashMap<>();
         UUID lastSlam;
+        /** A room event still running keeps the fight from ending (see Events). */
+        java.util.function.BooleanSupplier hold = () -> false;
 
         Encounter(int room, Director.Plan plan, long now, int downs, long seed) {
             this.room = room;
@@ -94,7 +96,7 @@ final class Fights {
 
         /** A wave fight is over: no enemy left, no wave to come (none called either), no burst still to land. */
         boolean done() {
-            return alive.isEmpty() && wave >= plan.waves().size() - 1 && telegraphs.isEmpty();
+            return alive.isEmpty() && wave >= plan.waves().size() - 1 && telegraphs.isEmpty() && !hold.getAsBoolean();
         }
     }
 
@@ -246,6 +248,65 @@ final class Fights {
         }
     }
 
+    /**
+     * A room's spawn points for its fight: a point under a room event's brazier or stone is swapped
+     * for a free one, so no enemy spawns, returns or is moved into a prop. Same order and count.
+     */
+    List<double[]> points(ActiveRun ar, int room) {
+        List<double[]> all = ar.geo.markers(room, "spawn");
+        Events.RoomEvent ev = ar.events.get(room);
+        if (ev == null) {
+            return all;
+        }
+        List<double[]> out = new ArrayList<>();
+        int k = 0;
+        for (double[] m : all) {
+            boolean prop = ev.prop((int) Math.floor(m[0]), (int) Math.floor(m[1]), (int) Math.floor(m[2])) >= 0;
+            out.add(prop ? ev.spawnAt.get(k++ % ev.spawnAt.size()) : m);
+        }
+        return out;
+    }
+
+    /** A fight with no planned enemies, for a room event that brings its own; the doors stay shut while it holds. */
+    Encounter startHeld(ActiveRun ar, int room, String what) {
+        long now = clock.getAsLong();
+        long seed = new java.util.SplittableRandom(ar.run.layout().seed() * 31 + room).nextLong();
+        Encounter enc = new Encounter(room, new Director.Plan(0, what, List.of(List.of())), now, ar.run.downs(), seed);
+        enc.wave = 0;
+        ar.encounters.put(room, enc);
+        runs.event(ar, "room " + room + " " + what);
+        return enc;
+    }
+
+    /**
+     * A group of normal enemies within a budget (scaled for the party), at the given points in
+     * turn, joining a room's fight. Returns how many came.
+     */
+    int reinforce(ActiveRun ar, int room, double budget, List<double[]> points) {
+        Encounter enc = ar.encounters.get(room);
+        List<String> tags = new ArrayList<>();
+        for (int i = 0; i < points.size(); i++) {
+            tags.add("melee");
+        }
+        int n = 0;
+        for (Director.Spawn s : Director.adds(ar.kit.fights(), budget * ar.enemyFactor, tags, enc.rng)) {
+            double[] p = points.get(n % points.size());
+            Location at = new Location(runs.world(), p[0], p[1], p[2]);
+            Entity mob = spawn(ar, enc, s.entry().mob(), at);
+            if (mob == null) {
+                continue;
+            }
+            n++;
+            enc.alive.add(mob);
+            enc.waveOf.put(mob.getUniqueId(), -1); // their own wave: no elite's shield or rally counts them
+            scale(mob, Math.min(ar.healthFactor, ar.kit.fights().tuning().healthCap()));
+        }
+        for (Player p : inRoom(ar, room)) {
+            p.playSound(p.getLocation(), "minecraft:item.goat_horn.sound.1", 1f, 1.2f);
+        }
+        return n;
+    }
+
     /** Spawns a wave; returns how many came. */
     private int startWave(ActiveRun ar, Encounter enc, int w, long now) {
         enc.wave = w;
@@ -255,7 +316,7 @@ final class Fights {
         if (w >= enc.plan.waves().size()) {
             return 0;
         }
-        List<double[]> points = ar.geo.markers(enc.room, "spawn");
+        List<double[]> points = points(ar, enc.room);
         int n = 0;
         for (Director.Spawn s : enc.plan.waves().get(w)) {
             Location at = spawnPoint(ar, enc.room, points, s);
@@ -435,7 +496,7 @@ final class Fights {
             return;
         }
         enc.nextWaveAtMs = now + t.waveWarningSeconds() * 1000L;
-        List<double[]> points = ar.geo.markers(enc.room, "spawn");
+        List<double[]> points = points(ar, enc.room);
         Director.Spawn first = enc.plan.waves().get(enc.wave + 1).getFirst();
         double[] from = first.marker() >= 0 ? points.get(first.marker()) : ar.geo.centre(enc.room);
         Location at = new Location(runs.world(), from[0], from[1], from[2]);
@@ -493,7 +554,7 @@ final class Fights {
             return;
         }
         List<Player> here = inRoom(ar, enc.room);
-        List<double[]> points = ar.geo.markers(enc.room, "spawn");
+        List<double[]> points = points(ar, enc.room);
         enc.lastHitMs = now;
         if (here.isEmpty() || points.isEmpty()) {
             return;
@@ -520,7 +581,8 @@ final class Fights {
 
     /** With two or fewer enemies left in the last wave: they glow, so players can find them. */
     private void lastFew(ActiveRun ar, Encounter enc) {
-        if (enc.alive.isEmpty() || enc.alive.size() > 2 || enc.wave < enc.plan.waves().size() - 1) {
+        if (enc.alive.isEmpty() || enc.alive.size() > 2 || enc.wave < enc.plan.waves().size() - 1
+                || enc.hold.getAsBoolean()) { // a room event still brings more
             return;
         }
         if (!enc.lastFew) {
@@ -897,7 +959,7 @@ final class Fights {
         }
     }
 
-    private void removeAll(Set<Entity> set) {
+    void removeAll(Set<Entity> set) {
         for (Entity e : set) {
             runs.forget(e);
             mobs.remove(e);
