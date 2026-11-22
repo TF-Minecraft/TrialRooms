@@ -4,7 +4,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from roomlib import Room, walk_check  # noqa: E402
+from roomlib import Room, shell_check, walk_check  # noqa: E402
 
 STONE = "minecraft:stone"
 
@@ -113,9 +113,50 @@ def main():
     results.append(expect("a block on the landing's edge, 4 in", r, True, "landing"))
     results.append(expect("a 6-block drop with stairs back passes", drop(6), False))
 
+    results += shell_tests()
+
     if not all(results):
         sys.exit("walk check tests failed")
     print("all walk check tests passed")
+
+
+def closed():
+    """The plain hall with its end walls up round the doorways: a room the void never shows into."""
+    r = corridor()
+    for z in (0, 31):
+        r.fill(12, 1, z, 19, 8, z, STONE)
+    r.open_doors()
+    return r
+
+
+def shell_tests():
+    out = []
+
+    def check(name, room, leaks, says=None):
+        problems = shell_check(room)
+        ok = bool(problems) == leaks and (says is None or any(says in p for p in problems))
+        print(("ok   " if ok else "FAIL ") + name + ("" if ok else f" -> {problems}"))
+        out.append(ok)
+
+    check("a closed hall with open doorways passes", closed(), False)
+    check("an end wall left open beside the doorway", corridor(), True, "minecraft:air at 12 1 0")
+    r = closed()
+    r.put(5, 4, 31, "minecraft:ice")
+    check("clear ice in the outer wall", r, True, "minecraft:ice at 5 4 31")
+    r = closed()
+    r.put(5, 4, 30, "minecraft:ice")
+    check("clear ice behind solid wall is fine", r, False)
+    r = closed()
+    r.put(16, 9, 16, "minecraft:light_blue_stained_glass")
+    check("glass in the roof", r, True, "glass")
+    r = closed()
+    r.put(0, 4, 16, "minecraft:sea_lantern")
+    check("a sea lantern in the wall is solid", r, False)
+    r = Room("ell", "combat", 2, 2, 6, cells={(0, 0), (1, 0), (0, 1)})
+    r.fill(0, 0, 0, 63, 5, 63, STONE)
+    r.put(40, 3, 31, "minecraft:ice")
+    check("an L room's inner corner is shell too", r, True, "at 40 3 31")
+    return out
 
 
 def ramp_props(block):
