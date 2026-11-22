@@ -66,6 +66,8 @@ class LockerServiceTest {
 
   @AfterEach
   void tearDown() {
+    LockerMenu.itemType = LockerMenu::mmoType;
+    Accessories.refill = Accessories::refillPlaceholders;
     MockBukkit.unmock();
   }
 
@@ -477,6 +479,73 @@ class LockerServiceTest {
     assertFalse(lockers.marked(ann));
     assertNotEquals(lockers.markKey("A b"), lockers.markKey("c1"));
     assertNotEquals(lockers.markKey("a_b"), lockers.markKey("A b"), "ids that differ only in case or punctuation");
+  }
+
+  @Test
+  void mmoInventoryPlaceholdersAreNeverAPlayersItem() {
+    LockerMenu.itemType = it -> it.getType() == Material.GOLD_NUGGET ? "RING" : null;
+    List<Player> refilled = new ArrayList<>();
+    Accessories.refill = refilled::add;
+    String ring = lockers.add(ann, named(Material.GOLD_NUGGET, "Rime Ring"));
+    Locker l = lockers.locker(ann);
+    l.assign(0, 9, ring);
+    ann.getInventory().setItem(9, new ItemStack(Material.DIAMOND_HOE)); // MMOInventory's "Ring Slot"
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    assertTrue(l.displaced().isEmpty(), "the placeholder is not kept as an own item");
+    assertEquals(LockerService.Result.DONE, lockers.takeOff(ann));
+    assertNull(ann.getInventory().getItem(9));
+    assertEquals(List.of(ann), refilled, "MMOInventory is asked to put its placeholder back");
+    // a real ring of the player's comes back to its slot, over a placeholder that turned up meanwhile
+    ann.getInventory().setItem(9, named(Material.GOLD_NUGGET, "own ring"));
+    lockers.wear(ann, 0);
+    ann.getInventory().setItem(9, new ItemStack(Material.DIAMOND_HOE));
+    lockers.takeOff(ann);
+    assertEquals("own ring", name(ann.getInventory().getItem(9)));
+    // a ring put in the slot during the run stays; the own one goes to the bag
+    lockers.wear(ann, 0);
+    ann.getInventory().setItem(9, named(Material.GOLD_NUGGET, "found ring"));
+    lockers.takeOff(ann);
+    assertEquals("found ring", name(ann.getInventory().getItem(9)));
+    assertTrue(java.util.Arrays.stream(ann.getInventory().getStorageContents()).anyMatch(i -> "own ring".equals(name(i))));
+    assertTrue(LockerService.vacant(40, null));
+    assertFalse(LockerService.vacant(40, new ItemStack(Material.STONE)));
+    LockerMenu.itemType = it -> "AMULET";
+    assertFalse(LockerService.vacant(10, new ItemStack(Material.GOLD_INGOT)));
+  }
+
+  @Test
+  void accessoryPlaceholdersComeFromMmoInventory() {
+    Player p = server.addPlayer("Bo");
+    Accessories.refill(null, p); // no MMOInventory
+    org.bukkit.plugin.Plugin off = org.mockito.Mockito.mock(org.bukkit.plugin.Plugin.class);
+    Accessories.refill(off, p); // not enabled
+    FakeInventoryPlugin inv = org.mockito.Mockito.mock(FakeInventoryPlugin.class);
+    org.mockito.Mockito.when(inv.isEnabled()).thenReturn(true);
+    FakeManager manager = org.mockito.Mockito.mock(FakeManager.class);
+    FakeVanilla vanilla = org.mockito.Mockito.mock(FakeVanilla.class);
+    org.mockito.Mockito.when(inv.getInventoryManager()).thenReturn(manager);
+    org.mockito.Mockito.when(manager.getVanilla()).thenReturn(vanilla);
+    Accessories.refill(inv, p);
+    org.mockito.Mockito.verify(vanilla).replacePlaceholderItems(p);
+    org.mockito.Mockito.when(manager.getVanilla()).thenReturn(null);
+    Accessories.refill(inv, p); // no vanilla inventory set up
+    org.bukkit.plugin.Plugin odd = org.mockito.Mockito.mock(org.bukkit.plugin.Plugin.class);
+    org.mockito.Mockito.when(odd.isEnabled()).thenReturn(true);
+    Accessories.refill(odd, p); // not MMOInventory's API: nothing happens
+    Accessories.refillPlaceholders(p);
+    assertTrue(Accessories.slot(9) && Accessories.slot(10) && !Accessories.slot(11));
+  }
+
+  public abstract static class FakeInventoryPlugin implements org.bukkit.plugin.Plugin {
+    public abstract FakeManager getInventoryManager();
+  }
+
+  public abstract static class FakeManager {
+    public abstract FakeVanilla getVanilla();
+  }
+
+  public abstract static class FakeVanilla {
+    public abstract void replacePlaceholderItems(Player p);
   }
 
   @Test

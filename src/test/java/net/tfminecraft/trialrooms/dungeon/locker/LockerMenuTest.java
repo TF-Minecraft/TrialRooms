@@ -53,6 +53,7 @@ class LockerMenuTest {
     LockerMenu.wornOn = LockerMenu::wornOn;
     LockerMenu.materialSlot = Material::getEquipmentSlot;
     LockerMenu.itemType = LockerMenu::mmoType;
+    LockerMenu.mythicLib = LockerMenu::mythicLibEnabled;
     MockBukkit.unmock();
   }
 
@@ -243,6 +244,9 @@ class LockerMenuTest {
     ItemStack item = new ItemStack(Material.GOLD_NUGGET);
     io.lumine.mythic.lib.api.item.NBTItem tag = mock(io.lumine.mythic.lib.api.item.NBTItem.class);
     when(tag.getType()).thenReturn("RING");
+    assertFalse(LockerMenu.mythicLibEnabled());
+    assertNull(LockerMenu.mmoType(item), "no MythicLib on this server: no MMOItems types");
+    LockerMenu.mythicLib = () -> true;
     try (var nbt = mockStatic(io.lumine.mythic.lib.api.item.NBTItem.class)) {
       nbt.when(() -> io.lumine.mythic.lib.api.item.NBTItem.get(item)).thenReturn(tag);
       assertEquals("RING", LockerMenu.mmoType(item));

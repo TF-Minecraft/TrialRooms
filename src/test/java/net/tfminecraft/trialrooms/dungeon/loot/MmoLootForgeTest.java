@@ -103,9 +103,11 @@ class MmoLootForgeTest {
         MockedStatic<IngredientLoader> ingredients = mockStatic(IngredientLoader.class);
         MockedStatic<CraftStatCalculator> calc = mockStatic(CraftStatCalculator.class)) {
       recipes.when(() -> RecipeLoader.getByString("light_helmet")).thenReturn(r);
+      Ingredient steel = ingredient("steel_ingot", "metal", 2);
       List<Ingredient> all = List.of(ingredient("goose", "feather", 2), ingredient("hen", "feather", 1),
-          ingredient("crow", "feather", 1), ingredient("steel_ingot", "metal", 2));
+          ingredient("crow", "feather", 1), steel);
       ingredients.when(IngredientLoader::get).thenReturn(all);
+      ingredients.when(() -> IngredientLoader.getByString("steel_ingot")).thenReturn(steel);
       Map<String, Integer> expect = Map.of("ingredient.steel_ingot", 4, "ingredient.crow", 4);
       calc.when(() -> CraftStatCalculator.compute(eq(r), eq(expect))).thenReturn(data);
       calc.when(() -> CraftStatCalculator.collectManagedStatIds(r)).thenReturn(Set.of("armor", "max_item_damage"));
@@ -117,6 +119,7 @@ class MmoLootForgeTest {
 
       assertNull(forge.recipe("nothing", Map.of("metal", "steel_ingot")));
       assertNull(forge.recipe("light_helmet", Map.of("wood", "maple")), "no standard for its main type");
+      assertNull(forge.recipe("light_helmet", Map.of("metal", "stel_ingot")), "a standard AC doesn't know");
       ingredients.when(IngredientLoader::get).thenReturn(List.of());
       assertNull(forge.recipe("light_helmet", Map.of("metal", "steel_ingot")), "no feather at all");
     }
@@ -238,6 +241,19 @@ class MmoLootForgeTest {
     } finally {
       org.mockbukkit.mockbukkit.MockBukkit.unmock();
     }
+  }
+
+  @Test
+  void dungeonItemsAreNeverReforged() {
+    var guard = new ReforgeGuard(it -> it != null);
+    var event = mock(net.Indyuce.mmoitems.api.event.MMOItemReforgeEvent.class, RETURNS_DEEP_STUBS);
+    when(event.getReforger().getStack()).thenReturn(mock(ItemStack.class));
+    guard.onReforge(event);
+    verify(event).setCancelled(true);
+    var plain = mock(net.Indyuce.mmoitems.api.event.MMOItemReforgeEvent.class, RETURNS_DEEP_STUBS);
+    when(plain.getReforger().getStack()).thenReturn(null);
+    guard.onReforge(plain);
+    verify(plain, never()).setCancelled(anyBoolean());
   }
 
   @Test

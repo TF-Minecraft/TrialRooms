@@ -316,7 +316,7 @@ public final class LockerService {
         Map<Integer, byte[]> own = new LinkedHashMap<>();
         for (int slot : copies.keySet()) {
             ItemStack it = inv.getItem(slot);
-            if (!empty(it)) {
+            if (!vacant(slot, it)) {
                 own.put(slot, codec.encode(it));
             }
         }
@@ -351,13 +351,14 @@ public final class LockerService {
         PlayerInventory inv = p.getInventory();
         List<ItemStack> left = new ArrayList<>();
         back.forEach((slot, own) -> {
-            if (empty(inv.getItem(slot))) {
+            if (vacant(slot, inv.getItem(slot))) {
                 inv.setItem(slot, own);
             } else {
                 left.addAll(inv.addItem(own).values());
             }
         });
         left.forEach(it -> l.owe(codec.encode(it)));
+        Accessories.refill.accept(p);
         String character = characters.apply(p);
         l.takeOff();
         p.getPersistentDataContainer().remove(markKey(character));
@@ -480,5 +481,17 @@ public final class LockerService {
 
     private static boolean empty(ItemStack it) {
         return it == null || it.getType() == Material.AIR;
+    }
+
+    /**
+     * Whether a slot holds nothing of the player's: empty, or an accessory slot holding MMOInventory's
+     * placeholder (anything there that is not a ring or amulet).
+     */
+    static boolean vacant(int slot, ItemStack it) {
+        if (empty(it)) {
+            return true;
+        }
+        String type = LockerMenu.itemType.apply(it);
+        return Accessories.slot(slot) && !"RING".equalsIgnoreCase(type) && !"AMULET".equalsIgnoreCase(type);
     }
 }

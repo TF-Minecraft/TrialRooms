@@ -125,6 +125,8 @@ public final class DungeonModule {
         var plugins = plugin.getServer().getPluginManager();
         if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
+            plugin.getServer().getPluginManager().registerEvents(
+                    new net.tfminecraft.trialrooms.dungeon.loot.ReforgeGuard(lockers::isDungeonItem), plugin);
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
         }

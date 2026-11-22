@@ -40,8 +40,8 @@ import net.tfminecraft.tlibs.TLibs;
  * Loot on the server's item plugins. Stats come from AdvancedCrafting's own calculator, so a
  * dungeon item starts exactly where a piece crafted of the act's standard material does and follows
  * every change to crafting. Items are written the way AdvancedCrafting writes crafted ones (an
- * external stat layer over a zeroed template), so MMOItems template updates keep them; they carry
- * no crafting record, so AdvancedCrafting never recalculates them.
+ * external stat layer over a zeroed template); they carry no crafting record, so AdvancedCrafting
+ * never recalculates them, and MMOItems never reforges them ({@link ReforgeGuard}).
  */
 public final class MmoLootForge implements LootForge {
 
@@ -59,6 +59,10 @@ public final class MmoLootForge implements LootForge {
         }
         String main = standard.get(r.getMainType().toLowerCase(Locale.ROOT));
         if (main == null) {
+            return null;
+        }
+        if (IngredientLoader.getByString(main) == null) {
+            log.warning("[dungeons] loot: no AdvancedCrafting ingredient " + main + " (loot.yml standard)");
             return null;
         }
         Map<String, Integer> materials = new HashMap<>();
@@ -116,7 +120,11 @@ public final class MmoLootForge implements LootForge {
         if (mmo == null) {
             return null;
         }
-        for (String stat : managed) {
+        // Zero every stat the item will carry first: a stat set on a fresh history would otherwise
+        // count twice (once as the history's original, once as the external layer).
+        Set<String> zero = new java.util.LinkedHashSet<>(managed);
+        zero.addAll(plan.stats().keySet());
+        for (String stat : zero) {
             if (!durability(stat)) {
                 set(mmo, stat, 0, true);
             }
@@ -126,7 +134,7 @@ public final class MmoLootForge implements LootForge {
         mmo.setData(ItemStats.NAME, new NameData(name));
         StatHistory names = mmo.computeStatHistory(ItemStats.NAME);
         if (names != null && names.getOriginalData() instanceof NameData og) {
-            og.setString(name); // so a template update keeps the name
+            og.setString(name);
             mmo.setStatHistory(ItemStats.NAME, names);
         }
         List<String> lore = new ArrayList<>();

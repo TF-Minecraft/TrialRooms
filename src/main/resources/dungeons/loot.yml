@@ -30,8 +30,8 @@ tiers:
 # The socket colour dungeon items carry: only dungeon gems fit it (TLibs socket-tier-groups).
 socket: Dungeon Gem
 
-# Stats rarity and tier never change.
-unscaled: [movement_speed, attack_speed]
+# Stats rarity and tier never change: how a weapon handles, not how strong it is.
+unscaled: [movement_speed, attack_speed, arrow_velocity, entity_interaction_range, critical_strike_chance, blunt_power]
 
 # Bonus stat pools: stat: [min, max] at tier 1, before the rarity's power.
 bonus:

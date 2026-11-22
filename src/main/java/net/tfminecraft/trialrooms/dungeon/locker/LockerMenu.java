@@ -231,7 +231,14 @@ public final class LockerMenu implements InventoryHolder {
     static Function<ItemStack, String> itemType = LockerMenu::mmoType;
 
     static String mmoType(ItemStack item) {
-        return io.lumine.mythic.lib.api.item.NBTItem.get(item).getType();
+        return mythicLib.getAsBoolean() ? io.lumine.mythic.lib.api.item.NBTItem.get(item).getType() : null;
+    }
+
+    /** Whether MythicLib (and with it MMOItems types) is there to ask. */
+    static java.util.function.BooleanSupplier mythicLib = LockerMenu::mythicLibEnabled;
+
+    static boolean mythicLibEnabled() {
+        return Bukkit.getPluginManager().isPluginEnabled("MythicLib");
     }
 
     static EquipmentSlot wornOn(ItemStack item) {
