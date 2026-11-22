@@ -148,7 +148,8 @@ public final class KitLoader {
         }
         return new RoomTemplate(id, RoomType.parse(yml.getString("type")), footprint[0], footprint[1], doorways,
                 markers, yml.getInt("weight", 1), yml.getInt("min-depth", 0), yml.getInt("max-depth", 0),
-                yml.getInt("max-per-run", 0), new HashSet<>(yml.getStringList("tags")), cells);
+                yml.getInt("max-per-run", 0), new HashSet<>(yml.getStringList("tags")), cells,
+                yml.getDouble("threat", 1));
     }
 
     /**

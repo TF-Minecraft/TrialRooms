@@ -45,8 +45,8 @@ import net.tfminecraft.trialrooms.dungeon.template.RoomType;
 
 /**
  * Runs the fights of kits that have a roster: waves from the director, elites and their affixes,
- * bosses with phases and telegraphed mechanics, and the cues that let every player (blind
- * characters included) follow along by sound and text.
+ * bosses with phases and telegraphed mechanics. Players follow along by sound, particles and glow;
+ * chat carries only the few things worth reading (a wave coming, a shield falling, a boss phase).
  */
 final class Fights {
 
@@ -62,7 +62,6 @@ final class Fights {
         long waveStartMs;
         long nextWaveAtMs = -1;
         long lastHitMs;
-        long nextPingMs;
         boolean lastFew;
         final Set<Entity> alive = new LinkedHashSet<>();
         final Map<UUID, Affix> elites = new HashMap<>();
@@ -219,9 +218,11 @@ final class Fights {
         List<String> tags = ar.geo.markerTags(room, "spawn");
         int depth = ar.run.roomsCleared();
         BossDef def = type == RoomType.BOSS ? kit.boss(ar.rules.boss()) : null;
+        // the party's size and the room's own size both scale the fight
+        double factor = ar.enemyFactor * ar.run.layout().rooms().get(room).template().threat();
         Director.Plan plan = def != null ? new Director.Plan(0, "boss", List.of())
                 : Director.plan(kit, type == RoomType.BOSS ? RoomType.ELITE : type, depth, ar.rules.tier(),
-                        ar.enemyFactor, tags, rng);
+                        factor, tags, rng);
         Encounter enc = new Encounter(room, plan, now, ar.run.downs(), seed);
         ar.encounters.put(room, enc);
         if (def != null && startBoss(ar, enc, def, now)) {
@@ -230,7 +231,7 @@ final class Fights {
         }
         if (def != null) {
             // The boss's mob is missing: fight a strong pack instead of an empty room.
-            enc = new Encounter(room, Director.plan(kit, RoomType.ELITE, depth, ar.rules.tier(), ar.enemyFactor, tags,
+            enc = new Encounter(room, Director.plan(kit, RoomType.ELITE, depth, ar.rules.tier(), factor, tags,
                     rng), now,
                     ar.run.downs(), seed);
             ar.encounters.put(room, enc);
@@ -401,7 +402,7 @@ final class Fights {
         affixes(ar, enc, now);
         waves(ar, enc, now);
         stall(ar, enc, now, enc.alive);
-        lastFew(ar, enc, now);
+        lastFew(ar, enc);
         return enc.done();
     }
 
@@ -469,8 +470,6 @@ final class Fights {
                 fx.burst(e.getLocation());
                 for (Player p : inRoom(ar, enc.room)) {
                     p.playSound(e.getLocation(), "minecraft:entity.evoker.prepare_summon", 1f, 1.2f);
-                    runs.cues.send(p, Cues.Level.INFO, "The " + baseName(e) + " rallies its allies: they hit"
-                            + " harder for " + t.rallySeconds() + " seconds.", now, 2000);
                 }
             }
         }
@@ -519,8 +518,8 @@ final class Fights {
         runs.event(ar, "room " + enc.room + ": " + fighting.size() + " idle enemies moved to the players");
     }
 
-    /** With two or fewer enemies left in the last wave: they glow, and players are told where they are. */
-    private void lastFew(ActiveRun ar, Encounter enc, long now) {
+    /** With two or fewer enemies left in the last wave: they glow, so players can find them. */
+    private void lastFew(ActiveRun ar, Encounter enc) {
         if (enc.alive.isEmpty() || enc.alive.size() > 2 || enc.wave < enc.plan.waves().size() - 1) {
             return;
         }
@@ -533,22 +532,6 @@ final class Fights {
                 }
             }
             runs.tellRoom(ar, enc.room, "§7" + (enc.alive.size() == 1 ? "One enemy left." : "Two enemies left."));
-        }
-        if (now < enc.nextPingMs) {
-            return;
-        }
-        enc.nextPingMs = now + 3000;
-        for (Player p : inRoom(ar, enc.room)) {
-            Location l = p.getLocation();
-            Entity near = null;
-            for (Entity e : enc.alive) {
-                if (near == null || e.getLocation().distance(l) < near.getLocation().distance(l)) {
-                    near = e;
-                }
-            }
-            Location n = near.getLocation();
-            runs.cues.send(p, Cues.Level.INFO, "Last enemy: " + RunGeometry.direction(l.getX(), l.getY(), l.getZ(),
-                    l.getYaw(), n.getX(), n.getY(), n.getZ()), now, 2500);
         }
     }
 
@@ -733,16 +716,14 @@ final class Fights {
             boolean in = t.inside(l.getX(), l.getY(), l.getZ());
             Boolean before = a.inside.put(p.getUniqueId(), in);
             if (in) {
+                // a low note each second while standing in it, higher as it comes due
                 if (now - a.warned.getOrDefault(p.getUniqueId(), Long.MIN_VALUE / 2) >= 1000) {
                     a.warned.put(p.getUniqueId(), now);
-                    double[] out = t.wayOut(l.getX(), l.getZ());
-                    p.playSound(l, "minecraft:block.note_block.bass", 1f, 0.5f);
-                    runs.cues.send(p, Cues.Level.WARNING, "Danger in " + t.secondsLeft(now) + "s: move "
-                            + RunGeometry.direction(l.getX(), l.getZ(), l.getYaw(), out[0], out[1]), now, 1200);
+                    float pitch = (float) Math.min(1.2, 0.5 + 0.25 * Math.max(0, 3 - t.secondsLeft(now)));
+                    p.playSound(l, "minecraft:block.note_block.bass", 1f, pitch);
                 }
             } else if (Boolean.TRUE.equals(before)) {
                 p.playSound(l, "minecraft:block.note_block.chime", 1f, 1.5f);
-                runs.cues.send(p, Cues.Level.WARNING, "You're clear.", now, 1500);
             }
         }
     }

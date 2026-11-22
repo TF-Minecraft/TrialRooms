@@ -95,8 +95,8 @@ class DungeonModuleTest {
   void installsDefaultsLoadsAndPreviews() throws Exception {
     DungeonModule m = enabled();
     assertTrue(Files.isRegularFile(data.resolve("dungeons/kits/greybox/rooms/boss_arena.nbt")));
-    assertEquals(List.of("greybox"), List.copyOf(m.kits().keySet()));
-    assertEquals(List.of("delve_greybox"), List.copyOf(m.recipes().keySet()));
+    assertEquals(java.util.Set.of("greybox", "seithr"), m.kits().keySet());
+    assertEquals(java.util.Set.of("delve_greybox", "delve_seithr"), m.recipes().keySet());
     assertEquals(List.of(), m.problems());
     assertSame(world, m.world());
     // a second start keeps edited files
@@ -266,7 +266,7 @@ class DungeonModuleTest {
     server.getScheduler().performTicks(5);
     verify(console).sendMessage(startsWith("§cPreview failed: "));
     c.run(console, new String[] {"reload"});
-    verify(console).sendMessage(startsWith("§aDungeons reloaded: 1 kits, 1 recipes, 0 problems."));
+    verify(console).sendMessage(startsWith("§aDungeons reloaded: 2 kits, 2 recipes, 0 problems."));
     try {
       Files.writeString(data.resolve("dungeons/recipes.yml"), "bad:\n  trunk: x\n");
     } catch (IOException e) {
@@ -285,7 +285,7 @@ class DungeonModuleTest {
     }
     m.installDefaults();
     m.reload();
-    assertEquals(List.of("delve_greybox"), c.complete(new String[] {"preview", "d"}));
+    assertEquals(java.util.Set.of("delve_greybox", "delve_seithr"), java.util.Set.copyOf(c.complete(new String[] {"preview", "d"})));
   }
 
   @Test

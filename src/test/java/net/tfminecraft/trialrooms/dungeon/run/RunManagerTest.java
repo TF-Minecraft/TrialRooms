@@ -315,7 +315,7 @@ class RunManagerTest {
     runs.useGate(a, gate);
     rules = new RunRules(1, 3, "m.key", 1, 1, 0.5);
     // every dungeon taken
-    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 60, java.util.Set.of(), java.util.Set.of(), 5, 10);
+    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 60, java.util.Set.of(), java.util.Set.of(), 5, 10, 60);
     runs.useGate(b, gate);
     assertEquals(1, runs.runs().size());
     runs.useGate(a, gate);
@@ -882,7 +882,7 @@ class RunManagerTest {
 
   @Test
   void aFullGateQueuesPartiesAndHoldsTheNextDungeon() {
-    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 30, java.util.Set.of(), java.util.Set.of(), 5, 10);
+    settings = new RunSettings(1, 4, 5, 30, 3, 2.5, 8, 300, 60, List.of(), 30, java.util.Set.of(), java.util.Set.of(), 5, 10, 60);
     rules = new RunRules(1, 3, "", 1, 1, 0.5);
     PlayerMock a = player("Ann");
     PlayerMock b = player("Bo");
@@ -1057,6 +1057,106 @@ class RunManagerTest {
     killAll();
     ticks(1);
     assertEquals(DungeonRun.Room.CLEARED, run.room(fight));
+  }
+
+  static boolean lost(PlayerMock p) {
+    return drain(p).stream().anyMatch(m -> m.startsWith("§7Lost? The way on is "));
+  }
+
+  @Test
+  void aPartyThatGetsNowhereIsToldTheWayOnNowAndThen() {
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
+    DungeonRun run = ar.run();
+    ticks(1);
+    drain(a);
+    drain(b);
+    now.addAndGet(59_000);
+    ticks(1);
+    assertFalse(lost(a), "not yet");
+    now.addAndGet(2_000);
+    ticks(1);
+    assertTrue(lost(a));
+    assertTrue(lost(b));
+    assertNotNull(ar.hintAt.get(a.getUniqueId()));
+    ticks(2); // the doorway stays marked for a few seconds
+    now.addAndGet(60_000);
+    ticks(1);
+    assertFalse(lost(a), "the next hint waits twice as long");
+    // Ann waits in the boss room (it doesn't wake without Bo); Bo strays out of every room
+    a.teleport(at(middle(room(RoomType.BOSS))));
+    b.teleport(new Location(dungeon, 5000, 65, 5000));
+    now.addAndGet(1_000);
+    ticks(1);
+    now.addAndGet(61_000);
+    ticks(1);
+    assertEquals(DungeonRun.Room.IDLE, run.room(room(RoomType.BOSS)));
+    assertFalse(lost(a), "she already stands in the room still to do");
+    assertFalse(lost(b), "outside every room there is no doorway to name");
+    // nobody was shown a way, so the hint is not used up: Bo, back in the start room, gets it next step
+    b.teleport(at(geo.entry(0)));
+    ticks(1);
+    assertTrue(lost(b));
+    assertFalse(lost(a));
+    // every fight done: the way on is the vault, and only the vault
+    for (int i = 0; i < layout.rooms().size(); i++) {
+      if (DungeonRun.isFight(layout.rooms().get(i).node().type())) {
+        run.clearRoom(i);
+      }
+    }
+    now.addAndGet(119_000);
+    ticks(1);
+    assertFalse(lost(b), "the second hint since the last progress waits twice as long");
+    now.addAndGet(2_000);
+    ticks(1);
+    assertTrue(lost(a));
+    assertTrue(lost(b));
+    now.addAndGet(239_000);
+    ticks(1);
+    assertFalse(lost(a), "then four times as long");
+    now.addAndGet(2_000);
+    ticks(1);
+    assertTrue(lost(a));
+    // getting somewhere (a room not seen before) starts it over: the next stall gets a hint after a minute
+    now.addAndGet(1_000);
+    a.teleport(at(middle(room(RoomType.REST))));
+    ticks(1);
+    drain(a);
+    now.addAndGet(61_000);
+    ticks(1);
+    assertTrue(lost(a));
+  }
+
+  @Test
+  void noHintWhenNothingIsLeftToDo() {
+    DungeonRecipe noVault = new DungeonRecipe("delve", 0, 0, null, false, false, 0, 0, 1, 1, null, 20, 20000);
+    layout = DungeonGenerator.generate(kit.catalog(), noVault, 2);
+    geo = new RunGeometry(layout, 32, 4, 0, 64, 0);
+    when(module.generate(eq("delve"), anyLong())).thenReturn(layout);
+    placed = CompletableFuture.completedFuture(at(geo.entry(0)));
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    DungeonRun run = only().run();
+    for (int i = 0; i < layout.rooms().size(); i++) {
+      if (DungeonRun.isFight(layout.rooms().get(i).node().type())) {
+        run.clearRoom(i);
+      }
+    }
+    assertTrue(runs.down(b));
+    ticks(1);
+    drain(a);
+    drain(b);
+    now.addAndGet(61_000);
+    ticks(1);
+    assertFalse(lost(a), "no fight left and no vault");
+    assertFalse(lost(b), "a downed player gets no hint");
   }
 
   static List<String> drain(PlayerMock p) {

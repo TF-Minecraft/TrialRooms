@@ -25,11 +25,13 @@ import org.bukkit.configuration.ConfigurationSection;
  * @param helpfulAuras       MythicMobs auras that help (buffs): players never put them on mobs here
  * @param selfReviveSeconds  seconds a downed player with nobody to revive them crouches to get up (once per fight)
  * @param aloneBleedOutSeconds seconds such a player waits once their own revive is spent
+ * @param hintSeconds        seconds a party gets nowhere (no new room, no fight) before a hint names the way on;
+ *                           the next hint waits twice as long
  */
 public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSeconds, int bleedOutSeconds,
         int reviveSeconds, double reviveRadius, double gateRadius, int graceSeconds, int finishSeconds,
         List<String> blockedCommands, int holdSeconds, Set<String> harmfulAuras, Set<String> helpfulAuras,
-        int selfReviveSeconds, int aloneBleedOutSeconds) {
+        int selfReviveSeconds, int aloneBleedOutSeconds, int hintSeconds) {
 
     static final List<String> DEFAULT_BLOCKED = List.of("home", "homes", "sethome", "spawn", "warp", "tpa",
             "tpahere", "tpaccept", "back", "rtp");
@@ -52,7 +54,7 @@ public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSe
 
     public static RunSettings defaults() {
         return new RunSettings(4, 4, 5, 30, 3, 2.5, 8, 300, 60, DEFAULT_BLOCKED, 60, Set.copyOf(DEFAULT_HARMFUL),
-                Set.copyOf(DEFAULT_HELPFUL), 5, 10);
+                Set.copyOf(DEFAULT_HELPFUL), 5, 10, 60);
     }
 
     public static RunSettings from(ConfigurationSection s) {
@@ -71,7 +73,8 @@ public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSe
                 Math.max(5, s.getInt("finish-seconds", d.finishSeconds())), blocked,
                 Math.max(10, s.getInt("queue-hold-seconds", d.holdSeconds())), Set.copyOf(harmful), Set.copyOf(helpful),
                 Math.max(1, s.getInt("self-revive-seconds", d.selfReviveSeconds())),
-                Math.max(1, s.getInt("alone-bleed-out-seconds", d.aloneBleedOutSeconds())));
+                Math.max(1, s.getInt("alone-bleed-out-seconds", d.aloneBleedOutSeconds())),
+                Math.max(10, s.getInt("hint-seconds", d.hintSeconds())));
     }
 
     /** Whether a typed command line ("/home x") starts with a blocked command, with or without a namespace. */
