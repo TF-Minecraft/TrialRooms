@@ -525,6 +525,10 @@ class LockerServiceTest {
     assertFalse(LockerService.vacant(40, placeholder()), "a placeholder counts only in an accessory slot");
     assertFalse(Accessories.placeholder(null));
     assertFalse(Accessories.placeholder(new ItemStack(Material.STONE)));
+    ItemStack named = new ItemStack(Material.STONE);
+    named.editMeta(m -> m.setCustomModelData(3));
+    assertFalse(Accessories.placeholder(named), "an item with data but no placeholder tag");
+    assertFalse(Accessories.placeholder(org.mockito.Mockito.mock(ItemStack.class)), "no meta at all");
   }
 
   @Test
