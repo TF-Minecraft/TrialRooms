@@ -481,15 +481,23 @@ class LockerServiceTest {
     assertNotEquals(lockers.markKey("a_b"), lockers.markKey("A b"), "ids that differ only in case or punctuation");
   }
 
+  /** MMOInventory's "Ring Slot" placeholder, marked the way MMOInventory marks it. */
+  static ItemStack placeholder() {
+    ItemStack it = new ItemStack(Material.DIAMOND_HOE);
+    ItemMeta meta = it.getItemMeta();
+    meta.getPersistentDataContainer().set(Accessories.GUI_ITEM, org.bukkit.persistence.PersistentDataType.STRING, "RING");
+    it.setItemMeta(meta);
+    return it;
+  }
+
   @Test
   void mmoInventoryPlaceholdersAreNeverAPlayersItem() {
-    LockerMenu.itemType = it -> it.getType() == Material.GOLD_NUGGET ? "RING" : null;
     List<Player> refilled = new ArrayList<>();
     Accessories.refill = refilled::add;
     String ring = lockers.add(ann, named(Material.GOLD_NUGGET, "Rime Ring"));
     Locker l = lockers.locker(ann);
     l.assign(0, 9, ring);
-    ann.getInventory().setItem(9, new ItemStack(Material.DIAMOND_HOE)); // MMOInventory's "Ring Slot"
+    ann.getInventory().setItem(9, placeholder());
     assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
     assertTrue(l.displaced().isEmpty(), "the placeholder is not kept as an own item");
     assertEquals(LockerService.Result.DONE, lockers.takeOff(ann));
@@ -498,19 +506,42 @@ class LockerServiceTest {
     // a real ring of the player's comes back to its slot, over a placeholder that turned up meanwhile
     ann.getInventory().setItem(9, named(Material.GOLD_NUGGET, "own ring"));
     lockers.wear(ann, 0);
-    ann.getInventory().setItem(9, new ItemStack(Material.DIAMOND_HOE));
+    ann.getInventory().setItem(9, placeholder());
     lockers.takeOff(ann);
     assertEquals("own ring", name(ann.getInventory().getItem(9)));
+    // anything else of the player's in the slot is theirs too: kept, and back after the run
+    ann.getInventory().setItem(9, named(Material.STONE, "own stone"));
+    lockers.wear(ann, 0);
+    assertEquals("Rime Ring", name(ann.getInventory().getItem(9)));
+    lockers.takeOff(ann);
+    assertEquals("own stone", name(ann.getInventory().getItem(9)));
     // a ring put in the slot during the run stays; the own one goes to the bag
     lockers.wear(ann, 0);
     ann.getInventory().setItem(9, named(Material.GOLD_NUGGET, "found ring"));
     lockers.takeOff(ann);
     assertEquals("found ring", name(ann.getInventory().getItem(9)));
-    assertTrue(java.util.Arrays.stream(ann.getInventory().getStorageContents()).anyMatch(i -> "own ring".equals(name(i))));
+    assertTrue(java.util.Arrays.stream(ann.getInventory().getStorageContents()).anyMatch(i -> "own stone".equals(name(i))));
     assertTrue(LockerService.vacant(40, null));
-    assertFalse(LockerService.vacant(40, new ItemStack(Material.STONE)));
-    LockerMenu.itemType = it -> "AMULET";
-    assertFalse(LockerService.vacant(10, new ItemStack(Material.GOLD_INGOT)));
+    assertFalse(LockerService.vacant(40, placeholder()), "a placeholder counts only in an accessory slot");
+    assertFalse(Accessories.placeholder(null));
+    assertFalse(Accessories.placeholder(new ItemStack(Material.STONE)));
+  }
+
+  @Test
+  void placeholdersKeptByAnOlderVersionAreDropped() {
+    String ring = lockers.add(ann, named(Material.GOLD_NUGGET, "Rime Ring"));
+    Locker l = lockers.locker(ann);
+    l.assign(0, 9, ring);
+    l.wear(0, java.util.Map.of(9, codec.encode(placeholder())), l.revision() + 1);
+    lockers.saveLocker(ann, l);
+    lockers.takeOff(ann);
+    assertNull(ann.getInventory().getItem(9), "never handed out as an item");
+    l.owe(codec.encode(placeholder()));
+    l.owe(codec.encode(named(Material.STONE, "owed stone")));
+    lockers.settle(ann, false);
+    assertTrue(l.owed().isEmpty());
+    assertEquals(1, java.util.Arrays.stream(ann.getInventory().getContents()).filter(java.util.Objects::nonNull).count(),
+        "only the stone came");
   }
 
   @Test

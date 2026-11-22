@@ -3,6 +3,9 @@ package net.tfminecraft.trialrooms.dungeon.locker;
 import java.util.function.Consumer;
 
 import org.bukkit.Bukkit;
+import org.bukkit.NamespacedKey;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -16,9 +19,18 @@ public final class Accessories {
     private Accessories() {
     }
 
+    /** MMOInventory marks its placeholder items with this (Utilities.isGuiItem). */
+    static final NamespacedKey GUI_ITEM = new NamespacedKey("mmoinventory", "guiitemid");
+
     /** Whether an inventory slot is one of MMOInventory's accessory slots. */
     static boolean slot(int invSlot) {
         return invSlot == 9 || invSlot == 10;
+    }
+
+    /** Whether an item is one of MMOInventory's placeholders (never a player's item). */
+    static boolean placeholder(ItemStack it) {
+        return it != null && it.hasItemMeta()
+                && it.getItemMeta().getPersistentDataContainer().has(GUI_ITEM, PersistentDataType.STRING);
     }
 
     /** Puts MMOInventory's placeholders back in empty accessory slots (as RPCharacters does after a body swap). */

@@ -123,10 +123,12 @@ public final class DungeonModule {
                 ItemCodec.PAPER, characters::activeCharacterId, org.bukkit.entity.Player::saveData);
         runs.lockers(lockers);
         var plugins = plugin.getServer().getPluginManager();
+        if (plugins.isPluginEnabled("MMOItems")) {
+            // lockers may hold MMOItems even with loot off: they are never reforged
+            plugins.registerEvents(new net.tfminecraft.trialrooms.dungeon.loot.ReforgeGuard(lockers::isDungeonItem), plugin);
+        }
         if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
-            plugin.getServer().getPluginManager().registerEvents(
-                    new net.tfminecraft.trialrooms.dungeon.loot.ReforgeGuard(lockers::isDungeonItem), plugin);
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
         }
