@@ -63,22 +63,22 @@ bonus:
 # What can drop. recipe: an AdvancedCrafting recipe; template: an MMOItems template (file.id) with
 # its own stats: [min, max]. %material% in the name is where a prefix goes.
 items:
-  light_helmet: {recipe: light_helmet, slot: helmet, pool: armour, name: "Light %material% Helmet"}
-  light_chestplate: {recipe: light_chestplate, slot: chestplate, pool: armour, name: "Light %material% Chestplate"}
-  light_leggings: {recipe: light_leggings, slot: leggings, pool: armour, name: "Light %material% Leggings"}
-  light_boots: {recipe: light_boots, slot: boots, pool: armour, name: "Light %material% Boots"}
-  medium_helmet: {recipe: medium_helmet, slot: helmet, pool: armour, name: "Medium %material% Helmet"}
-  medium_chestplate: {recipe: medium_chestplate, slot: chestplate, pool: armour, name: "Medium %material% Chestplate"}
-  medium_leggings: {recipe: medium_leggings, slot: leggings, pool: armour, name: "Medium %material% Leggings"}
-  medium_boots: {recipe: medium_boots, slot: boots, pool: armour, name: "Medium %material% Boots"}
-  heavy_helmet: {recipe: heavy_helmet, slot: helmet, pool: armour, name: "Heavy %material% Helmet"}
-  heavy_chestplate: {recipe: heavy_chestplate, slot: chestplate, pool: armour, name: "Heavy %material% Chestplate"}
-  heavy_leggings: {recipe: heavy_leggings, slot: leggings, pool: armour, name: "Heavy %material% Leggings"}
-  heavy_boots: {recipe: heavy_boots, slot: boots, pool: armour, name: "Heavy %material% Boots"}
-  infantry_helmet: {recipe: infantry_helmet, slot: helmet, pool: armour, name: "Infantry %material% Cap"}
-  infantry_chestplate: {recipe: infantry_chestplate, slot: chestplate, pool: armour, name: "Infantry %material% Jacket"}
-  infantry_leggings: {recipe: infantry_leggings, slot: leggings, pool: armour, name: "Infantry %material% Leggings"}
-  infantry_boots: {recipe: infantry_boots, slot: boots, pool: armour, name: "Infantry %material% Boots"}
+  light_helmet: {recipe: light_helmet, slot: helmet, pool: armour, look: light, name: "Light %material% Helmet"}
+  light_chestplate: {recipe: light_chestplate, slot: chestplate, pool: armour, look: light, name: "Light %material% Chestplate"}
+  light_leggings: {recipe: light_leggings, slot: leggings, pool: armour, look: light, name: "Light %material% Leggings"}
+  light_boots: {recipe: light_boots, slot: boots, pool: armour, look: light, name: "Light %material% Boots"}
+  medium_helmet: {recipe: medium_helmet, slot: helmet, pool: armour, look: medium, name: "Medium %material% Helmet"}
+  medium_chestplate: {recipe: medium_chestplate, slot: chestplate, pool: armour, look: medium, name: "Medium %material% Chestplate"}
+  medium_leggings: {recipe: medium_leggings, slot: leggings, pool: armour, look: medium, name: "Medium %material% Leggings"}
+  medium_boots: {recipe: medium_boots, slot: boots, pool: armour, look: medium, name: "Medium %material% Boots"}
+  heavy_helmet: {recipe: heavy_helmet, slot: helmet, pool: armour, look: heavy, name: "Heavy %material% Helmet"}
+  heavy_chestplate: {recipe: heavy_chestplate, slot: chestplate, pool: armour, look: heavy, name: "Heavy %material% Chestplate"}
+  heavy_leggings: {recipe: heavy_leggings, slot: leggings, pool: armour, look: heavy, name: "Heavy %material% Leggings"}
+  heavy_boots: {recipe: heavy_boots, slot: boots, pool: armour, look: heavy, name: "Heavy %material% Boots"}
+  infantry_helmet: {recipe: infantry_helmet, slot: helmet, pool: armour, look: infantry, name: "Infantry %material% Cap"}
+  infantry_chestplate: {recipe: infantry_chestplate, slot: chestplate, pool: armour, look: infantry, name: "Infantry %material% Jacket"}
+  infantry_leggings: {recipe: infantry_leggings, slot: leggings, pool: armour, look: infantry, name: "Infantry %material% Leggings"}
+  infantry_boots: {recipe: infantry_boots, slot: boots, pool: armour, look: infantry, name: "Infantry %material% Boots"}
   sword: {recipe: sword, slot: weapon, pool: melee, name: "%material% Sword"}
   battleaxe: {recipe: battleaxe, slot: weapon, pool: melee, name: "%material% Battleaxe"}
   dagger: {recipe: dagger, slot: weapon, pool: melee, name: "%material% Dagger"}
@@ -99,9 +99,26 @@ names:
   prefixes: [Rimebound, Frostwoven, Seithr, Hoarfrost, Glacial, Winterborn, Icebound, Palefrost, Snowmantled, Coldiron]
   suffixes: [of the Thaw, of the Long Night, of Frozen Oaths, of the Frost Host, of Seithrin, of the Still Wind, of the White Silence, of Bitter Winds]
 
-# Armour skin sets each rarity may wear (ia.tfmc_armor:<set>_<piece>), from ArmourShop's sets.
+# Armour skins: for each rarity and armour weight (an item's look), the ItemsAdder sets it may wear
+# (ia.tfmc_armor:<set>_<piece>). Rarer items get the finer metals.
 looks:
-  uncommon: [hraftar_chain, decorated_chain, tyvanis_chain, forestman_chain]
-  rare: [hraftar_iron, decorated_iron, tyvanis_iron, forestman_iron]
-  epic: [hraftar_steel, decorated_steel, tyvanis_steel, forestman_steel]
-  legendary: [aemg_steel, dwardenred_heavy_chain, cervalic_steel, malevoria_steel]
+  uncommon:
+    light: [hraftar_iron_light, imperial_iron_light, forestman_steel_light]
+    medium: [hraftar_iron_medium, imperial_iron_medium, forestman_steel_medium]
+    heavy: [hraftar_iron_heavy, imperial_iron_heavy, forestman_steel_heavy]
+    infantry: [base_metal_steel_infantry]
+  rare:
+    light: [hraftar_abyssalite_light, imperial_abyssalite_light, forestman_abyssalite_light]
+    medium: [hraftar_abyssalite_medium, imperial_abyssalite_medium, forestman_abyssalite_medium]
+    heavy: [hraftar_abyssalite_heavy, imperial_abyssalite_heavy, forestman_abyssalite_heavy]
+    infantry: [base_metal_abyssalite_infantry]
+  epic:
+    light: [hraftar_mythril_light, imperial_mythril_light, forestman_mythril_light, scale_light]
+    medium: [hraftar_mythril_medium, imperial_mythril_medium, forestman_mythril_medium]
+    heavy: [hraftar_mythril_heavy, imperial_mythril_heavy, forestman_mythril_heavy, scale_heavy]
+    infantry: [base_metal_mythril_infantry]
+  legendary:
+    light: [dwarven_light, malevorian_light, brightsteel_light]
+    medium: [dwarven_medium, cervalic_order_medium, malevorian_medium]
+    heavy: [dwarven, cervalic_order_heavy, malevorian, brightsteel_heavy]
+    infantry: [base_metal_mythril_infantry]

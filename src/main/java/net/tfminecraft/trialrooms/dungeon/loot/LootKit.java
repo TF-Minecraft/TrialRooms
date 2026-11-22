@@ -23,12 +23,13 @@ import org.bukkit.configuration.ConfigurationSection;
  * @param bases     the items that can drop
  * @param prefixes  words that stand in for the material in a base's name
  * @param suffixes  endings for the rarer items' names
- * @param looks     rarity to the armour skin sets its armour may get (ia.tfmc_armor:SET_PIECE)
+ * @param looks     rarity, then look group (an armour weight), to the skin sets that armour may get
+ *                  (ia.tfmc_armor:SET_PIECE)
  * @param unscaled  stats rarity and tier never change (speeds, durability)
  */
 public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<Integer, Tier> tiers, String socket,
         Map<String, Map<String, Range>> pools, List<Base> bases, List<String> prefixes, List<String> suffixes,
-        Map<String, List<String>> looks, Set<String> unscaled) {
+        Map<String, Map<String, List<String>>> looks, Set<String> unscaled) {
 
     /** How rare and how strong. */
     public record Rarity(String id, String name, int weight, double power, int bonus, int sockets, String colour) {
@@ -79,9 +80,10 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
      * with its own stat ranges (jewellery).
      *
      * @param name a name with %material% where a prefix goes
+     * @param look the look group its skins come from (armour weight), or null to keep the template's look
      */
     public record Base(String id, String name, Slot slot, String recipe, String template, String pool,
-            Map<String, Range> stats) {
+            Map<String, Range> stats, String look) {
         public Base {
             if ((recipe == null) == (template == null)) {
                 throw new IllegalArgumentException("item " + id + ": give a recipe or a template, not both");
@@ -145,12 +147,15 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
                 ConfigurationSection b = is.getConfigurationSection(id);
                 bases.add(new Base(id, b.getString("name", id), Slot.valueOf(b.getString("slot", "").toUpperCase(Locale.ROOT)),
                         b.getString("recipe"), b.getString("template"), b.getString("pool", ""),
-                        ranges(b.getConfigurationSection("stats"))));
+                        ranges(b.getConfigurationSection("stats")), b.getString("look")));
             }
-            Map<String, List<String>> looks = new LinkedHashMap<>();
+            Map<String, Map<String, List<String>>> looks = new LinkedHashMap<>();
             ConfigurationSection ls = section(y, "looks");
             for (String r : ls.getKeys(false)) {
-                looks.put(r, ls.getStringList(r));
+                ConfigurationSection groups = section(ls, r);
+                Map<String, List<String>> byGroup = new LinkedHashMap<>();
+                groups.getKeys(false).forEach(g -> byGroup.put(g, groups.getStringList(g)));
+                looks.put(r, byGroup);
             }
             return new LootKit(standard, rarities, tiers, y.getString("socket", "Dungeon Gem"), pools, bases,
                     y.getStringList("names.prefixes"), y.getStringList("names.suffixes"), looks,

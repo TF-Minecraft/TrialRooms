@@ -79,7 +79,8 @@ public final class LootRoller {
             name += " " + kit.suffixes().get(rng.nextInt(kit.suffixes().size()));
         }
         String look = null;
-        List<String> sets = kit.looks().getOrDefault(rarity.id(), List.of());
+        List<String> sets = base.look() == null ? List.of()
+                : kit.looks().getOrDefault(rarity.id(), Map.of()).getOrDefault(base.look(), List.of());
         if (base.slot().armour() && !sets.isEmpty()) {
             look = "ia.tfmc_armor:" + sets.get(rng.nextInt(sets.size())) + "_" + base.slot().piece();
         }

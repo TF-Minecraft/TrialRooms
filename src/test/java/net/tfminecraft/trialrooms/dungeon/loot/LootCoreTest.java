@@ -61,7 +61,9 @@ public class LootCoreTest {
     assertEquals(1.55, k.tier(9).power(), "past the last tier: the last");
     assertEquals(1.0, k.tier(0).power(), "below the first: the first");
     assertTrue(k.unscaled().contains("movement_speed"));
-    assertEquals(4, k.looks().get("legendary").size());
+    assertEquals(4, k.looks().get("legendary").get("heavy").size());
+    assertEquals("heavy", k.base("heavy_boots").look());
+    assertNull(k.base("sword").look());
   }
 
   @Test
@@ -83,7 +85,7 @@ public class LootCoreTest {
 
     Rarity r = new Rarity("a", "A", 1, 1, 0, 0, "#abcdef");
     Map<Integer, Tier> tiers = Map.of(1, new Tier(1, 0));
-    Base b = new Base("b", "B", Slot.WEAPON, "x", null, "p", Map.of());
+    Base b = new Base("b", "B", Slot.WEAPON, "x", null, "p", Map.of(), null);
     Map<String, Map<String, Range>> pools = Map.of("p", Map.of());
     assertThrows(IllegalArgumentException.class,
         () -> new LootKit(Map.of(), List.of(), tiers, "s", pools, List.of(b), List.of("x"), List.of("y"), Map.of(), Set.of()));
@@ -106,8 +108,8 @@ public class LootCoreTest {
     assertThrows(IllegalArgumentException.class, () -> new Tier(1, -1));
     assertThrows(IllegalArgumentException.class, () -> new Range(2, 1));
     assertThrows(IllegalArgumentException.class, () -> new Range(1, Double.POSITIVE_INFINITY));
-    assertThrows(IllegalArgumentException.class, () -> new Base("b", "B", Slot.WEAPON, "x", "y", "p", Map.of()));
-    assertThrows(IllegalArgumentException.class, () -> new Base("b", "B", Slot.WEAPON, null, null, "p", Map.of()));
+    assertThrows(IllegalArgumentException.class, () -> new Base("b", "B", Slot.WEAPON, "x", "y", "p", Map.of(), null));
+    assertThrows(IllegalArgumentException.class, () -> new Base("b", "B", Slot.WEAPON, null, null, "p", Map.of(), null));
     assertTrue(Slot.BOOTS.armour());
     assertFalse(Slot.WEAPON.armour());
     assertEquals("chestplate", Slot.CHESTPLATE.piece());
@@ -145,7 +147,7 @@ public class LootCoreTest {
     assertTrue(p.name().startsWith("Heavy ") && p.name().contains(" Helmet of "), p.name());
     assertTrue(p.name().contains(" of "), "legendary names get a suffix: " + p.name());
     assertTrue(p.look().startsWith("ia.tfmc_armor:") && p.look().endsWith("_helmet"), p.look());
-    assertTrue(k.looks().get("legendary").stream().anyMatch(s -> p.look().equals("ia.tfmc_armor:" + s + "_helmet")));
+    assertTrue(k.looks().get("legendary").get("heavy").stream().anyMatch(s -> p.look().equals("ia.tfmc_armor:" + s + "_helmet")));
     assertEquals(List.of("Legendary dungeon item, tier 3", "Stays in the dungeons."), p.lore());
     assertSame(helm, p.base());
     assertEquals(3, p.tier());
@@ -167,12 +169,17 @@ public class LootCoreTest {
   @Test
   void namesWithoutAPlaceAndArmourWithoutLooks() {
     Rarity r = new Rarity("a", "A", 1, 1, 0, 0, "#abcdef");
-    Base cap = new Base("cap", "Cap", Slot.HELMET, "x", null, "p", Map.of());
+    Base cap = new Base("cap", "Cap", Slot.HELMET, "x", null, "p", Map.of(), "heavy");
     LootKit k = new LootKit(Map.of(), List.of(r), Map.of(1, new Tier(1, 0)), "s", Map.of("p", Map.of()), List.of(cap),
         List.of("Old"), List.of("of Rain"), Map.of(), Set.of());
     LootRoller.Plan p = LootRoller.plan(k, cap, Map.of("armor", 1.0), 1, r, new Random(1));
     assertEquals("Old Cap", p.name());
     assertNull(p.look(), "no sets for this rarity");
+    LootKit dressed = new LootKit(Map.of(), List.of(r), Map.of(1, new Tier(1, 0)), "s", Map.of("p", Map.of()), List.of(cap),
+        List.of("Old"), List.of("of Rain"), Map.of("a", Map.of("light", List.of("silk"))), Set.of());
+    assertNull(LootRoller.plan(dressed, cap, Map.of(), 1, r, new Random(1)).look(), "none for its weight");
+    Base bare = new Base("cap", "Cap", Slot.HELMET, "x", null, "p", Map.of(), null);
+    assertNull(LootRoller.plan(dressed, bare, Map.of(), 1, r, new Random(1)).look(), "no look group: the template's look");
     assertEquals(Map.of("armor", 1.0), p.stats(), "no bonus pool entries to draw");
     assertNull(LootRoller.base(k, b -> false, new Random(1)));
     assertSame(cap, LootRoller.base(k, b -> true, new Random(1)));
