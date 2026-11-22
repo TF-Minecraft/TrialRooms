@@ -143,8 +143,10 @@ public final class RunManager {
         final Set<UUID> ready = new HashSet<>();
         /** The difficulty chosen at the gate, or null for a dungeon without difficulties. */
         Difficulty difficulty;
-        /** Enemy damage multiplier from the difficulty. */
+        /** Enemy damage multiplier from the difficulty (ordinary hits, not boss mechanics). */
         double damageFactor = 1;
+        /** Enemy health multiplier from the difficulty, on top of the party's (capped) one. */
+        double difficultyHealth = 1;
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -507,7 +509,8 @@ public final class RunManager {
                     m.sendMessage(lobbyButtons());
                 }
             }
-            ar.healthFactor = rules.healthFactor(n) * (difficulty == null ? 1 : difficulty.health());
+            ar.healthFactor = rules.healthFactor(n);
+            ar.difficultyHealth = difficulty == null ? 1 : difficulty.health();
             ar.enemyFactor = rules.enemyFactor(n);
             if (n == 0) {
                 end(ar, true, null);
@@ -823,7 +826,7 @@ public final class RunManager {
                 continue;
             }
             register(ar, mob, at);
-            fights.scale(mob, ar.healthFactor);
+            fights.scale(mob, ar.healthFactor * ar.difficultyHealth);
             alive.add(mob);
         }
         ar.roomMobs.put(room, alive);
@@ -1397,8 +1400,7 @@ public final class RunManager {
         RecipeLoader.Entry entry = module.recipes().get(recipe);
         for (Player p : online(ar)) {
             var locker = isPlayingMember(ar, p) ? lockers.locker(p) : null;
-            if (locker != null && locker.clear(recipe, ar.difficulty.id())) {
-                lockers.saveLocker(p, locker);
+            if (locker != null && locker.clear(recipe, ar.difficulty.id()) && lockers.saveLocker(p, locker)) {
                 if (entry != null) {
                     entry.difficulties().stream().filter(d -> ar.difficulty.id().equals(d.needs()))
                             .forEach(d -> p.sendMessage("§6" + d.name() + " is now open for you in this dungeon."));
@@ -1463,7 +1465,8 @@ public final class RunManager {
     /** How hard a hit from this entity on a run player lands: run mobs may be rallied, enraged or charging. */
     public double outgoingFactor(Entity source) {
         ActiveRun ar = byMob.get(source.getUniqueId());
-        return ar == null ? 1 : fights.outgoing(ar, source) * ar.damageFactor;
+        // boss mechanics already grow with the tier: the difficulty's damage is for ordinary hits
+        return ar == null ? 1 : fights.outgoing(ar, source) * (fights.mechanic() ? 1 : ar.damageFactor);
     }
 
     /** How much of a hit a run mob takes (a boss between phases none, a shielded elite less). */

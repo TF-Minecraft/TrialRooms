@@ -86,6 +86,20 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
         return it;
     }
 
+    /** Whether the player is still by the same gate (it may have been removed, or they carried off). */
+    boolean stillAtGate() {
+        var world = Bukkit.getWorld(gate.world());
+        if (!player.isOnline() || world == null || !player.getWorld().equals(world)) {
+            return false;
+        }
+        var block = world.getBlockAt(gate.x(), gate.y(), gate.z());
+        return gate.equals(runs.gates().at(block))
+                && player.getLocation().distance(block.getLocation().add(0.5, 0.5, 0.5)) <= REACH;
+    }
+
+    /** How far from the gate a choice still counts. */
+    static final double REACH = 8;
+
     @Override
     public void click(int slot, boolean shift) {
         List<Difficulty> ds = entry.difficulties();
@@ -99,7 +113,9 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
                 // (closing a screen inside its own click is left to the next tick)
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     player.closeInventory();
-                    runs.useGate(player, gate, d.id());
+                    if (stillAtGate()) {
+                        runs.useGate(player, gate, d.id());
+                    }
                 });
                 return;
             }

@@ -225,11 +225,15 @@ class RunManagerTest {
     runs.useGate(a, gate, "hard");
     ar = only();
     assertEquals(2, ar.rules.tier());
-    assertEquals(1.5, ar.healthFactor);
+    assertEquals(1.0, ar.healthFactor, "the party's factor stays the party's");
+    assertEquals(1.5, ar.difficultyHealth);
     assertEquals(1.25, ar.damageFactor);
     Entity mob = mob(at(geo.entry(0)));
     runs.register(ar, mob, new double[] {0, 0, 0});
     assertEquals(1.25, runs.outgoingFactor(mob), 1e-9);
+    runs.fights().mechanic(true);
+    assertEquals(1, runs.outgoingFactor(mob), 1e-9, "boss mechanics grow with the tier, not the damage multiplier");
+    runs.fights().mechanic(false);
     into(a, RoomType.BOSS);
     ticks(14);
     killAll();
@@ -265,6 +269,25 @@ class RunManagerTest {
     ticks(2);
     characterOf.put("Bo", "char-Bo");
     assertEquals(java.util.Set.of(), lockers.locker(b).cleared("delve"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a win whose save fails is not announced
+    PlayerMock c = player("Cy");
+    when(chars.partyLeader(c)).thenReturn(c.getUniqueId());
+    when(chars.partyMembers(c)).thenReturn(List.of(c.getUniqueId()));
+    lockers.locker(c);
+    try {
+      Files.createDirectories(temp.resolve("lockers").resolve(c.getUniqueId().toString()).resolve("char-Cy.locker.tmp"));
+    } catch (java.io.IOException e) {
+      fail(e);
+    }
+    runs.startRun(c, "delve", 5);
+    into(c, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(c, RoomType.VAULT);
+    ticks(2);
+    assertFalse(nextMatching(c, "is now open"), "not announced: the win could not be saved");
     runs.runs().forEach(r -> runs.end(r, false, null));
   }
 

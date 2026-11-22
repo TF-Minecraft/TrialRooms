@@ -30,13 +30,42 @@ class DifficultyMenuTest {
   Difficulty hard = new Difficulty("hard", "Hard", 2, 1.5, 1.25, "normal", "");
   Difficulty lost = new Difficulty("lost", "Lost", 3, 2, 2, "ghost", "");
 
+  GateStore gates;
+
   @BeforeEach
   void setUp() {
     server = MockBukkit.mock();
     plugin = MockBukkit.createMockPlugin();
     runs = mock(RunManager.class);
+    gates = mock(GateStore.class);
+    when(runs.gates()).thenReturn(gates);
+    var w = server.addSimpleWorld("w");
+    when(gates.at(any())).thenReturn(gate);
     ann = server.addPlayer("Ann");
+    ann.teleport(new org.bukkit.Location(w, 2, 2, 5));
     when(runs.unlocked(ann, "delve", normal)).thenReturn(true);
+  }
+
+  @Test
+  void aChoiceCountsOnlyByTheSameGate() {
+    DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(normal)));
+    assertTrue(m.stillAtGate());
+    ann.teleport(new org.bukkit.Location(ann.getWorld(), 40, 2, 40));
+    assertFalse(m.stillAtGate(), "carried off");
+    ann.teleport(new org.bukkit.Location(ann.getWorld(), 2, 2, 5));
+    when(gates.at(any())).thenReturn(null);
+    assertFalse(m.stillAtGate(), "the gate was removed");
+    m.click(m.slot(0), false);
+    server.getScheduler().performOneTick();
+    verify(runs, never()).useGate(any(), any(), any());
+    when(gates.at(any())).thenReturn(gate);
+    ann.teleport(new org.bukkit.Location(server.addSimpleWorld("other"), 2, 2, 5));
+    assertFalse(m.stillAtGate(), "another world");
+    DifficultyMenu nowhere = new DifficultyMenu(runs, plugin, ann, new GateStore.Gate("gone", 1, 2, 3, "delve"),
+        entry(List.of(normal)));
+    assertFalse(nowhere.stillAtGate(), "the gate's world is gone");
+    ann.disconnect();
+    assertFalse(m.stillAtGate(), "offline");
   }
 
   @AfterEach

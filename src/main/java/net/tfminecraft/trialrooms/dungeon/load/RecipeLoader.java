@@ -85,6 +85,9 @@ public final class RecipeLoader {
             out.add(new Difficulty(id, d.getString("name", id), d.getInt("tier", 1), d.getDouble("health", 1),
                     d.getDouble("damage", 1), needs, d.getString("advice", "")));
         }
+        if (out.size() > 5) {
+            throw new IllegalArgumentException("at most 5 difficulties (the gate's screen shows five)");
+        }
         return out;
     }
 

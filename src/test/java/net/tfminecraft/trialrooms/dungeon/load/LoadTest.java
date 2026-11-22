@@ -165,10 +165,14 @@ class LoadTest {
           trunk-pool: {combat: 1}
           difficulties:
             normal: {tier: 0}
+        toomany:
+          trunk-pool: {combat: 1}
+          difficulties: {a: {}, b: {}, c: {}, d: {}, e: {}, f: {}}
         """);
     List<String> problems = new ArrayList<>();
     var recipes = RecipeLoader.load(f, problems);
-    assertEquals(3, problems.size(), problems.toString());
+    assertEquals(4, problems.size(), problems.toString());
+    assertTrue(problems.stream().anyMatch(p -> p.contains("at most 5 difficulties")));
     assertTrue(problems.stream().anyMatch(p -> p.contains("needs normal, which is not listed before it")));
     var entry = recipes.get("laddered");
     assertEquals(2, entry.difficulties().size());
