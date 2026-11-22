@@ -10,6 +10,7 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -76,6 +77,20 @@ public final class LockerListener implements Listener {
         // the top's raw slots: another inventory, or the crafting grid of the player's own screen
         if (lockers.isDungeonItem(event.getOldCursor()) && event.getRawSlots().stream().anyMatch(s -> s < top.getSize())) {
             event.setCancelled(true);
+        }
+    }
+
+    /**
+     * No recipe takes a dungeon item, however it got into the grid (the recipe book fills the grid
+     * without a click).
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onCraft(PrepareItemCraftEvent event) {
+        for (ItemStack it : event.getInventory().getMatrix()) {
+            if (lockers.isDungeonItem(it)) {
+                event.getInventory().setResult(null);
+                return;
+            }
         }
     }
 

@@ -245,6 +245,22 @@ class LockerListenerTest {
   }
 
   @Test
+  void noRecipeTakesADungeonItem() {
+    org.bukkit.inventory.CraftingInventory grid = mock(org.bukkit.inventory.CraftingInventory.class);
+    org.bukkit.event.inventory.PrepareItemCraftEvent e = mock(org.bukkit.event.inventory.PrepareItemCraftEvent.class);
+    when(e.getInventory()).thenReturn(grid);
+    when(grid.getMatrix()).thenReturn(new ItemStack[] {plain, bound, null});
+    l.onCraft(e);
+    verify(grid).setResult(null);
+    org.bukkit.inventory.CraftingInventory fine = mock(org.bukkit.inventory.CraftingInventory.class);
+    org.bukkit.event.inventory.PrepareItemCraftEvent ok = mock(org.bukkit.event.inventory.PrepareItemCraftEvent.class);
+    when(ok.getInventory()).thenReturn(fine);
+    when(fine.getMatrix()).thenReturn(new ItemStack[] {plain, null});
+    l.onCraft(ok);
+    verify(fine, never()).setResult(any());
+  }
+
+  @Test
   void paperItemBytesAreTheServers() {
     ItemStack item = mock(ItemStack.class);
     when(item.serializeAsBytes()).thenReturn(new byte[] {1, 2});

@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -81,7 +80,8 @@ public final class LockerService {
      * inventory never overwrite each other's mark.
      */
     NamespacedKey markKey(String character) {
-        return new NamespacedKey(plugin, "dungeon_locker_" + character.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_"));
+        // a hash, so ids differing only by case or punctuation never share a key
+        return new NamespacedKey(plugin, "dungeon_locker_" + LockerStore.sha256(character).substring(0, 24));
     }
 
     // ---- lockers
@@ -188,21 +188,25 @@ public final class LockerService {
     /** Every item a player holds, bundle contents included. */
     private List<ItemStack> held(Player p) {
         List<ItemStack> out = new ArrayList<>();
-        Consumer<ItemStack> add = it -> {
-            if (!empty(it)) {
-                out.add(it);
-                if (it.getItemMeta() instanceof BundleMeta bundle) {
-                    out.addAll(bundle.getItems());
-                }
-            }
-        };
-        p.getInventory().forEach(add);
-        add.accept(p.getItemOnCursor());
+        p.getInventory().forEach(it -> hold(it, out));
+        hold(p.getItemOnCursor(), out);
         Inventory grid = grid(p);
         if (grid != null) {
-            grid.forEach(add);
+            for (int slot = 0; slot < grid.getSize(); slot++) {
+                hold(grid.getItem(slot), out);
+            }
         }
         return out;
+    }
+
+    /** An item and, for a bundle, everything inside it (bundles in bundles too). */
+    private static void hold(ItemStack it, List<ItemStack> out) {
+        if (!empty(it)) {
+            out.add(it);
+            if (it.getItemMeta() instanceof BundleMeta bundle) {
+                bundle.getItems().forEach(inner -> hold(inner, out));
+            }
+        }
     }
 
     /** The crafting grid, when the player's own inventory screen is the one open. */
@@ -260,6 +264,7 @@ public final class LockerService {
         int before = out.size();
         for (ItemStack inner : bundle.getItems()) {
             if (!pick(inner, which, out)) {
+                unbundle(inner, which, out); // a bundle in the bundle
                 keep.add(inner);
             }
         }
@@ -344,13 +349,15 @@ public final class LockerService {
         l.displaced().forEach((slot, data) -> back.put(slot, codec.decode(data)));
         collect(p, l, true);
         PlayerInventory inv = p.getInventory();
+        List<ItemStack> left = new ArrayList<>();
         back.forEach((slot, own) -> {
             if (empty(inv.getItem(slot))) {
                 inv.setItem(slot, own);
             } else {
-                inv.addItem(own).values().forEach(left -> l.owe(codec.encode(left)));
+                left.addAll(inv.addItem(own).values());
             }
         });
+        left.forEach(it -> l.owe(codec.encode(it)));
         String character = characters.apply(p);
         l.takeOff();
         p.getPersistentDataContainer().remove(markKey(character));
@@ -431,6 +438,15 @@ public final class LockerService {
             }
         }
         collect(p, l, false);
+        if (l.fromBackup && !l.owed().isEmpty()) {
+            // The backup is one save behind: what it owes may have been handed over already.
+            if (!store.quarantine(p.getUniqueId(), characters.apply(p), "owed items in a locker read from its backup",
+                    new ArrayList<>(l.owed()))) {
+                return;
+            }
+            l.clearOwed();
+            save(p, l);
+        }
         deliver(p, l);
     }
 

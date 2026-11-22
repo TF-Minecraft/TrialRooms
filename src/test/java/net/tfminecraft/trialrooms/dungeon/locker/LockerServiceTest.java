@@ -385,6 +385,10 @@ class LockerServiceTest {
     assertEquals(-1, l.worn());
     assertEquals(List.of(Material.STRING), inside(ann.getInventory().getItem(9)).stream().map(ItemStack::getType).toList());
     assertTrue(inside(ann.getItemOnCursor()).isEmpty());
+    // bundles in bundles too
+    ann.getInventory().setItem(13, bundleOf(bundleOf(lockers.show(l, l.loadout(0).get(0)))));
+    lockers.settle(ann, false);
+    assertTrue(inside(inside(ann.getInventory().getItem(13)).getFirst()).isEmpty());
     // a bundle with nothing of ours is left alone, as is a plain item
     ann.getInventory().setItem(10, bundleOf(new ItemStack(Material.STRING)));
     ann.getInventory().setItem(11, new ItemStack(Material.STONE));
@@ -450,6 +454,8 @@ class LockerServiceTest {
     Locker back = lockers.locker(ann);
     assertNotNull(back, "with no proof of a newer wear the backup is used");
     assertEquals(-1, back.worn());
+    lockers.settle(ann, false); // nothing owed: nothing to send to staff
+    assertFalse(Files.exists(temp.resolve("quarantine")));
     ann.getPersistentDataContainer().set(lockers.markKey("c1"), org.bukkit.persistence.PersistentDataType.LONG, 1L);
     lockers.forget(ann);
     assertNotNull(lockers.locker(ann), "an older mark proves nothing");
@@ -470,6 +476,39 @@ class LockerServiceTest {
     characterOf.remove("Ann");
     assertFalse(lockers.marked(ann));
     assertNotEquals(lockers.markKey("A b"), lockers.markKey("c1"));
-    assertEquals("dungeon_locker_a_b", lockers.markKey("A b").getKey());
+    assertNotEquals(lockers.markKey("a_b"), lockers.markKey("A b"), "ids that differ only in case or punctuation");
+  }
+
+  @Test
+  void owedItemsInABackupGoToStaffNotThePlayer() throws Exception {
+    Locker l = lockers.locker(ann);
+    l.owe(codec.encode(named(Material.IRON_SWORD, "owed sword")));
+    lockers.saveLocker(ann, l);
+    lockers.saveLocker(ann, l); // the backup now owes it too
+    Files.writeString(store.file(ann.getUniqueId(), "c1"), "junk");
+    lockers.forget(ann);
+    lockers.settle(ann, false);
+    assertNull(ann.getInventory().getItem(0), "maybe handed over already: not handed out again");
+    assertTrue(lockers.locker(ann).owed().isEmpty());
+    try (var files = Files.list(temp.resolve("quarantine"))) {
+      assertEquals(1, files.count());
+    }
+    // with quarantine failing the owed items stay put
+    l = lockers.locker(ann);
+    l.owe(codec.encode(named(Material.IRON_SWORD, "owed sword")));
+    lockers.saveLocker(ann, l);
+    lockers.saveLocker(ann, l);
+    Files.writeString(store.file(ann.getUniqueId(), "c1"), "junk");
+    lockers.forget(ann);
+    try (var files = Files.list(temp.resolve("quarantine"))) {
+      for (Path q : files.toList()) {
+        Files.delete(q);
+      }
+    }
+    Files.delete(temp.resolve("quarantine"));
+    Files.writeString(temp.resolve("quarantine"), "a file where the folder goes");
+    lockers.settle(ann, false);
+    assertEquals(1, lockers.locker(ann).owed().size());
+    assertNull(ann.getInventory().getItem(0));
   }
 }
