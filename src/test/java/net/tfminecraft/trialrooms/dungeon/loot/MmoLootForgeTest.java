@@ -243,6 +243,58 @@ class MmoLootForgeTest {
     }
   }
 
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  @Test
+  void gemsAreMadeAndSocketedTheMmoItemsWay() {
+    MMOItems plugin = mock(MMOItems.class);
+    StatManager stats = mock(StatManager.class);
+    when(plugin.getStats()).thenReturn(stats);
+    ItemStat health = mock(ItemStat.class);
+    when(stats.get("MAX_HEALTH")).thenReturn(health);
+    MMOItems.plugin = plugin;
+    ItemStack template = mock(ItemStack.class);
+    when(template.getType()).thenReturn(Material.AMETHYST_SHARD);
+    when(items.getCreator().getItemFromPath("m.gemstones.larimar")).thenReturn(template);
+    when(items.getCreator().getItemFromPath("m.gemstones.none")).thenReturn(null);
+    ItemStack built = mock(ItemStack.class);
+    MmoLootForge.builder = m -> built;
+    LootRoller.GemPlan plan = new LootRoller.GemPlan(LootCoreTest.shipped().rarity("rare"), 1, "Glacial Rimestone",
+        "max_health", 1.5, List.of("Rare dungeon gem, tier 1"));
+    try (MockedConstruction<LiveMMOItem> live = mockConstruction(LiveMMOItem.class)) {
+      assertSame(built, forge.makeGem(plan, "gemstones.larimar", "Dungeon Gem"));
+      LiveMMOItem m = live.constructed().getFirst();
+      verify(m).setData(eq(ItemStats.GEM_COLOR), argThat(d -> "Dungeon Gem".equals(((net.Indyuce.mmoitems.stat.data.StringData) d).getString())));
+      verify(m).setData(eq(health), argThat(d -> ((DoubleData) d).getValue() == 1.5));
+      assertNull(forge.makeGem(plan, "gemstones.none", "Dungeon Gem"));
+    }
+    Player p = mock(Player.class);
+    ItemStack item = mock(ItemStack.class);
+    ItemStack gem = mock(ItemStack.class);
+    ItemStack socketed = mock(ItemStack.class);
+    try (MockedStatic<PlayerData> pd = mockStatic(PlayerData.class);
+        MockedStatic<net.Indyuce.mmoitems.api.Type> types = mockStatic(net.Indyuce.mmoitems.api.Type.class)) {
+      pd.when(() -> PlayerData.get(p)).thenReturn(mock(PlayerData.class));
+      for (var result : List.of(net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.SUCCESS,
+          net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.FAILURE,
+          net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.NONE)) {
+        var applied = mock(net.Indyuce.mmoitems.api.interaction.GemStone.ApplyResult.class);
+        when(applied.getType()).thenReturn(result);
+        when(applied.getResult()).thenReturn(socketed);
+        try (MockedConstruction<net.Indyuce.mmoitems.api.interaction.GemStone> stones =
+            mockConstruction(net.Indyuce.mmoitems.api.interaction.GemStone.class,
+                (s, c) -> when(s.applyOntoItem(any(NBTItem.class), any())).thenReturn(applied))) {
+          LootForge.Socketed s = forge.socket(p, item, gem);
+          assertEquals(switch (result) {
+            case SUCCESS -> LootForge.Socketing.DONE;
+            case FAILURE -> LootForge.Socketing.BROKE;
+            default -> LootForge.Socketing.NO_FIT;
+          }, s.result());
+          assertEquals(result == net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.SUCCESS ? socketed : null, s.item());
+        }
+      }
+    }
+  }
+
   @Test
   void dungeonItemsAreNeverReforged() {
     var guard = new ReforgeGuard(it -> it != null);

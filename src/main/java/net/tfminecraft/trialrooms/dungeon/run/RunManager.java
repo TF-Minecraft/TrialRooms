@@ -91,6 +91,8 @@ public final class RunManager {
     private long heldUntilMs;
     /** Dungeon lockers; null runs without them (loadouts can't be worn). */
     private LockerService lockers;
+    /** What runs hand out; null hands out nothing. */
+    private RunRewards rewards;
 
     /** A party leader waiting for a dungeon of a recipe. */
     record Waiting(UUID leader, String recipe) {
@@ -217,6 +219,23 @@ public final class RunManager {
 
     public LockerService lockers() {
         return lockers;
+    }
+
+    /** Hands out loot and marks at a run's moments (elite rooms, events, the boss, the vault). */
+    public void rewards(RunRewards rewards) {
+        this.rewards = rewards;
+    }
+
+    /** Tells every member playing the run in the dungeon world about a reward moment. */
+    private void reward(ActiveRun ar, RunRewards.Moment moment) {
+        if (rewards == null) {
+            return;
+        }
+        for (Player p : online(ar)) {
+            if (isPlayingMember(ar, p)) { // (the step counts anyone outside the dungeon world as away)
+                rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id());
+            }
+        }
     }
 
     public boolean blocksCommand(String commandLine) {
@@ -848,7 +867,8 @@ public final class RunManager {
         ar.run.clearRoom(room);
         ar.roomMobs.remove(room);
         setDoors(ar, room, false, false);
-        boolean boss = ar.run.layout().rooms().get(room).node().type() == RoomType.BOSS;
+        RoomType type = ar.run.layout().rooms().get(room).node().type();
+        boolean boss = type == RoomType.BOSS;
         for (Player p : online(ar)) {
             p.playSound(p.getLocation(), "minecraft:block.iron_door.open", 1f, 1.2f);
             Member m = ar.run.member(p.getUniqueId());
@@ -857,6 +877,13 @@ public final class RunManager {
             } else if (m.room() == room) {
                 p.sendMessage("§aThe room is clear. The doors open.");
             }
+        }
+        if (boss) {
+            reward(ar, RunRewards.Moment.BOSS);
+        } else if (type == RoomType.ELITE) {
+            reward(ar, RunRewards.Moment.ELITE);
+        } else if (ar.planned.containsKey(room)) {
+            reward(ar, RunRewards.Moment.EVENT);
         }
     }
 
@@ -1296,6 +1323,7 @@ public final class RunManager {
 
     private void complete(ActiveRun ar) {
         ar.run.state(DungeonRun.State.COMPLETE);
+        reward(ar, RunRewards.Moment.VAULT);
         ar.finishAtMs = clock.getAsLong() + settings().finishSeconds() * 1000L;
         tell(ar, "§6The vault is yours. §7Right-click by the exit to leave; everyone is sent back in "
                 + settings().finishSeconds() + " seconds.");

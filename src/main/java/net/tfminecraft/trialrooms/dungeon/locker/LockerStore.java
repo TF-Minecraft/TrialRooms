@@ -155,6 +155,13 @@ public final class LockerStore {
         l.displaced().forEach((slot, data) -> own.put(String.valueOf(slot), encode(data)));
         y.createSection("displaced", own);
         y.set("owed", l.owed().stream().map(LockerStore::encode).toList());
+        y.set("marks", l.marks());
+        y.set("pity", l.pity());
+        y.set("week", l.week());
+        y.createSection("week-runs", l.weekRuns());
+        y.set("week-marks", l.weekMarks());
+        y.set("last-run", l.lastRun());
+        y.set("last-run-rewarded", l.lastRunRewarded());
         return y.saveToString();
     }
 
@@ -197,6 +204,13 @@ public final class LockerStore {
             l.restoreWorn(worn, y.getLong("worn-at", -1), slots, own);
         }
         y.getStringList("owed").forEach(s -> l.owe(decode(s)));
+        l.marks(y.getInt("marks"));
+        l.pity(y.getDouble("pity"));
+        l.newWeek(y.getString("week", ""));
+        ConfigurationSection runs = section(y, "week-runs");
+        runs.getKeys(false).forEach(k -> l.weekRun(k, runs.getInt(k)));
+        l.weekMarks(y.getInt("week-marks"));
+        l.lastRun(y.getString("last-run", ""), y.getBoolean("last-run-rewarded"));
         l.revision(y.getLong("revision"));
         return l;
     }

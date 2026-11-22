@@ -18,6 +18,8 @@ import org.bukkit.inventory.ItemStack;
 import io.lumine.mythic.lib.api.item.NBTItem;
 import net.Indyuce.mmoitems.ItemStats;
 import net.Indyuce.mmoitems.MMOItems;
+import net.Indyuce.mmoitems.api.Type;
+import net.Indyuce.mmoitems.api.interaction.GemStone;
 import net.Indyuce.mmoitems.api.item.mmoitem.LiveMMOItem;
 import net.Indyuce.mmoitems.api.item.mmoitem.MMOItem;
 import net.Indyuce.mmoitems.api.player.PlayerData;
@@ -25,6 +27,7 @@ import net.Indyuce.mmoitems.stat.data.BooleanData;
 import net.Indyuce.mmoitems.stat.data.DoubleData;
 import net.Indyuce.mmoitems.stat.data.GemSocketsData;
 import net.Indyuce.mmoitems.stat.type.NameData;
+import net.Indyuce.mmoitems.stat.data.StringData;
 import net.Indyuce.mmoitems.stat.data.StringListData;
 import net.Indyuce.mmoitems.stat.type.ItemStat;
 import net.Indyuce.mmoitems.stat.type.StatHistory;
@@ -144,6 +147,32 @@ public final class MmoLootForge implements LootForge {
         mmo.setData(ItemStats.UNBREAKABLE, new BooleanData(true));
         ItemStack built = builder.apply(mmo);
         return plan.look() == null ? built : TLibs.getItemAPI().getArmorMerger().merge(built, Optional.empty(), plan.look());
+    }
+
+    @Override
+    public ItemStack makeGem(LootRoller.GemPlan plan, String template, String socket) {
+        MMOItem mmo = template(template);
+        if (mmo == null) {
+            return null;
+        }
+        set(mmo, plan.stat(), plan.value(), false);
+        mmo.setData(ItemStats.GEM_COLOR, new StringData(socket));
+        mmo.setData(ItemStats.NAME, new NameData(colour(plan.rarity().colour()) + plan.name()));
+        List<String> lore = new ArrayList<>();
+        plan.lore().forEach(line -> lore.add("§7" + line));
+        mmo.setData(ItemStats.LORE, new StringListData(lore));
+        return builder.apply(mmo);
+    }
+
+    @Override
+    public Socketed socket(Player player, ItemStack item, ItemStack gem) {
+        NBTItem host = NBTItem.get(item);
+        GemStone.ApplyResult r = new GemStone(PlayerData.get(player), NBTItem.get(gem)).applyOntoItem(host, Type.get(host));
+        return switch (r.getType()) {
+            case SUCCESS -> new Socketed(Socketing.DONE, r.getResult());
+            case FAILURE -> new Socketed(Socketing.BROKE, null);
+            default -> new Socketed(Socketing.NO_FIT, null);
+        };
     }
 
     /** A stat on the external layer, as crafting writes them; {@code zero} also zeroes the template's own. */

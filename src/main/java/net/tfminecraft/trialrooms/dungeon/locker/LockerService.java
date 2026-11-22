@@ -178,6 +178,16 @@ public final class LockerService {
         return id;
     }
 
+    /** Replaces a locker item with a changed one (a socketed gem), keeping its id. */
+    public void replace(Locker l, String id, ItemStack item) {
+        ItemStack copy = item.clone();
+        ItemMeta meta = copy.getItemMeta();
+        meta.getPersistentDataContainer().set(itemKey, PersistentDataType.STRING, id);
+        meta.getPersistentDataContainer().remove(wornKey);
+        copy.setItemMeta(meta);
+        l.put(id, codec.encode(copy));
+    }
+
     /** A locker item as an item, for showing. */
     public ItemStack show(Locker l, String id) {
         return codec.decode(l.item(id));

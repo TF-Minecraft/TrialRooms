@@ -83,9 +83,10 @@ class LockerListenerTest {
     InventoryClickEvent e = click(top, p);
     when(e.getClickedInventory()).thenReturn(top);
     when(e.getRawSlot()).thenReturn(4);
+    when(e.isShiftClick()).thenReturn(true);
     l.onClick(e);
     verify(e).setCancelled(true);
-    verify(menu).click(4);
+    verify(menu).click(4, true);
     InventoryClickEvent below = click(top, p);
     when(below.getClickedInventory()).thenReturn(inv);
     l.onClick(below);
@@ -126,6 +127,19 @@ class LockerListenerTest {
     when(scoop.getClickedInventory()).thenReturn(inv);
     l.onClick(scoop);
     verify(scoop).setCancelled(true);
+    InventoryClickEvent socketing = click(grid, p);
+    when(socketing.getCursor()).thenReturn(bound);
+    when(socketing.getCurrentItem()).thenReturn(plain);
+    when(socketing.getClickedInventory()).thenReturn(inv);
+    when(socketing.getAction()).thenReturn(org.bukkit.event.inventory.InventoryAction.SWAP_WITH_CURSOR);
+    l.onClick(socketing);
+    verify(socketing).setCancelled(true);
+    InventoryClickEvent pickup = click(grid, p);
+    when(pickup.getCurrentItem()).thenReturn(bound);
+    when(pickup.getClickedInventory()).thenReturn(inv);
+    when(pickup.getAction()).thenReturn(org.bukkit.event.inventory.InventoryAction.SWAP_WITH_CURSOR);
+    l.onClick(pickup);
+    verify(pickup, never()).setCancelled(anyBoolean()); // the dungeon item is the one picked up, not dropped
     InventoryClickEvent plainSwap = click(grid, p);
     when(plainSwap.getCursor()).thenReturn(plain);
     when(plainSwap.getCurrentItem()).thenReturn(bound);
@@ -141,7 +155,7 @@ class LockerListenerTest {
     when(current.getCurrentItem()).thenReturn(bound);
     l.onClick(current);
     verify(current).setCancelled(true);
-    verify(p, times(4)).sendMessage("§cDungeon items stay with you.");
+    verify(p, times(5)).sendMessage("§cDungeon items stay with you.");
     InventoryClickEvent cursor = click(chest, p);
     when(cursor.getCursor()).thenReturn(bound);
     l.onClick(cursor);

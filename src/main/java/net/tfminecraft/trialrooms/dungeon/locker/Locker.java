@@ -41,6 +41,18 @@ public final class Locker {
     private long revision;
     /** Set by the store when this locker came from its backup file (one save behind). */
     boolean fromBackup;
+    /** Dungeon marks: earned by runs, spent on items of the player's choice. */
+    private int marks;
+    /** Bad-luck protection: added to the next chance roll; back to 0 on a win. */
+    private double pity;
+    /** The week the counters below belong to (an ISO week, 2026-W47). */
+    private String week = "";
+    /** Runs this week that rolled items, by dungeon recipe. */
+    private final Map<String, Integer> weekRuns = new LinkedHashMap<>();
+    private int weekMarks;
+    /** The run last rewarded from, and whether it counts this week (it rolls items). */
+    private String lastRun = "";
+    private boolean lastRunRewarded;
 
     public Locker() {
         for (int i = 0; i < LOADOUTS; i++) {
@@ -160,6 +172,68 @@ public final class Locker {
 
     public void clearOwed() {
         owed.clear();
+    }
+
+    // ---- rewards
+
+    public int marks() {
+        return marks;
+    }
+
+    public void marks(int m) {
+        marks = Math.max(0, m);
+    }
+
+    public double pity() {
+        return pity;
+    }
+
+    public void pity(double p) {
+        pity = Math.max(0, p);
+    }
+
+    public String week() {
+        return week;
+    }
+
+    /** Starts a new week's counters. */
+    public void newWeek(String w) {
+        week = w;
+        weekRuns.clear();
+        weekMarks = 0;
+    }
+
+    public int weekRuns(String recipe) {
+        return weekRuns.getOrDefault(recipe, 0);
+    }
+
+    public Map<String, Integer> weekRuns() {
+        return Collections.unmodifiableMap(weekRuns);
+    }
+
+    public void weekRun(String recipe, int runs) {
+        weekRuns.put(recipe, runs);
+    }
+
+    public int weekMarks() {
+        return weekMarks;
+    }
+
+    public void weekMarks(int m) {
+        weekMarks = m;
+    }
+
+    public String lastRun() {
+        return lastRun;
+    }
+
+    public boolean lastRunRewarded() {
+        return lastRunRewarded;
+    }
+
+    public void lastRun(String run, boolean rewarded) {
+        lastRun = run;
+        lastRunRewarded = rewarded;
     }
 
     // ---- revision

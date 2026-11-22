@@ -26,7 +26,21 @@ public final class LootRoller {
             String look, List<String> lore) {
     }
 
+    /** A rolled dungeon gem: one stat, for a dungeon socket. */
+    public record GemPlan(Rarity rarity, int tier, String name, String stat, double value, List<String> lore) {
+    }
+
     private LootRoller() {
+    }
+
+    /** A dungeon gem: one stat from a pool, scaled like items by the tier and rarity. */
+    public static GemPlan gem(LootKit kit, String pool, int tier, Rarity rarity, Random rng) {
+        List<Map.Entry<String, Range>> stats = new ArrayList<>(kit.pools().get(pool).entrySet());
+        Map.Entry<String, Range> e = stats.get(rng.nextInt(stats.size()));
+        double value = round(e.getValue().roll(rng.nextDouble()) * kit.tier(tier).power() * rarity.power());
+        String name = kit.prefixes().get(rng.nextInt(kit.prefixes().size())) + " Rimestone";
+        return new GemPlan(rarity, tier, name, e.getKey(), value, List.of(rarity.name() + " dungeon gem, tier " + tier,
+                "Socket it into a dungeon item from the locker.", "Stays in the dungeons."));
     }
 
     /**

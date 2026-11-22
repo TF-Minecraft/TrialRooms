@@ -46,6 +46,19 @@ class DungeonLootTest {
       made.add(plan);
       return fail ? null : mock(ItemStack.class);
     }
+
+    final List<LootRoller.GemPlan> gems = new ArrayList<>();
+
+    @Override
+    public ItemStack makeGem(LootRoller.GemPlan plan, String template, String socket) {
+      gems.add(plan);
+      return fail ? null : mock(ItemStack.class);
+    }
+
+    @Override
+    public Socketed socket(Player player, ItemStack item, ItemStack gem) {
+      return new Socketed(Socketing.DONE, item);
+    }
   }
 
   LootKit kit = LootCoreTest.shipped();
@@ -104,6 +117,30 @@ class DungeonLootTest {
     assertEquals("The item sword could not be built.", loot().roll(ann, 1, null, "sword").problem());
     kit = null;
     assertTrue(loot().roll(ann, 1, null, null).problem().startsWith("Dungeon loot is off"));
+  }
+
+  @Test
+  void gemsUsableItemsAndSocketing() {
+    DungeonLoot l = loot();
+    DungeonLoot.Rolled g = l.gem(2, "epic", "jewellery", "gemstones.larimar");
+    assertNotNull(g.item());
+    LootRoller.GemPlan plan = forge.gems.getFirst();
+    assertEquals("epic", plan.rarity().id());
+    assertTrue(plan.name().endsWith(" Rimestone"));
+    assertTrue(kit.pools().get("jewellery").containsKey(plan.stat()));
+    assertNotNull(l.gem(1, null, "jewellery", "x").item(), "a rarity by chance");
+    assertEquals("There is no rarity mythic.", l.gem(1, "mythic", "jewellery", "x").problem());
+    forge.fail = true;
+    assertEquals("The gem template x is missing.", l.gem(1, null, "jewellery", "x").problem());
+    forge.fail = false;
+    forge.recipes.put("sword", new LootForge.Recipe("sword.custom_sword", Map.of(), Set.of()));
+    forge.classes.put("sword.custom_sword", List.of("Juggernaut"));
+    assertEquals(List.of("sword"), l.usable(ann).stream().map(LootKit.Base::id).toList());
+    ItemStack item = mock(ItemStack.class);
+    assertSame(item, l.socket(ann, item, mock(ItemStack.class)).item());
+    kit = null;
+    assertTrue(l.gem(1, null, "jewellery", "x").problem().startsWith("Dungeon loot is off"));
+    assertEquals(List.of(), l.usable(ann));
   }
 
   @Test

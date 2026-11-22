@@ -200,6 +200,39 @@ class RunManagerTest {
   }
 
   @Test
+  void runsTellTheirRewardMoments() {
+    List<String> told = new ArrayList<>();
+    runs.rewards((p, recipe, tier, moment, run) -> told.add(p.getName() + " " + recipe + " " + tier + " " + moment));
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
+    characterOf.put("Bo", "char-other"); // back on another character: not told
+    int combat = room(RoomType.COMBAT);
+    ar.planned = Map.of(combat, net.tfminecraft.trialrooms.dungeon.event.EventKind.ENDURE);
+    into(a, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    assertTrue(told.contains("Ann delve 1 EVENT"), told.toString());
+    assertFalse(told.contains("Bo delve 1 EVENT"), "not on the character that came in");
+    characterOf.put("Bo", "char-Bo");
+    into(b, RoomType.BOSS);
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    assertTrue(told.contains("Ann delve 1 BOSS"), told.toString());
+    into(a, RoomType.VAULT);
+    ticks(2);
+    assertTrue(told.contains("Ann delve 1 VAULT"), told.toString());
+    assertTrue(told.contains("Bo delve 1 BOSS"), told.toString());
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
   void aLobbyHoldsThePartyUntilEveryoneIsReady() {
     settings = withLobby(60);
     PlayerMock a = player("Ann");

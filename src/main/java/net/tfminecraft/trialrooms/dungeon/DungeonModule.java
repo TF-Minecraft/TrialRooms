@@ -34,6 +34,8 @@ import net.tfminecraft.trialrooms.dungeon.run.GateStore;
 import net.tfminecraft.trialrooms.dungeon.run.Ports;
 import net.tfminecraft.trialrooms.dungeon.locker.ItemCodec;
 import net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot;
+import net.tfminecraft.trialrooms.dungeon.loot.DungeonRewards;
+import net.tfminecraft.trialrooms.dungeon.loot.RewardRules;
 import net.tfminecraft.trialrooms.dungeon.loot.LootKit;
 import net.tfminecraft.trialrooms.dungeon.loot.MmoLootForge;
 import net.tfminecraft.trialrooms.dungeon.locker.LockerListener;
@@ -78,7 +80,9 @@ public final class DungeonModule {
     private RunManager runs;
     private AllyFilter allyFilter;
     private LootKit lootKit;
+    private RewardRules rewardRules;
     private DungeonLoot loot;
+    private DungeonRewards rewards;
 
     public DungeonModule(JavaPlugin plugin, Function<WorldCreator, World> creator) {
         this.plugin = plugin;
@@ -129,6 +133,9 @@ public final class DungeonModule {
         }
         if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
+            rewards = new DungeonRewards(loot, lockers, this::rewardRules, new java.util.Random(),
+                    System::currentTimeMillis, java.time.ZoneId.systemDefault());
+            runs.rewards(rewards);
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
         }
@@ -175,6 +182,16 @@ public final class DungeonModule {
         return loot;
     }
 
+    /** loot.yml's rewards, or null. */
+    public RewardRules rewardRules() {
+        return rewardRules;
+    }
+
+    /** What runs hand out (and the locker's shop and socketing), or null without loot. */
+    public DungeonRewards rewards() {
+        return rewards;
+    }
+
     public RunSettings settings() {
         return settings;
     }
@@ -197,9 +214,9 @@ public final class DungeonModule {
         }
         recipes.putAll(RecipeLoader.load(new File(root, "recipes.yml"), problems));
         File lootFile = new File(root, "loot.yml");
-        lootKit = lootFile.isFile()
-                ? LootKit.load(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootFile), problems)
-                : null;
+        var lootYml = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootFile);
+        lootKit = lootFile.isFile() ? LootKit.load(lootYml, problems) : null;
+        rewardRules = RewardRules.load(lootYml, lootKit, problems);
         File settingsFile = new File(root, "settings.yml");
         settings = settingsFile.isFile()
                 ? RunSettings.from(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile))
