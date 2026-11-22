@@ -162,6 +162,7 @@ public final class LockerStore {
         y.set("week-marks", l.weekMarks());
         y.set("last-run", l.lastRun());
         y.set("last-run-rewarded", l.lastRunRewarded());
+        l.cleared().forEach((recipe, ds) -> y.set("cleared." + recipe, List.copyOf(ds)));
         return y.saveToString();
     }
 
@@ -211,6 +212,8 @@ public final class LockerStore {
         runs.getKeys(false).forEach(k -> l.weekRun(k, runs.getInt(k)));
         l.weekMarks(y.getInt("week-marks"));
         l.lastRun(y.getString("last-run", ""), y.getBoolean("last-run-rewarded"));
+        ConfigurationSection won = section(y, "cleared");
+        won.getKeys(false).forEach(r -> won.getStringList(r).forEach(d -> l.clear(r, d)));
         l.revision(y.getLong("revision"));
         return l;
     }

@@ -1,0 +1,108 @@
+package net.tfminecraft.trialrooms.dungeon.run;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.plugin.Plugin;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.tfminecraft.trialrooms.dungeon.load.RecipeLoader;
+import net.tfminecraft.trialrooms.dungeon.locker.ClickMenu;
+
+/**
+ * The gate's difficulty choice: one button per difficulty, with its tier, how much tougher the
+ * enemies are and what gear it is meant for. Locked ones say what opens them.
+ */
+public final class DifficultyMenu implements ClickMenu, InventoryHolder {
+
+    private static final Material[] ICONS = {Material.IRON_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_SWORD};
+
+    private final RunManager runs;
+    private final Plugin plugin;
+    private final Player player;
+    private final GateStore.Gate gate;
+    private final RecipeLoader.Entry entry;
+    private final Inventory inventory;
+
+    public DifficultyMenu(RunManager runs, Plugin plugin, Player player, GateStore.Gate gate, RecipeLoader.Entry entry) {
+        this.runs = runs;
+        this.plugin = plugin;
+        this.player = player;
+        this.gate = gate;
+        this.entry = entry;
+        this.inventory = Bukkit.createInventory(this, 27, Component.text("Choose a difficulty"));
+    }
+
+    @Override
+    public Inventory getInventory() {
+        return inventory;
+    }
+
+    /** The slot of the i-th difficulty: centred in the middle row, a gap between each. */
+    int slot(int i) {
+        int n = Math.min(entry.difficulties().size(), 5);
+        return 13 - (n - 1) + 2 * i;
+    }
+
+    public void open() {
+        List<Difficulty> ds = entry.difficulties();
+        for (int i = 0; i < ds.size() && i < 5; i++) {
+            Difficulty d = ds.get(i);
+            boolean open = runs.unlocked(player, gate.recipe(), d);
+            List<String> lore = new ArrayList<>();
+            lore.add("Tier " + d.tier() + ": loot of tier " + d.tier());
+            if (d.health() != 1 || d.damage() != 1) {
+                lore.add("Enemies: x" + d.health() + " health, x" + d.damage() + " damage");
+            }
+            if (!d.advice().isBlank()) {
+                lore.add(d.advice());
+            }
+            if (!open) {
+                Difficulty needs = entry.difficulty(d.needs());
+                lore.add("Opens once you have won " + (needs == null ? d.needs() : needs.name()) + " here.");
+            }
+            inventory.setItem(slot(i), button(open ? ICONS[Math.min(i, ICONS.length - 1)] : Material.BARRIER, d.name(), lore));
+        }
+        player.openInventory(inventory);
+    }
+
+    private static ItemStack button(Material type, String name, List<String> lore) {
+        ItemStack it = new ItemStack(type);
+        ItemMeta meta = it.getItemMeta();
+        meta.displayName(Component.text(name, NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
+        List<Component> lines = new ArrayList<>();
+        lore.forEach(l -> lines.add(Component.text(l, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        meta.lore(lines);
+        it.setItemMeta(meta);
+        return it;
+    }
+
+    @Override
+    public void click(int slot, boolean shift) {
+        List<Difficulty> ds = entry.difficulties();
+        for (int i = 0; i < ds.size() && i < 5; i++) {
+            if (slot(i) == slot) {
+                Difficulty d = ds.get(i);
+                if (!runs.unlocked(player, gate.recipe(), d)) {
+                    player.sendMessage("§c" + d.name() + " is not open for you yet.");
+                    return;
+                }
+                // (closing a screen inside its own click is left to the next tick)
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    player.closeInventory();
+                    runs.useGate(player, gate, d.id());
+                });
+                return;
+            }
+        }
+    }
+}

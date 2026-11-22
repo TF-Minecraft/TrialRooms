@@ -53,6 +53,8 @@ public final class Locker {
     /** The run last rewarded from, and whether it counts this week (it rolls items). */
     private String lastRun = "";
     private boolean lastRunRewarded;
+    /** The difficulties this character has won, by dungeon recipe. */
+    private final Map<String, java.util.Set<String>> cleared = new LinkedHashMap<>();
 
     public Locker() {
         for (int i = 0; i < LOADOUTS; i++) {
@@ -236,6 +238,20 @@ public final class Locker {
     public void lastRun(String run, boolean rewarded) {
         lastRun = run;
         lastRunRewarded = rewarded;
+    }
+
+    /** The difficulties won of a dungeon. */
+    public java.util.Set<String> cleared(String recipe) {
+        return Collections.unmodifiableSet(cleared.getOrDefault(recipe, java.util.Set.of()));
+    }
+
+    public Map<String, java.util.Set<String>> cleared() {
+        return Collections.unmodifiableMap(cleared);
+    }
+
+    /** Records a win; true when it is the first at that difficulty. */
+    public boolean clear(String recipe, String difficulty) {
+        return cleared.computeIfAbsent(recipe, r -> new java.util.LinkedHashSet<>()).add(difficulty);
     }
 
     // ---- revision

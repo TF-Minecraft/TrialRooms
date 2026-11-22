@@ -94,6 +94,9 @@ class LockerCoreTest {
     l.weekRun("delve", 2);
     l.weekMarks(12);
     l.lastRun("run-1", true);
+    assertTrue(l.clear("delve", "normal"));
+    assertFalse(l.clear("delve", "normal"), "the second win is not news");
+    assertTrue(l.clear("delve", "hard"));
     assertTrue(store.write(who, "c1", l));
     back = store.read(who, "c1");
     assertEquals(7, back.marks());
@@ -105,6 +108,9 @@ class LockerCoreTest {
     assertEquals(12, back.weekMarks());
     assertEquals("run-1", back.lastRun());
     assertTrue(back.lastRunRewarded());
+    assertEquals(java.util.Set.of("normal", "hard"), back.cleared("delve"));
+    assertEquals(java.util.Set.of(), back.cleared("other"));
+    assertEquals(1, back.cleared().size());
     back.marks(-5);
     back.pity(-1);
     assertEquals(0, back.marks(), "never below nothing");

@@ -111,12 +111,12 @@ public final class DungeonCommand {
 
     private void start(CommandSender sender, String[] args) {
         if (!(sender instanceof Player p) || args.length < 2) {
-            sender.sendMessage("§eUsage (in game): /tr dungeon start <recipe> [seed]");
+            sender.sendMessage("§eUsage (in game): /tr dungeon start <recipe> [seed] [difficulty]");
             return;
         }
         try {
             long seed = args.length > 2 ? Long.parseLong(args[2]) : ThreadLocalRandom.current().nextLong();
-            module.runs().startRun(p, args[1], seed);
+            module.runs().startRun(p, args[1], seed, args.length > 3 ? args[3] : null);
         } catch (NumberFormatException e) {
             sender.sendMessage("§cThe seed must be a whole number.");
         }

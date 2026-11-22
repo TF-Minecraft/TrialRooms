@@ -141,6 +141,10 @@ public final class RunManager {
         long lobbyUntilMs;
         /** Members who said they are ready in the lobby. */
         final Set<UUID> ready = new HashSet<>();
+        /** The difficulty chosen at the gate, or null for a dungeon without difficulties. */
+        Difficulty difficulty;
+        /** Enemy damage multiplier from the difficulty. */
+        double damageFactor = 1;
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -165,6 +169,10 @@ public final class RunManager {
 
         public RunGeometry geometry() {
             return geo;
+        }
+
+        public Difficulty difficulty() {
+            return difficulty;
         }
     }
 
@@ -301,22 +309,60 @@ public final class RunManager {
 
     // ------------------------------------------------------------------ entering
 
-    /** A player used a gate block. */
+    /** A player used a gate block: a dungeon with difficulties asks which first. */
     public void useGate(Player p, GateStore.Gate gate) {
+        RecipeLoader.Entry entry = module.recipes().get(gate.recipe());
+        if (entry != null && !entry.difficulties().isEmpty() && !inRun(p)) {
+            new DifficultyMenu(this, plugin, p, gate, entry).open();
+            return;
+        }
+        useGate(p, gate, null);
+    }
+
+    /** A player opens a gate at a difficulty (null: the first, or none). */
+    public void useGate(Player p, GateStore.Gate gate, String difficulty) {
         Location at = new Location(p.getWorld(), gate.x() + 0.5, gate.y() + 0.5, gate.z() + 0.5);
-        open(p, gate.recipe(), at, ThreadLocalRandom.current().nextLong(), true);
+        open(p, gate.recipe(), at, ThreadLocalRandom.current().nextLong(), true, difficulty, true);
     }
 
     /** A staff member starts a run for themselves and their nearby party, without a key. */
     public void startRun(Player p, String recipeId, long seed) {
-        open(p, recipeId, p.getLocation(), seed, false);
+        startRun(p, recipeId, seed, null);
     }
 
-    private void open(Player p, String recipeId, Location at, long seed, boolean useKey) {
+    /** As {@link #startRun(Player, String, long)}, at a difficulty (staff need not have opened it). */
+    public void startRun(Player p, String recipeId, long seed, String difficulty) {
+        open(p, recipeId, p.getLocation(), seed, false, difficulty, false);
+    }
+
+    /** Whether a player may open a dungeon at a difficulty: it needs none, or they have won the one it needs. */
+    public boolean unlocked(Player p, String recipe, Difficulty d) {
+        if (d.needs() == null) {
+            return true;
+        }
+        var locker = lockers == null ? null : lockers.locker(p);
+        return locker != null && locker.cleared(recipe).contains(d.needs());
+    }
+
+    private void open(Player p, String recipeId, Location at, long seed, boolean useKey, String difficultyId,
+            boolean checkOpen) {
         RecipeLoader.Entry entry = module.recipes().get(recipeId);
         if (entry == null) {
             p.sendMessage("§cThis gate leads nowhere (unknown dungeon " + recipeId + ").");
             return;
+        }
+        Difficulty difficulty = null;
+        if (!entry.difficulties().isEmpty()) {
+            difficulty = difficultyId == null ? entry.difficulties().getFirst() : entry.difficulty(difficultyId);
+            if (difficulty == null) {
+                p.sendMessage("§cThis dungeon has no difficulty " + difficultyId + ".");
+                return;
+            }
+            if (checkOpen && !unlocked(p, recipeId, difficulty)) {
+                p.sendMessage("§c" + difficulty.name() + " opens once you have won " + entry.difficulty(difficulty.needs()).name()
+                        + " here.");
+                return;
+            }
         }
         if (inRun(p)) {
             p.sendMessage("§cYou are already in a dungeon.");
@@ -352,7 +398,7 @@ public final class RunManager {
             enqueue(p, recipeId);
             return;
         }
-        begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "");
+        begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "", difficulty);
     }
 
     /** The opener and every party member near the gate who can enter. */
@@ -373,7 +419,8 @@ public final class RunManager {
     }
 
     private void begin(Player leader, List<Player> group, RecipeLoader.Entry entry, String recipeId, long seed,
-            String keyPath) {
+            String keyPath, Difficulty difficulty) {
+        RunRules rules = difficulty == null ? entry.rules() : entry.rules().withTier(difficulty.tier());
         DungeonLayout layout;
         LayoutPlacer placer;
         try {
@@ -411,8 +458,10 @@ public final class RunManager {
             DungeonRun run = new DungeonRun(UUID.randomUUID(), recipeId, layout, entry.rules().lives(), clock.getAsLong());
             RunGeometry geo = new RunGeometry(layout, kit.catalog().cellSize(), kit.doorHeight(), placer.originX(),
                     placer.originY(), placer.originZ());
-            ActiveRun ar = new ActiveRun(run, geo, placer, kit, entry.rules(), leader.getUniqueId(), keyPath, arrival);
-            ar.planned = EventPlanner.plan(layout, kit.events(), entry.rules().eventChance(), entry.rules().maxEvents());
+            ActiveRun ar = new ActiveRun(run, geo, placer, kit, rules, leader.getUniqueId(), keyPath, arrival);
+            ar.difficulty = difficulty;
+            ar.damageFactor = difficulty == null ? 1 : difficulty.damage();
+            ar.planned = EventPlanner.plan(layout, kit.events(), rules.eventChance(), rules.maxEvents());
             runs.put(run.id(), ar);
             if (!keyPath.isBlank()) {
                 files.saveActive(run.id(), leader.getUniqueId(), keyPath);
@@ -450,12 +499,15 @@ public final class RunManager {
                 n++;
                 m.sendMessage("§6You step through the gate. §7Shared lives: " + run.lives()
                         + ". Leave at any time with /tr dungeon leave.");
+                if (difficulty != null) {
+                    m.sendMessage("§7Difficulty: §f" + difficulty.name() + "§7 (tier " + difficulty.tier() + ").");
+                }
                 if (lobby) {
                     m.sendMessage(lobbyButtons());
                 }
             }
-            ar.healthFactor = entry.rules().healthFactor(n);
-            ar.enemyFactor = entry.rules().enemyFactor(n);
+            ar.healthFactor = rules.healthFactor(n) * (difficulty == null ? 1 : difficulty.health());
+            ar.enemyFactor = rules.enemyFactor(n);
             if (n == 0) {
                 end(ar, true, null);
             }
@@ -1331,7 +1383,27 @@ public final class RunManager {
         ar.finishAtMs = clock.getAsLong() + settings().finishSeconds() * 1000L;
         tell(ar, "§6The vault is yours. §7Right-click by the exit to leave; everyone is sent back in "
                 + settings().finishSeconds() + " seconds.");
+        recordWin(ar);
         reward(ar, RunRewards.Moment.VAULT);
+    }
+
+    /** A won run at a difficulty: each member playing it has won it, and may open what it leads to. */
+    private void recordWin(ActiveRun ar) {
+        if (ar.difficulty == null || lockers == null) {
+            return;
+        }
+        String recipe = ar.run.recipeId();
+        RecipeLoader.Entry entry = module.recipes().get(recipe);
+        for (Player p : online(ar)) {
+            var locker = isPlayingMember(ar, p) ? lockers.locker(p) : null;
+            if (locker != null && locker.clear(recipe, ar.difficulty.id())) {
+                lockers.saveLocker(p, locker);
+                if (entry != null) {
+                    entry.difficulties().stream().filter(d -> ar.difficulty.id().equals(d.needs()))
+                            .forEach(d -> p.sendMessage("§6" + d.name() + " is now open for you in this dungeon."));
+                }
+            }
+        }
     }
 
     private void fail(ActiveRun ar) {
@@ -1390,7 +1462,7 @@ public final class RunManager {
     /** How hard a hit from this entity on a run player lands: run mobs may be rallied, enraged or charging. */
     public double outgoingFactor(Entity source) {
         ActiveRun ar = byMob.get(source.getUniqueId());
-        return ar == null ? 1 : fights.outgoing(ar, source);
+        return ar == null ? 1 : fights.outgoing(ar, source) * ar.damageFactor;
     }
 
     /** How much of a hit a run mob takes (a boss between phases none, a shielded elite less). */
