@@ -191,6 +191,25 @@ final class Fights {
     }
 
     /** Multiplies a mob's max health by {@code factor} (one keyed modifier, so it is never doubled) and fills it. */
+    /** A health factor: the party's (and an elite's) up to the kit's cap, then the difficulty's on top. */
+    double health(ActiveRun ar, double factor) {
+        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth;
+    }
+
+    /** True while a boss mechanic lands its damage. */
+    private boolean mechanic;
+
+    /** Whether a boss mechanic's hit is landing now; true once per hit. */
+    boolean takeMechanic() {
+        boolean was = mechanic;
+        mechanic = false;
+        return was;
+    }
+
+    void mechanic(boolean on) {
+        mechanic = on;
+    }
+
     void scale(Entity mob, double factor) {
         if (!(mob instanceof LivingEntity living)) {
             return;
@@ -299,7 +318,7 @@ final class Fights {
             n++;
             enc.alive.add(mob);
             enc.waveOf.put(mob.getUniqueId(), -1); // their own wave: no elite's shield or rally counts them
-            scale(mob, Math.min(ar.healthFactor, ar.kit.fights().tuning().healthCap()));
+            scale(mob, health(ar, ar.healthFactor));
         }
         for (Player p : inRoom(ar, room)) {
             p.playSound(p.getLocation(), "minecraft:item.goat_horn.sound.1", 1f, 1.2f);
@@ -335,7 +354,7 @@ final class Fights {
                 name(enc, mob, Component.text(name, NamedTextColor.GOLD));
                 runs.tellRoom(ar, enc.room, "§6A " + name + " leads this pack: §7it " + s.affix().hint() + ".");
             }
-            scale(mob, Math.min(factor, ar.kit.fights().tuning().healthCap()));
+            scale(mob, health(ar, factor));
         }
         enc.waveSize = n;
         if (w > 0) {
@@ -410,7 +429,7 @@ final class Fights {
         if (max != null) {
             max.setBaseValue(def.health());
         }
-        scale(living, Math.min(ar.healthFactor, ar.kit.fights().tuning().healthCap()));
+        scale(living, health(ar, ar.healthFactor));
         name(enc, living, Component.text(def.name(), NamedTextColor.DARK_RED));
         enc.boss = new BossFight(def, ar.kit.fights().tuning(), now);
         enc.bossMob = living;
@@ -433,7 +452,7 @@ final class Fights {
             Entity mob = spawn(ar, enc, s.entry().mob(), spawnPoint(ar, enc.room, points, s));
             if (mob != null) {
                 enc.adds.add(mob);
-                scale(mob, Math.min(ar.healthFactor, ar.kit.fights().tuning().healthCap()));
+                scale(mob, health(ar, ar.healthFactor));
             }
         }
         for (Player p : inRoom(ar, enc.room)) {
@@ -805,7 +824,12 @@ final class Fights {
                 continue;
             }
             p.setNoDamageTicks(0); // a recent hit must not soak the mechanic
-            fx.hurt(p, share * maxHealth(p), source);
+            mechanic = true;
+            try {
+                fx.hurt(p, share * maxHealth(p), source);
+            } finally {
+                mechanic = false;
+            }
             if (t.kind() != Telegraph.Kind.BURST) {
                 enc.boss.hit();
             }

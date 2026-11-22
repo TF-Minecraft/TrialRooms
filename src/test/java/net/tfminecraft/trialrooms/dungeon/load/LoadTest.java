@@ -144,6 +144,52 @@ class LoadTest {
   }
 
   @Test
+  void loadsDifficulties() throws IOException {
+    File f = temp.resolve("recipes.yml").toFile();
+    Files.writeString(f.toPath(), """
+        laddered:
+          trunk-pool: {combat: 1}
+          difficulties:
+            normal: {name: Normal, tier: 1, advice: "for own gear"}
+            hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal}
+        wrongorder:
+          trunk-pool: {combat: 1}
+          difficulties:
+            hard: {tier: 2, needs: normal}
+            normal: {tier: 1}
+        notasection:
+          trunk-pool: {combat: 1}
+          difficulties:
+            normal: 3
+        badtier:
+          trunk-pool: {combat: 1}
+          difficulties:
+            normal: {tier: 0}
+        toomany:
+          trunk-pool: {combat: 1}
+          difficulties: {a: {}, b: {}, c: {}, d: {}, e: {}, f: {}}
+        """);
+    List<String> problems = new ArrayList<>();
+    var recipes = RecipeLoader.load(f, problems);
+    assertEquals(4, problems.size(), problems.toString());
+    assertTrue(problems.stream().anyMatch(p -> p.contains("at most 5 difficulties")));
+    assertTrue(problems.stream().anyMatch(p -> p.contains("needs normal, which is not listed before it")));
+    var entry = recipes.get("laddered");
+    assertEquals(2, entry.difficulties().size());
+    var hard = entry.difficulty("HARD");
+    assertEquals(new net.tfminecraft.trialrooms.dungeon.run.Difficulty("hard", "Hard", 2, 1.5, 1.25, "normal", ""), hard);
+    assertEquals("for own gear", entry.difficulty("normal").advice());
+    assertNull(entry.difficulty("nightmare"));
+    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 0, 1, null, ""));
+    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 1, 0, null, ""));
+    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, Double.POSITIVE_INFINITY, 1, null, ""));
+    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 1, Double.POSITIVE_INFINITY, null, ""));
+    var rules = entry.rules();
+    assertEquals(3, rules.withTier(3).tier());
+    assertEquals(rules.maxPlayers(), rules.withTier(3).maxPlayers());
+  }
+
+  @Test
   void loadsRecipesAndSkipsBrokenOnes() throws IOException {
     File f = temp.resolve("recipes.yml").toFile();
     Files.writeString(f.toPath(), """

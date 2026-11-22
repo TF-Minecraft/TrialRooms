@@ -35,6 +35,12 @@ public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives
         this(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, tier, boss, 0);
     }
 
+    /** The same rules at another tier (a harder difficulty). */
+    public RunRules withTier(int t) {
+        return new RunRules(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, t, boss,
+                enemiesPerExtraPlayer, eventChance, maxEvents);
+    }
+
     public RunRules {
         if (minPlayers < 1 || maxPlayers < minPlayers) {
             throw new IllegalArgumentException("bad players range " + minPlayers + "-" + maxPlayers);

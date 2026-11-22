@@ -35,7 +35,7 @@ public final class LockerListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onClick(InventoryClickEvent event) {
         Inventory top = event.getView().getTopInventory();
-        if (top.getHolder() instanceof LockerMenu menu) {
+        if (top.getHolder() instanceof ClickMenu menu) {
             event.setCancelled(true);
             if (event.getClickedInventory() == top) {
                 menu.click(event.getRawSlot(), event.isShiftClick());
@@ -73,7 +73,7 @@ public final class LockerListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onDrag(InventoryDragEvent event) {
         Inventory top = event.getView().getTopInventory();
-        if (top.getHolder() instanceof LockerMenu) {
+        if (top.getHolder() instanceof ClickMenu) {
             event.setCancelled(true);
             return;
         }

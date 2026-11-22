@@ -94,6 +94,17 @@ class LockerCoreTest {
     l.weekRun("delve", 2);
     l.weekMarks(12);
     l.lastRun("run-1", true);
+    assertTrue(l.clear("delve", "normal"));
+    assertFalse(l.clear("delve", "normal"), "the second win is not news");
+    assertTrue(l.clear("delve", "hard"));
+    l.clear("cave", "normal");
+    l.unclear("cave", "normal");
+    l.unclear("cave", "normal");
+    l.unclear("delve", "nightmare");
+    l.clear("delve", "extra");
+    l.unclear("delve", "extra");
+    assertFalse(l.cleared().containsKey("cave"), "an undone only win leaves no entry");
+    assertEquals(java.util.Set.of("normal", "hard"), l.cleared("delve"));
     assertTrue(store.write(who, "c1", l));
     back = store.read(who, "c1");
     assertEquals(7, back.marks());
@@ -105,6 +116,9 @@ class LockerCoreTest {
     assertEquals(12, back.weekMarks());
     assertEquals("run-1", back.lastRun());
     assertTrue(back.lastRunRewarded());
+    assertEquals(java.util.Set.of("normal", "hard"), back.cleared("delve"));
+    assertEquals(java.util.Set.of(), back.cleared("other"));
+    assertEquals(1, back.cleared().size());
     back.marks(-5);
     back.pity(-1);
     assertEquals(0, back.marks(), "never below nothing");

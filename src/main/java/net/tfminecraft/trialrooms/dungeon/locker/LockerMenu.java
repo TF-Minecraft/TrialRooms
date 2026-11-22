@@ -31,7 +31,7 @@ import net.kyori.adventure.text.format.TextDecoration;
  * Click a dungeon gem, then a dungeon item, to socket it. The shop button turns the screen into the
  * mark shop: click an item to buy it at the first rarity, shift-click for the second.
  */
-public final class LockerMenu implements InventoryHolder {
+public final class LockerMenu implements InventoryHolder, ClickMenu {
 
     static final int WEAR = 4;
     static final int OWN = 5;
@@ -226,6 +226,7 @@ public final class LockerMenu implements InventoryHolder {
     }
 
     /** A click, plain or with shift held. */
+    @Override
     public void click(int slot, boolean shift) {
         Locker l = service.locker(player);
         if (l == null) {

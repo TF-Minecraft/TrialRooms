@@ -97,7 +97,8 @@ class RunManagerTest {
     module = mock(DungeonModule.class);
     when(module.world()).thenReturn(dungeon);
     when(module.settings()).thenAnswer(i -> settings);
-    when(module.recipes()).thenAnswer(i -> Map.of("delve", new RecipeLoader.Entry(recipe, "greybox", rules)));
+    when(module.recipes()).thenAnswer(i -> recipesNow != null ? recipesNow
+        : Map.of("delve", new RecipeLoader.Entry(recipe, "greybox", rules, difficulties)));
     when(module.kits()).thenReturn(Map.of("greybox", kit));
     when(module.generate(eq("delve"), anyLong())).thenReturn(layout);
     placer = mock(LayoutPlacer.class);
@@ -176,6 +177,134 @@ class RunManagerTest {
   RunManager.ActiveRun only() {
     assertEquals(1, runs.runs().size());
     return runs.runs().getFirst();
+  }
+
+  List<Difficulty> difficulties = List.of();
+  /** When set, the recipes a reload left (else the test's own). */
+  Map<String, RecipeLoader.Entry> recipesNow;
+
+  @Test
+  void dungeonsWithDifficultiesAreChosenAtTheGateAndOpenUpByWins() {
+    difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, "own gear"),
+        new Difficulty("hard", "Hard", 2, 1.5, 1.25, "normal", ""));
+    var lockers = new net.tfminecraft.trialrooms.dungeon.locker.LockerService(plugin,
+        new net.tfminecraft.trialrooms.dungeon.locker.LockerStore(temp.resolve("lockers"), Logger.getLogger("t")),
+        new ListCodec(), chars::activeCharacterId, p -> { });
+    PlayerMock a = player("Ann");
+    GateStore.Gate gate = gates.add(main.getBlockAt(10, 69, 10), "delve");
+    assertFalse(runs.unlocked(a, "delve", difficulties.get(1)), "no lockers: nothing won");
+    runs.startRun(a, "delve", 9, "normal"); // won without lockers: nothing to record
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(a, RoomType.VAULT);
+    ticks(2);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    runs.lockers(lockers);
+    runs.useGate(a, gate);
+    assertInstanceOf(DifficultyMenu.class, a.getOpenInventory().getTopInventory().getHolder(), "the gate asks which first");
+    assertTrue(runs.runs().isEmpty());
+    runs.useGate(a, gate, "hard");
+    assertTrue(nextMatching(a, "opens once you have won Normal"));
+    runs.useGate(a, gate, "mythic");
+    assertTrue(nextMatching(a, "no difficulty mythic"));
+    runs.useGate(a, gate, "normal");
+    RunManager.ActiveRun ar = only();
+    assertEquals("normal", ar.difficulty().id());
+    assertTrue(nextMatching(a, "Difficulty: §fNormal"));
+    runs.useGate(a, gate); // in a run: no menu, the usual refusal
+    // the vault: Normal won, Hard opens
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(a, RoomType.VAULT);
+    ticks(2);
+    assertEquals(java.util.Set.of("normal"), lockers.locker(a).cleared("delve"));
+    assertTrue(nextMatching(a, "Hard is now open for you"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // Hard: tier 2, tougher enemies
+    runs.useGate(a, gate, "hard");
+    ar = only();
+    assertEquals(2, ar.rules.tier());
+    assertEquals(1.0, ar.healthFactor, "the party's factor stays the party's");
+    assertEquals(1.5, ar.difficultyHealth);
+    assertEquals(1.25, ar.damageFactor);
+    Entity mob = mob(at(geo.entry(0)));
+    runs.register(ar, mob, new double[] {0, 0, 0});
+    assertEquals(1.25, runs.outgoingFactor(mob), 1e-9);
+    runs.fights().mechanic(true);
+    assertEquals(1, runs.outgoingFactor(mob), 1e-9, "boss mechanics grow with the tier, not the damage multiplier");
+    assertEquals(1.25, runs.outgoingFactor(mob), 1e-9, "a hit the mechanic sets off is an ordinary one");
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    recipesNow = Map.of(); // a reload dropped the recipe: the win still counts, with nothing to announce
+    into(a, RoomType.VAULT);
+    ticks(2);
+    recipesNow = null;
+    assertEquals(java.util.Set.of("normal", "hard"), lockers.locker(a).cleared("delve"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a second Normal win is no news; staff start any difficulty without having won it
+    runs.startRun(a, "delve", 3, "hard");
+    assertEquals("hard", only().difficulty().id());
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    runs.startRun(a, "delve", 3);
+    assertEquals("normal", only().difficulty().id(), "the first difficulty by default");
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(a, RoomType.VAULT);
+    ticks(2);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a member on another character is not credited
+    PlayerMock b = player("Bo");
+    when(chars.partyLeader(b)).thenReturn(b.getUniqueId());
+    when(chars.partyMembers(b)).thenReturn(List.of(b.getUniqueId()));
+    runs.startRun(b, "delve", 4);
+    characterOf.put("Bo", "char-other");
+    into(b, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(b, RoomType.VAULT);
+    ticks(2);
+    characterOf.put("Bo", "char-Bo");
+    assertEquals(java.util.Set.of(), lockers.locker(b).cleared("delve"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a win whose save fails is not announced
+    PlayerMock c = player("Cy");
+    when(chars.partyLeader(c)).thenReturn(c.getUniqueId());
+    when(chars.partyMembers(c)).thenReturn(List.of(c.getUniqueId()));
+    lockers.locker(c);
+    try {
+      Files.createDirectories(temp.resolve("lockers").resolve(c.getUniqueId().toString()).resolve("char-Cy.locker.tmp"));
+    } catch (java.io.IOException e) {
+      fail(e);
+    }
+    runs.startRun(c, "delve", 5);
+    into(c, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(c, RoomType.VAULT);
+    ticks(2);
+    assertTrue(nextMatching(c, "could not be saved"), "the player is told");
+    assertEquals(java.util.Set.of(), lockers.locker(c).cleared("delve"), "taken back, so a later win counts");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  /** Whether one of the player's messages so far holds the text (and drains them). */
+  static boolean nextMatching(PlayerMock p, String text) {
+    String m;
+    boolean found = false;
+    while ((m = p.nextMessage()) != null) {
+      found |= m.contains(text);
+    }
+    return found;
   }
 
   RunSettings withLobby(int seconds) {

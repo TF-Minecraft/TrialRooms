@@ -10,6 +10,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import net.tfminecraft.trialrooms.dungeon.generator.DungeonRecipe;
+import net.tfminecraft.trialrooms.dungeon.run.Difficulty;
 import net.tfminecraft.trialrooms.dungeon.run.RunRules;
 import net.tfminecraft.trialrooms.dungeon.template.RoomType;
 
@@ -19,8 +20,17 @@ public final class RecipeLoader {
     private RecipeLoader() {
     }
 
-    /** A recipe, the kit it builds from, and how it is played. */
-    public record Entry(DungeonRecipe recipe, String kit, RunRules rules) {
+    /** A recipe, the kit it builds from, how it is played, and its difficulties (none: one plain way). */
+    public record Entry(DungeonRecipe recipe, String kit, RunRules rules, List<Difficulty> difficulties) {
+
+        public Entry(DungeonRecipe recipe, String kit, RunRules rules) {
+            this(recipe, kit, rules, List.of());
+        }
+
+        /** A difficulty by id, or null. */
+        public Difficulty difficulty(String id) {
+            return difficulties.stream().filter(d -> d.id().equalsIgnoreCase(id)).findFirst().orElse(null);
+        }
     }
 
     public static Map<String, Entry> load(File file, List<String> problems) {
@@ -38,7 +48,8 @@ public final class RecipeLoader {
                 if (s == null) {
                     throw new IllegalArgumentException("not a section");
                 }
-                out.put(id, new Entry(recipe(id, s), s.getString("kit", "greybox"), rules(s)));
+                out.put(id, new Entry(recipe(id, s), s.getString("kit", "greybox"), rules(s),
+                        difficulties(s.getConfigurationSection("difficulties"))));
             } catch (IllegalArgumentException e) {
                 problems.add("recipe " + id + ": " + e.getMessage());
             }
@@ -54,6 +65,30 @@ public final class RecipeLoader {
                 s.getBoolean("rest-before-boss", true), s.getBoolean("vault", true), branches[0], branches[1],
                 length[0], length[1], pool(s.getConfigurationSection("branch-pool")), s.getInt("attempts", 20),
                 s.getInt("step-budget", 20000));
+    }
+
+    /** The difficulties, in order; each may need only one listed before it. */
+    static List<Difficulty> difficulties(ConfigurationSection s) {
+        List<Difficulty> out = new java.util.ArrayList<>();
+        if (s == null) {
+            return out;
+        }
+        for (String id : s.getKeys(false)) {
+            ConfigurationSection d = s.getConfigurationSection(id);
+            if (d == null) {
+                throw new IllegalArgumentException("difficulty " + id + ": not a section");
+            }
+            String needs = d.getString("needs");
+            if (needs != null && out.stream().noneMatch(x -> x.id().equals(needs))) {
+                throw new IllegalArgumentException("difficulty " + id + " needs " + needs + ", which is not listed before it");
+            }
+            out.add(new Difficulty(id, d.getString("name", id), d.getInt("tier", 1), d.getDouble("health", 1),
+                    d.getDouble("damage", 1), needs, d.getString("advice", "")));
+        }
+        if (out.size() > 5) {
+            throw new IllegalArgumentException("at most 5 difficulties (the gate's screen shows five)");
+        }
+        return out;
     }
 
     static RunRules rules(ConfigurationSection s) {
