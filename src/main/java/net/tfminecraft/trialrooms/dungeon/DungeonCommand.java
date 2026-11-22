@@ -4,26 +4,34 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
 
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import net.tfminecraft.trialrooms.dungeon.generator.DungeonLayout;
 import net.tfminecraft.trialrooms.dungeon.generator.LayoutMap;
+import net.tfminecraft.trialrooms.dungeon.locker.LockerMenu;
+import net.tfminecraft.trialrooms.dungeon.locker.LockerService;
 import net.tfminecraft.trialrooms.dungeon.run.DungeonRun;
 import net.tfminecraft.trialrooms.dungeon.run.GateStore;
 import net.tfminecraft.trialrooms.dungeon.run.RunManager;
 
 /**
- * Staff commands under {@code /tr dungeon}: {@code map}, {@code preview}, {@code clear} and
- * {@code reload}. Works from the console too, except that only a player is teleported to a preview.
+ * Commands under {@code /tr dungeon}. Staff: {@code map}, {@code preview}, {@code clear},
+ * {@code reload} and the run tools; they work from the console too, except that only a player is
+ * teleported to a preview. Players: {@code leave}, {@code ready} and {@code locker}.
  */
 public final class DungeonCommand {
 
     static final String USAGE = "§eUsage: /tr dungeon <map|preview|start> <recipe> [seed] | clear | reload | runs"
-            + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave";
+            + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave | ready"
+            + " | locker [give <player>]";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "allies", "gate", "leave");
+            "rooms", "allies", "gate", "leave", "ready", "locker");
+    /** What players without the staff permission may use. */
+    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker");
 
     private final DungeonModule module;
 
@@ -44,6 +52,8 @@ public final class DungeonCommand {
                     : "§aAlly filter: " + module.allyFilter().report());
             case "gate" -> gate(sender, args);
             case "leave" -> leave(sender);
+            case "ready" -> ready(sender);
+            case "locker" -> locker(sender, args);
             case "clear" -> sender.sendMessage("§aCleared " + module.clearPreviews() + " dungeon previews.");
             case "reload" -> {
                 List<String> problems = module.reload();
@@ -192,10 +202,58 @@ public final class DungeonCommand {
         }
     }
 
+    private void ready(CommandSender sender) {
+        if (sender instanceof Player p && module.runs().ready(p)) {
+            p.sendMessage("§aYou are ready.");
+        } else {
+            sender.sendMessage("§cThere is nothing to get ready for: the doors are already open, or you are not in a dungeon.");
+        }
+    }
+
+    private void locker(CommandSender sender, String[] args) {
+        LockerService lockers = module.runs().lockers();
+        if (lockers == null) {
+            sender.sendMessage("§cDungeon lockers are off.");
+            return;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("give")) {
+            give(sender, lockers, args);
+            return;
+        }
+        if (!(sender instanceof Player p)) {
+            sender.sendMessage("§cOnly a player has a locker.");
+            return;
+        }
+        new LockerMenu(lockers, p, module.runs()::inLobby).open();
+    }
+
+    /** Staff: files a copy of the item in hand in a player's locker as a dungeon item (until loot drops them). */
+    private void give(CommandSender sender, LockerService lockers, String[] args) {
+        if (!sender.hasPermission(RunManager.STAFF_PERMISSION)) {
+            sender.sendMessage("§cYou don't have permission to use this command.");
+            return;
+        }
+        if (!(sender instanceof Player staff) || staff.getInventory().getItemInMainHand().getType() == Material.AIR) {
+            sender.sendMessage("§cHold the item to give.");
+            return;
+        }
+        Player target = args.length >= 3 ? Bukkit.getPlayerExact(args[2]) : staff;
+        if (target == null) {
+            sender.sendMessage("§cNo player " + args[2] + " is online.");
+            return;
+        }
+        String id = lockers.add(target, staff.getInventory().getItemInMainHand());
+        sender.sendMessage(id == null ? "§c" + target.getName() + " has no usable locker (no character played?)."
+                : "§aA copy is in " + target.getName() + "'s dungeon locker.");
+    }
+
     /** Tab completion for the arguments after {@code dungeon}. */
     public List<String> complete(String[] args) {
         if (args.length == 1) {
             return SUBCOMMANDS.stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("locker")) {
+            return "give".startsWith(args[1]) ? List.of("give") : List.of();
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("gate")) {
             return List.of("add", "remove", "list").stream().filter(s -> s.startsWith(args[1])).toList();

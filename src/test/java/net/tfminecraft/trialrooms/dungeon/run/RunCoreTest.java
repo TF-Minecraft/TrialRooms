@@ -343,6 +343,14 @@ public class RunCoreTest {
     assertEquals(60, RunSettings.from(alone).hintSeconds());
     alone.set("hint-seconds", 3);
     assertEquals(10, RunSettings.from(alone).hintSeconds(), "at least 10");
+    assertEquals(0, d.lobbySeconds(), "the built-in settings have no lobby");
+    assertEquals(120, RunSettings.from(alone).lobbySeconds(), "the file default has one");
+    alone.set("lobby-seconds", 4);
+    assertEquals(10, RunSettings.from(alone).lobbySeconds(), "at least 10");
+    alone.set("lobby-seconds", 0);
+    assertEquals(0, RunSettings.from(alone).lobbySeconds());
+    alone.set("lobby-seconds", -5);
+    assertEquals(0, RunSettings.from(alone).lobbySeconds());
   }
 
   @Test

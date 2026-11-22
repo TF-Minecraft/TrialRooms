@@ -168,7 +168,62 @@ class DungeonRunCommandsTest {
       verify(p).sendMessage("§cYou are not in a dungeon.");
       assertTrue(cm.onCommand(p, cmd, "tr", new String[] {"dungeon"}));
       verify(p).sendMessage("§cYou don't have permission to use this command.");
+      assertTrue(cm.onCommand(p, cmd, "tr", new String[] {"dungeon", "READY"}));
+      verify(p).sendMessage(startsWith("§cThere is nothing to get ready for"));
+      assertTrue(cm.onCommand(p, cmd, "tr", new String[] {"dungeon", "locker"}));
+      verify(p).sendMessage("§cDungeon lockers are off.");
     }
+  }
+
+  @Test
+  void playersGetReadyAndOpenTheirLocker() throws Exception {
+    CommandSender console = mock(CommandSender.class);
+    Player p = mock(Player.class);
+    when(runs.ready(p)).thenReturn(true);
+    c.run(p, new String[] {"ready"});
+    verify(p).sendMessage("§aYou are ready.");
+    c.run(console, new String[] {"ready"});
+    verify(console).sendMessage(startsWith("§cThere is nothing to get ready for"));
+
+    c.run(p, new String[] {"locker"});
+    verify(p).sendMessage("§cDungeon lockers are off.");
+    net.tfminecraft.trialrooms.dungeon.locker.LockerService lockers =
+        mock(net.tfminecraft.trialrooms.dungeon.locker.LockerService.class);
+    when(runs.lockers()).thenReturn(lockers);
+    c.run(console, new String[] {"locker"});
+    verify(console).sendMessage("§cOnly a player has a locker.");
+    org.mockbukkit.mockbukkit.entity.PlayerMock ann = server.addPlayer("Ann");
+    c.run(ann, new String[] {"locker"});
+    assertTrue(ann.nextMessage().contains("can't be opened"), "no locker for a player without a character");
+    net.tfminecraft.trialrooms.dungeon.locker.Locker l = new net.tfminecraft.trialrooms.dungeon.locker.Locker();
+    when(lockers.locker(ann)).thenReturn(l);
+    c.run(ann, new String[] {"locker", "please"});
+    assertInstanceOf(net.tfminecraft.trialrooms.dungeon.locker.LockerMenu.class,
+        ann.getOpenInventory().getTopInventory().getHolder());
+
+    // staff hand out test items until loot drops them
+    c.run(ann, new String[] {"locker", "give"});
+    assertEquals("§cYou don't have permission to use this command.", ann.nextMessage());
+    ann.addAttachment(MockBukkit.createMockPlugin(), RunManager.STAFF_PERMISSION, true);
+    c.run(console, new String[] {"locker", "give", "Ann"});
+    verify(console).sendMessage(startsWith("§cYou don't have permission"));
+    when(console.hasPermission(RunManager.STAFF_PERMISSION)).thenReturn(true);
+    c.run(console, new String[] {"locker", "give", "Ann"});
+    verify(console).sendMessage("§cHold the item to give.");
+    c.run(ann, new String[] {"locker", "give"});
+    assertEquals("§cHold the item to give.", ann.nextMessage());
+    ann.getInventory().setItemInMainHand(new org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND_SWORD));
+    c.run(ann, new String[] {"locker", "give", "Nobody"});
+    assertEquals("§cNo player Nobody is online.", ann.nextMessage());
+    c.run(ann, new String[] {"locker", "give"});
+    assertTrue(ann.nextMessage().contains("has no usable locker"));
+    when(lockers.add(eq(ann), any())).thenReturn("id");
+    c.run(ann, new String[] {"locker", "give", "Ann"});
+    assertEquals("§aA copy is in Ann's dungeon locker.", ann.nextMessage());
+
+    assertEquals(List.of("give"), c.complete(new String[] {"locker", "g"}));
+    assertEquals(List.of(), c.complete(new String[] {"locker", "x"}));
+    assertTrue(c.complete(new String[] {"rea"}).contains("ready"));
   }
 
   @Test
@@ -189,7 +244,8 @@ class DungeonRunCommandsTest {
     assertEquals(RunSettings.defaults(), m.settings());
     m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
     assertNotNull(m.runs());
-    verify(pm).registerEvents(any(), eq(plugin));
+    verify(pm, times(2)).registerEvents(any(), eq(plugin)); // runs and lockers
+    assertNotNull(m.runs().lockers());
     // the ally filter and its staff report
     DungeonCommand dc = new DungeonCommand(m);
     CommandSender staff = mock(CommandSender.class);

@@ -32,12 +32,16 @@ import org.bukkit.scheduler.BukkitTask;
 
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.tfminecraft.trialrooms.dungeon.DungeonModule;
 import net.tfminecraft.trialrooms.dungeon.event.EventKind;
 import net.tfminecraft.trialrooms.dungeon.event.EventPlanner;
 import net.tfminecraft.trialrooms.dungeon.generator.DungeonLayout;
 import net.tfminecraft.trialrooms.dungeon.load.DungeonKit;
 import net.tfminecraft.trialrooms.dungeon.load.RecipeLoader;
+import net.tfminecraft.trialrooms.dungeon.locker.LockerService;
 import net.tfminecraft.trialrooms.dungeon.run.DungeonRun.Member;
 import net.tfminecraft.trialrooms.dungeon.run.DungeonRun.Status;
 import net.tfminecraft.trialrooms.dungeon.template.Doorway;
@@ -85,6 +89,8 @@ public final class RunManager {
     /** The leader a freed dungeon is held for, until {@link #heldUntilMs}. */
     private UUID heldFor;
     private long heldUntilMs;
+    /** Dungeon lockers; null runs without them (loadouts can't be worn). */
+    private LockerService lockers;
 
     /** A party leader waiting for a dungeon of a recipe. */
     record Waiting(UUID leader, String recipe) {
@@ -128,6 +134,11 @@ public final class RunManager {
         Map<Integer, EventKind> planned = Map.of();
         /** Room events under way or done, by room index, until their room clears. */
         final Map<Integer, Events.RoomEvent> events = new HashMap<>();
+        /** The entrance room while its doors stay shut for the party to get ready; -1 once open. */
+        int lobbyRoom = -1;
+        long lobbyUntilMs;
+        /** Members who said they are ready in the lobby. */
+        final Set<UUID> ready = new HashSet<>();
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -197,6 +208,15 @@ public final class RunManager {
 
     public GateStore gates() {
         return gates;
+    }
+
+    /** Uses dungeon lockers: worn loadouts come off whenever a player is sent back or found outside. */
+    public void lockers(LockerService lockers) {
+        this.lockers = lockers;
+    }
+
+    public LockerService lockers() {
+        return lockers;
     }
 
     public boolean blocksCommand(String commandLine) {
@@ -378,6 +398,13 @@ public final class RunManager {
                     setDoors(ar, i, true, true);
                 }
             }
+            boolean lobby = settings().lobbySeconds() > 0;
+            if (lobby) {
+                // the arrival is in the START room, never a fight room (the generator always starts there)
+                ar.lobbyRoom = geo.roomAt(arrival.getX(), arrival.getZ());
+                ar.lobbyUntilMs = clock.getAsLong() + settings().lobbySeconds() * 1000L;
+                setDoors(ar, ar.lobbyRoom, false, true);
+            }
             int n = 0;
             for (Player m : group) {
                 String charId = chosen.get(m.getUniqueId());
@@ -399,6 +426,9 @@ public final class RunManager {
                 n++;
                 m.sendMessage("§6You step through the gate. §7Shared lives: " + run.lives()
                         + ". Leave at any time with /tr dungeon leave.");
+                if (lobby) {
+                    m.sendMessage(lobbyButtons());
+                }
             }
             ar.healthFactor = entry.rules().healthFactor(n);
             ar.enemyFactor = entry.rules().enemyFactor(n);
@@ -548,8 +578,11 @@ public final class RunManager {
                 fighting = true;
             }
         }
-        if (fighting || ar.progressMs < 0) {
-            ar.progressMs = now;
+        if (ar.lobbyRoom >= 0) {
+            lobby(ar, now);
+        }
+        if (fighting || ar.progressMs < 0 || ar.lobbyRoom >= 0) {
+            ar.progressMs = now; // a party getting ready is not stuck
         }
         downed(ar, now);
         hint(ar, now);
@@ -561,6 +594,68 @@ public final class RunManager {
         } else if (run.wiped() && run.present().stream().anyMatch(Member::online)) {
             fail(ar);
         }
+    }
+
+    // ------------------------------------------------------------------ the lobby
+
+    private static Component lobbyButtons() {
+        return Component.text("Get ready in this room: ", NamedTextColor.GRAY)
+                .append(Component.text("[Locker]", NamedTextColor.GOLD)
+                        .clickEvent(ClickEvent.runCommand("/tr dungeon locker"))
+                        .hoverEvent(HoverEvent.showText(Component.text("Put on a loadout of dungeon items, or stay in your own gear"))))
+                .append(Component.text(" "))
+                .append(Component.text("[Ready]", NamedTextColor.GREEN)
+                        .clickEvent(ClickEvent.runCommand("/tr dungeon ready"))
+                        .hoverEvent(HoverEvent.showText(Component.text("The doors open once everyone is ready"))));
+    }
+
+    /** While the party gets ready: a bar of who is, and the doors open once all are (or time runs out). */
+    private void lobby(ActiveRun ar, long now) {
+        List<Player> here = new ArrayList<>();
+        for (Player p : online(ar)) {
+            if (isPlayingMember(ar, p)) { // (the step already counts anyone outside the dungeon world as away)
+                here.add(p);
+            }
+        }
+        long ready = here.stream().filter(p -> ar.ready.contains(p.getUniqueId())).count();
+        if (now >= ar.lobbyUntilMs || !here.isEmpty() && ready == here.size()) {
+            openLobby(ar);
+            return;
+        }
+        long seconds = (ar.lobbyUntilMs - now + 999) / 1000;
+        for (Player p : here) {
+            bars.show(p, "Ready " + ready + "/" + here.size() + "  ·  the doors open in " + seconds + "s",
+                    (double) ready / here.size(), BossBar.Color.GREEN, now);
+        }
+    }
+
+    private void openLobby(ActiveRun ar) {
+        setDoors(ar, ar.lobbyRoom, false, false);
+        ar.lobbyRoom = -1;
+        ar.ready.clear();
+        for (Player p : online(ar)) {
+            p.playSound(p.getLocation(), "minecraft:block.iron_door.open", 1f, 1f);
+        }
+        tell(ar, "§aThe doors open. Good hunting.");
+    }
+
+    /** A member says they are ready. False when their run has no lobby open. */
+    public boolean ready(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        if (ar == null || ar.lobbyRoom < 0) {
+            return false;
+        }
+        if (ar.ready.add(p.getUniqueId())) {
+            tell(ar, "§7" + p.getName() + " is ready.");
+        }
+        return true;
+    }
+
+    /** Whether a player stands in their run's lobby with its doors still shut: loadouts may change here. */
+    public boolean inLobby(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        return ar != null && ar.lobbyRoom >= 0 && inDungeonWorld(p) && isPlayingMember(ar, p)
+                && ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ()) == ar.lobbyRoom;
     }
 
     private void entered(ActiveRun ar, Player p, int room) {
@@ -1083,6 +1178,10 @@ public final class RunManager {
         }
         ActiveRun ar = byPlayer.get(p.getUniqueId());
         Member m = ar == null ? null : ar.run.member(p.getUniqueId());
+        if (lockers != null) {
+            // A worn loadout stays on only for a member playing their run in the dungeon world.
+            lockers.settle(p, m != null && Objects.equals(m.characterId(), charId) && inDungeonWorld(p));
+        }
         if (m != null && Objects.equals(m.characterId(), charId)) {
             if (!inDungeonWorld(p)) {
                 unspectate(p); // an out member moved out of the dungeon doesn't stay a spectator
@@ -1178,6 +1277,9 @@ public final class RunManager {
         Location to = files.returnPoint(p.getUniqueId(), charId);
         if (to == null) {
             to = Bukkit.getWorlds().get(0).getSpawnLocation();
+        }
+        if (lockers != null) {
+            lockers.takeOff(p); // dungeon items never leave the dungeon world
         }
         unspectate(p);
         p.removePotionEffect(PotionEffectType.GLOWING);

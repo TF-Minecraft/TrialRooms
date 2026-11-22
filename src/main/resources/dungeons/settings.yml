@@ -18,6 +18,10 @@ alone-bleed-out-seconds: 10
 # A party that gets nowhere for this many seconds (no new room, no fight) is told the way on once,
 # in chat and with snow particles at the doorway; the next hint waits twice as long.
 hint-seconds: 60
+# Seconds the entrance room stays shut while the party gets ready: players put on a loadout from
+# their dungeon locker (or keep their own gear) and say they are ready; the doors open as soon as
+# everyone is. 0 = no lobby: the doors open at once and loadouts can't be worn.
+lobby-seconds: 120
 # Party members within this many blocks of the gate come along.
 gate-radius: 8
 # Seconds a disconnected player keeps their place in the run.
