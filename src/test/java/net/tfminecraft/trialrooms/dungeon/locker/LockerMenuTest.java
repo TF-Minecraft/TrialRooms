@@ -54,6 +54,7 @@ class LockerMenuTest {
     LockerMenu.materialSlot = Material::getEquipmentSlot;
     LockerMenu.itemType = LockerMenu::mmoType;
     LockerMenu.mythicLib = LockerMenu::mythicLibEnabled;
+    LockerMenu.isGem = LockerMenu::mmoGem;
     MockBukkit.unmock();
   }
 
@@ -287,7 +288,7 @@ class LockerMenuTest {
 
   @Test
   void gemsAreSocketedFromTheStash() {
-    LockerMenu.itemType = it -> it.getType() == Material.AMETHYST_SHARD ? "GEM_STONE" : null;
+    LockerMenu.isGem = it -> it.getType() == Material.AMETHYST_SHARD;
     FakeExtras extras = new FakeExtras();
     String gem = lockers.add(ann, new ItemStack(Material.AMETHYST_SHARD));
     String helm = lockers.add(ann, new ItemStack(Material.DIAMOND_HELMET));
@@ -336,10 +337,14 @@ class LockerMenuTest {
     when(tag.getType()).thenReturn("RING");
     assertFalse(LockerMenu.mythicLibEnabled());
     assertNull(LockerMenu.mmoType(item), "no MythicLib on this server: no MMOItems types");
+    assertFalse(LockerMenu.mmoGem(item), "nor gems");
     LockerMenu.mythicLib = () -> true;
     try (var nbt = mockStatic(io.lumine.mythic.lib.api.item.NBTItem.class)) {
       nbt.when(() -> io.lumine.mythic.lib.api.item.NBTItem.get(item)).thenReturn(tag);
       assertEquals("RING", LockerMenu.mmoType(item));
+      assertFalse(LockerMenu.mmoGem(item), "a ring has no gem colour");
+      when(tag.hasTag("MMOITEMS_GEM_COLOR")).thenReturn(true);
+      assertTrue(LockerMenu.mmoGem(item), "a gem colour makes a gem");
     }
   }
 

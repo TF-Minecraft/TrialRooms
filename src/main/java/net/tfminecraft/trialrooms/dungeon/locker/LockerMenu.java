@@ -267,7 +267,14 @@ public final class LockerMenu implements InventoryHolder {
     }
 
     static boolean gem(ItemStack item) {
-        return "GEM_STONE".equalsIgnoreCase(itemType.apply(item));
+        return isGem.test(item);
+    }
+
+    /** Whether an item is a gem: it carries a gem colour (gem templates come in more than one MMOItems type). */
+    static Predicate<ItemStack> isGem = LockerMenu::mmoGem;
+
+    static boolean mmoGem(ItemStack item) {
+        return mythicLib.getAsBoolean() && io.lumine.mythic.lib.api.item.NBTItem.get(item).hasTag("MMOITEMS_GEM_COLOR");
     }
 
     private void slotClick(Locker l, int invSlot) {

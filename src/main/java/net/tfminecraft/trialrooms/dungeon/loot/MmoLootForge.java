@@ -133,13 +133,7 @@ public final class MmoLootForge implements LootForge {
             }
         }
         plan.stats().forEach((stat, v) -> set(mmo, stat, v, false));
-        String name = colour(plan.rarity().colour()) + plan.name();
-        mmo.setData(ItemStats.NAME, new NameData(name));
-        StatHistory names = mmo.computeStatHistory(ItemStats.NAME);
-        if (names != null && names.getOriginalData() instanceof NameData og) {
-            og.setString(name);
-            mmo.setStatHistory(ItemStats.NAME, names);
-        }
+        name(mmo, colour(plan.rarity().colour()) + plan.name());
         List<String> lore = new ArrayList<>();
         plan.lore().forEach(line -> lore.add("§7" + line));
         mmo.setData(ItemStats.LORE, new StringListData(lore));
@@ -157,7 +151,7 @@ public final class MmoLootForge implements LootForge {
         }
         set(mmo, plan.stat(), plan.value(), false);
         mmo.setData(ItemStats.GEM_COLOR, new StringData(socket));
-        mmo.setData(ItemStats.NAME, new NameData(colour(plan.rarity().colour()) + plan.name()));
+        name(mmo, colour(plan.rarity().colour()) + plan.name());
         List<String> lore = new ArrayList<>();
         plan.lore().forEach(line -> lore.add("§7" + line));
         mmo.setData(ItemStats.LORE, new StringListData(lore));
@@ -198,6 +192,16 @@ public final class MmoLootForge implements LootForge {
             hist.registerExternalData(data);
         }
         mmo.setStatHistory(type, hist);
+    }
+
+    /** Names an item; the history's original too, or the build puts the template's name back. */
+    private static void name(MMOItem mmo, String name) {
+        mmo.setData(ItemStats.NAME, new NameData(name));
+        StatHistory names = mmo.computeStatHistory(ItemStats.NAME);
+        if (names != null && names.getOriginalData() instanceof NameData og) {
+            og.setString(name);
+            mmo.setStatHistory(ItemStats.NAME, names);
+        }
     }
 
     /** Builds an MMOItem into an item (MMOItems' builder needs a running server to even load). */
