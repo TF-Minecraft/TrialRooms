@@ -24,7 +24,7 @@ import sys
 from collections import deque
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from roomlib import DOOR_H, DOOR_W, Room, walk_check  # noqa: E402
+from roomlib import DOOR_H, DOOR_W, Room, door_openings, see_through, shell, shell_check, walk_check  # noqa: E402
 
 KIT = "seithr"
 CELL = 16
@@ -574,7 +574,17 @@ class Gen:
         self.build()
         self.place_markers()
         self.dress()
+        self.seal()
         return r
+
+    def seal(self):
+        """Clear ice, glass and anything else see-through on the outer shell turns solid: never a view
+        of the void."""
+        r = self.r
+        doors = door_openings(r)
+        for p in shell(r):
+            if p not in doors and see_through(r.get(*p)):
+                r.put(*p, BLUE if self.cave else BRICK)
 
 
 def make(spec, tries=80):
@@ -586,7 +596,7 @@ def make(spec, tries=80):
         except ValueError as e:  # no spot for a piece the room needs
             last = [str(e)]
             continue
-        last = walk_check(room)
+        last = walk_check(room) + shell_check(room)
         spawns = sum(1 for m in room.markers if m[0] == "spawn")
         if not last and (spec.type not in ("combat", "elite", "boss") or spawns >= 3):
             return room

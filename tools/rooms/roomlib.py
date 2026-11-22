@@ -9,6 +9,9 @@ Kit rules (the plugin checks the same ones):
   plugin raises or lowers the next room to match.
 - A room may fill only some cells of its box (L, T, U shapes). Nothing is written in the other cells,
   not even air, so placing the room never touches a neighbour there.
+- The room is closed: every block of its outer shell (its sides, floor and roof) is a solid block
+  nobody can see through, except the doorway openings (shell_check). The dungeon world around
+  the rooms is empty void, and a glimpse of it breaks the cave.
 - No jumps: height changes use stairs or slabs, every doorway has a flat landing at least 4 blocks
   deep, and every doorway and spawn point can be walked to from every doorway (walk_check).
   Mobs get at least 3 blocks of headroom.
@@ -243,6 +246,52 @@ def _clear(room, x, z, lo, hi):
     """Whether a player fits in a column from standing height lo up to standing height hi (half blocks)."""
     blocks = range((lo + 1) // 2, (hi + 5) // 2)
     return blocks.stop <= room.h and all(_passable(room.get(x, yy, z)) for yy in blocks)
+
+
+SEE_THROUGH_SUFFIXES = ("_slab", "_stairs", "_wall", "_fence", "_fence_gate", "_pane", "_door", "_trapdoor",
+                        "campfire", "_leaves", "_carpet")
+SEE_THROUGH_BASES = {"minecraft:ice", "minecraft:snow", "minecraft:iron_bars", "minecraft:barrier", "minecraft:chain",
+                     "minecraft:lantern", "minecraft:soul_lantern"}
+
+
+def see_through(name):
+    """Whether a block lets the eye pass: air, light, ice, glass and anything less than a full cube."""
+    base, _ = _props(name)
+    return _passable(name) or base in PASSABLE_BASES or base in SEE_THROUGH_BASES or "glass" in base         or base.endswith(SEE_THROUGH_SUFFIXES)
+
+
+def door_openings(room):
+    """Every (x, y, z) a doorway leaves open in the room's outer wall."""
+    start = (room.cell - DOOR_W) // 2
+    out = set()
+    for cx, cz, side, floor in room.doors:
+        for (x, z) in list(room.edge_blocks(cx, cz, side))[start:start + DOOR_W]:
+            for y in range(floor + 1, floor + 1 + DOOR_H):
+                out.add((x, y, z))
+    return out
+
+
+def shell(room):
+    """Every (x, y, z) of the room's outer shell: its roof and bottom layers and each block that faces
+    a column outside the room."""
+    for x in range(room.w):
+        for z in range(room.d):
+            if not room.fills(x // room.cell, z // room.cell):
+                continue
+            edge = any(not (0 <= x + dx < room.w and 0 <= z + dz < room.d)
+                       or not room.fills((x + dx) // room.cell, (z + dz) // room.cell)
+                       for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+            for y in range(room.h):
+                if edge or y in (0, room.h - 1):
+                    yield x, y, z
+
+
+def shell_check(room):
+    """Shell blocks the void shows through, as messages (at most 5); an empty list means the room is closed."""
+    doors = door_openings(room)
+    leaks = [f"{room.id}: {room.get(*p)} at {p[0]} {p[1]} {p[2]} lets the void show"
+             for p in shell(room) if p not in doors and see_through(room.get(*p))]
+    return leaks[:5]
 
 
 def walk_check(room, max_drop=6):
