@@ -5,6 +5,7 @@ version: '${project.version}'
 author: Drefvelin
 
 depend: [MythicMobs, TLibs, DenarEconomy, RPCharacters]
+softdepend: [AdvancedCrafting, MMOItems]
 
 commands:
   tr:

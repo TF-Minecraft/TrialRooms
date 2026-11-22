@@ -44,12 +44,15 @@ class LockerMenuTest {
     // MockBukkit has no equippable parts or material slots: go by the material's name
     LockerMenu.materialSlot = LockerMenuTest::byName;
     LockerMenu.wornOn = it -> byName(it.getType());
+    LockerMenu.itemType = it -> it.getType() == Material.GOLD_NUGGET ? "RING" : it.getType() == Material.GOLD_INGOT
+        ? "AMULET" : null;
   }
 
   @AfterEach
   void tearDown() {
     LockerMenu.wornOn = LockerMenu::wornOn;
     LockerMenu.materialSlot = Material::getEquipmentSlot;
+    LockerMenu.itemType = LockerMenu::mmoType;
     MockBukkit.unmock();
   }
 
@@ -221,6 +224,29 @@ class LockerMenuTest {
     assertFalse(LockerMenu.fits(new ItemStack(Material.DIAMOND_BOOTS), 39));
     assertTrue(LockerMenu.fits(new ItemStack(Material.DIAMOND_BOOTS), 40), "the off hand takes anything");
     assertTrue(LockerMenu.fits(new ItemStack(Material.STONE), 3));
+  }
+
+  @Test
+  void jewelleryGoesInTheRingAndAmuletSlots() {
+    assertTrue(LockerMenu.fits(new ItemStack(Material.GOLD_NUGGET), 9));
+    assertFalse(LockerMenu.fits(new ItemStack(Material.GOLD_INGOT), 9));
+    assertTrue(LockerMenu.fits(new ItemStack(Material.GOLD_INGOT), 10));
+    assertFalse(LockerMenu.fits(new ItemStack(Material.STONE), 10));
+    String ring = lockers.add(ann, new ItemStack(Material.GOLD_NUGGET));
+    LockerMenu m = menu();
+    m.open();
+    m.click(LockerMenu.STASH);
+    m.click(15); // the amulet slot
+    assertTrue(last().contains("doesn't go in the amulet slot"));
+    m.click(14);
+    assertEquals(java.util.Map.of(9, ring), lockers.locker(ann).loadout(0));
+    ItemStack item = new ItemStack(Material.GOLD_NUGGET);
+    io.lumine.mythic.lib.api.item.NBTItem tag = mock(io.lumine.mythic.lib.api.item.NBTItem.class);
+    when(tag.getType()).thenReturn("RING");
+    try (var nbt = mockStatic(io.lumine.mythic.lib.api.item.NBTItem.class)) {
+      nbt.when(() -> io.lumine.mythic.lib.api.item.NBTItem.get(item)).thenReturn(tag);
+      assertEquals("RING", LockerMenu.mmoType(item));
+    }
   }
 
   @Test

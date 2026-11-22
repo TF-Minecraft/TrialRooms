@@ -14,6 +14,7 @@ import net.tfminecraft.trialrooms.dungeon.generator.DungeonLayout;
 import net.tfminecraft.trialrooms.dungeon.generator.LayoutMap;
 import net.tfminecraft.trialrooms.dungeon.locker.LockerMenu;
 import net.tfminecraft.trialrooms.dungeon.locker.LockerService;
+import net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot;
 import net.tfminecraft.trialrooms.dungeon.run.DungeonRun;
 import net.tfminecraft.trialrooms.dungeon.run.GateStore;
 import net.tfminecraft.trialrooms.dungeon.run.RunManager;
@@ -27,9 +28,9 @@ public final class DungeonCommand {
 
     static final String USAGE = "§eUsage: /tr dungeon <map|preview|start> <recipe> [seed] | clear | reload | runs"
             + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave | ready"
-            + " | locker [give <player>]";
+            + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item]";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "allies", "gate", "leave", "ready", "locker");
+            "rooms", "allies", "gate", "leave", "ready", "locker", "loot");
     /** What players without the staff permission may use. */
     public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker");
 
@@ -54,6 +55,7 @@ public final class DungeonCommand {
             case "leave" -> leave(sender);
             case "ready" -> ready(sender);
             case "locker" -> locker(sender, args);
+            case "loot" -> loot(sender, args);
             case "clear" -> sender.sendMessage("§aCleared " + module.clearPreviews() + " dungeon previews.");
             case "reload" -> {
                 List<String> problems = module.reload();
@@ -245,6 +247,39 @@ public final class DungeonCommand {
         String id = lockers.add(target, staff.getInventory().getItemInMainHand());
         sender.sendMessage(id == null ? "§c" + target.getName() + " has no usable locker (no character played?)."
                 : "§aA copy is in " + target.getName() + "'s dungeon locker.");
+    }
+
+    /** Staff: rolls a dungeon item for a player's class and files it in their locker (until drops come). */
+    private void loot(CommandSender sender, String[] args) {
+        DungeonLoot loot = module.loot();
+        LockerService lockers = module.runs().lockers();
+        if (loot == null || lockers == null) {
+            sender.sendMessage("§cDungeon loot is off (it needs MMOItems and AdvancedCrafting).");
+            return;
+        }
+        Player target = args.length >= 2 ? Bukkit.getPlayerExact(args[1]) : null;
+        if (target == null) {
+            sender.sendMessage("§cUsage: /tr dungeon loot <player> [tier] [rarity|any] [item]");
+            return;
+        }
+        int tier;
+        try {
+            tier = args.length >= 3 ? Integer.parseInt(args[2]) : 1;
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cThe tier must be a whole number.");
+            return;
+        }
+        String rarity = args.length >= 4 && !args[3].equalsIgnoreCase("any") ? args[3] : null;
+        DungeonLoot.Rolled r = loot.roll(target, tier, rarity, args.length >= 5 ? args[4] : null);
+        if (r.item() == null) {
+            sender.sendMessage("§c" + r.problem());
+            return;
+        }
+        String name = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(r.item().effectiveName());
+        sender.sendMessage(lockers.add(target, r.item()) == null
+                ? "§c" + target.getName() + " has no usable locker (no character played?)."
+                : "§a" + name + " is in " + target.getName() + "'s dungeon locker.");
     }
 
     /** Tab completion for the arguments after {@code dungeon}. */

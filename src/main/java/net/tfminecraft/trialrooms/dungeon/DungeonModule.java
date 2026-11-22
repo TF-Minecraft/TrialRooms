@@ -33,6 +33,9 @@ import net.tfminecraft.trialrooms.dungeon.allies.AllyRules;
 import net.tfminecraft.trialrooms.dungeon.run.GateStore;
 import net.tfminecraft.trialrooms.dungeon.run.Ports;
 import net.tfminecraft.trialrooms.dungeon.locker.ItemCodec;
+import net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot;
+import net.tfminecraft.trialrooms.dungeon.loot.LootKit;
+import net.tfminecraft.trialrooms.dungeon.loot.MmoLootForge;
 import net.tfminecraft.trialrooms.dungeon.locker.LockerListener;
 import net.tfminecraft.trialrooms.dungeon.locker.LockerService;
 import net.tfminecraft.trialrooms.dungeon.locker.LockerStore;
@@ -59,7 +62,8 @@ public final class DungeonModule {
     /** Bundled default files, copied only when missing. */
     static final List<String> DEFAULT_LISTS = List.of("dungeons/kits/greybox/files.txt",
             "dungeons/kits/seithr/files.txt");
-    static final List<String> DEFAULT_FILES = List.of("dungeons/recipes.yml", "dungeons/settings.yml");
+    static final List<String> DEFAULT_FILES = List.of("dungeons/recipes.yml", "dungeons/settings.yml",
+            "dungeons/loot.yml");
 
     private final JavaPlugin plugin;
     private final Function<WorldCreator, World> creator;
@@ -73,6 +77,8 @@ public final class DungeonModule {
     private RunSettings settings = RunSettings.defaults();
     private RunManager runs;
     private AllyFilter allyFilter;
+    private LootKit lootKit;
+    private DungeonLoot loot;
 
     public DungeonModule(JavaPlugin plugin, Function<WorldCreator, World> creator) {
         this.plugin = plugin;
@@ -116,6 +122,12 @@ public final class DungeonModule {
         LockerService lockers = new LockerService(plugin, new LockerStore(root.resolve("lockers"), plugin.getLogger()),
                 ItemCodec.PAPER, characters::activeCharacterId, org.bukkit.entity.Player::saveData);
         runs.lockers(lockers);
+        var plugins = plugin.getServer().getPluginManager();
+        if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
+            loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
+        } else {
+            plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
+        }
         runs.start();
         plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs), plugin);
         plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
@@ -149,6 +161,16 @@ public final class DungeonModule {
         return allyFilter;
     }
 
+    /** loot.yml, or null when it is missing or has problems. */
+    public LootKit lootKit() {
+        return lootKit;
+    }
+
+    /** Dungeon loot, or null without its item plugins. */
+    public DungeonLoot loot() {
+        return loot;
+    }
+
     public RunSettings settings() {
         return settings;
     }
@@ -170,6 +192,10 @@ public final class DungeonModule {
             }
         }
         recipes.putAll(RecipeLoader.load(new File(root, "recipes.yml"), problems));
+        File lootFile = new File(root, "loot.yml");
+        lootKit = lootFile.isFile()
+                ? LootKit.load(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootFile), problems)
+                : null;
         File settingsFile = new File(root, "settings.yml");
         settings = settingsFile.isFile()
                 ? RunSettings.from(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile))

@@ -24,7 +24,7 @@ import net.kyori.adventure.text.format.TextDecoration;
  * carried out of it:
  * <ul>
  * <li>top row: the three loadouts, "wear this loadout" and "wear your own gear";</li>
- * <li>rows two and three: the chosen loadout's slots (armour, off hand, hotbar);</li>
+ * <li>rows two and three: the chosen loadout's slots (armour, off hand, ring, amulet, hotbar);</li>
  * <li>the bottom three rows: every dungeon item in the locker, a page at a time.</li>
  * </ul>
  * Click an item below, then a loadout slot, to put it there; click a filled slot to empty it.
@@ -39,11 +39,12 @@ public final class LockerMenu implements InventoryHolder {
     static final int PAGE = 27;
     /** Menu slot to inventory slot for a loadout's slots. */
     static final Map<Integer, Integer> LOADOUT_SLOTS = Map.ofEntries(Map.entry(9, 39), Map.entry(10, 38),
-            Map.entry(11, 37), Map.entry(12, 36), Map.entry(13, 40), Map.entry(18, 0), Map.entry(19, 1),
+            Map.entry(11, 37), Map.entry(12, 36), Map.entry(13, 40), Map.entry(14, 9), Map.entry(15, 10),
+            Map.entry(18, 0), Map.entry(19, 1),
             Map.entry(20, 2), Map.entry(21, 3), Map.entry(22, 4), Map.entry(23, 5), Map.entry(24, 6),
             Map.entry(25, 7), Map.entry(26, 8));
     private static final Map<Integer, String> SLOT_NAMES = Map.of(39, "Helmet", 38, "Chestplate", 37, "Leggings",
-            36, "Boots", 40, "Off hand");
+            36, "Boots", 40, "Off hand", 9, "Ring", 10, "Amulet");
 
     private final LockerService service;
     private final Player player;
@@ -203,8 +204,14 @@ public final class LockerMenu implements InventoryHolder {
         service.saveLocker(player, l);
     }
 
-    /** Armour slots take only what is worn there; the off hand and hotbar take anything. */
+    /**
+     * Armour slots take only what is worn there, the ring and amulet slots only MMOItems rings and
+     * amulets (as MMOInventory allows); the off hand and hotbar take anything.
+     */
     static boolean fits(ItemStack item, int invSlot) {
+        if (invSlot == 9 || invSlot == 10) {
+            return (invSlot == 9 ? "RING" : "AMULET").equalsIgnoreCase(itemType.apply(item));
+        }
         EquipmentSlot need = switch (invSlot) {
             case 39 -> EquipmentSlot.HEAD;
             case 38 -> EquipmentSlot.CHEST;
@@ -219,6 +226,13 @@ public final class LockerMenu implements InventoryHolder {
     static Function<ItemStack, EquipmentSlot> wornOn = LockerMenu::wornOn;
 
     static Function<Material, EquipmentSlot> materialSlot = Material::getEquipmentSlot;
+
+    /** An item's MMOItems type (RING, AMULET, ...), or null. */
+    static Function<ItemStack, String> itemType = LockerMenu::mmoType;
+
+    static String mmoType(ItemStack item) {
+        return io.lumine.mythic.lib.api.item.NBTItem.get(item).getType();
+    }
 
     static EquipmentSlot wornOn(ItemStack item) {
         ItemMeta meta = item.getItemMeta();
