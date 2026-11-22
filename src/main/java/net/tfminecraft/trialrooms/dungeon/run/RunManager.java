@@ -235,9 +235,10 @@ public final class RunManager {
             if (isPlayingMember(ar, p)) { // (the step counts anyone outside the dungeon world as away)
                 try {
                     rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id());
-                } catch (RuntimeException e) {
+                } catch (Exception | LinkageError e) {
                     // one player's failed reward never stops the others' or the run
-                    plugin.getLogger().warning("[dungeons] the " + moment + " reward for " + p.getName() + " failed: " + e);
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "[dungeons] the " + moment + " reward for " + p.getName() + " failed", e);
                 }
             }
         }

@@ -303,6 +303,7 @@ class LockerMenuTest {
     assertEquals(gem2, m.selected());
     m.click(LockerMenu.STASH + 1); // the helmet: socket it
     assertEquals(java.util.List.of("socket " + gem2 + " " + helm), extras.asked);
+    assertEquals(0, m.page(), "the item's page is shown");
     assertNull(m.selected());
     assertEquals("socketed", last());
     m.click(LockerMenu.STASH + 1); // the helmet picked, then a gem: just picks the gem

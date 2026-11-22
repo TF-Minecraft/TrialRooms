@@ -347,6 +347,42 @@ class MmoLootForgeTest {
   }
 
   @Test
+  void otherConsumablesNeverWorkOnDungeonItems() {
+    ItemStack dungeon = mock(ItemStack.class);
+    var guard = new ReforgeGuard(it -> it == dungeon);
+    NBTItem marked = mock(NBTItem.class);
+    when(marked.getItem()).thenReturn(dungeon);
+    NBTItem plain = mock(NBTItem.class);
+    when(plain.getItem()).thenReturn(mock(ItemStack.class));
+    var deconstruct = mock(net.Indyuce.mmoitems.api.event.item.DeconstructItemEvent.class);
+    when(deconstruct.getDeconstructedItem()).thenReturn(marked);
+    guard.onDeconstruct(deconstruct);
+    verify(deconstruct).setCancelled(true);
+    var repair = mock(net.Indyuce.mmoitems.api.event.item.RepairItemEvent.class);
+    when(repair.getTargetItem()).thenReturn(plain);
+    guard.onRepair(repair);
+    verify(repair, never()).setCancelled(anyBoolean());
+    var soulbound = mock(net.Indyuce.mmoitems.api.event.item.ApplySoulboundEvent.class);
+    when(soulbound.getTargetItem()).thenReturn(null);
+    guard.onSoulbound(soulbound);
+    verify(soulbound, never()).setCancelled(anyBoolean());
+    var soulbound2 = mock(net.Indyuce.mmoitems.api.event.item.ApplySoulboundEvent.class);
+    when(soulbound2.getTargetItem()).thenReturn(marked);
+    guard.onSoulbound(soulbound2);
+    verify(soulbound2).setCancelled(true);
+    var read = mock(net.Indyuce.mmoitems.api.item.mmoitem.VolatileMMOItem.class, RETURNS_DEEP_STUBS);
+    when(read.getNBT().getItem()).thenReturn(dungeon);
+    var upgrade = mock(net.Indyuce.mmoitems.api.event.item.UpgradeItemEvent.class);
+    when(upgrade.getTargetItem()).thenReturn(read);
+    guard.onUpgrade(upgrade);
+    verify(upgrade).setCancelled(true);
+    var upgradePlain = mock(net.Indyuce.mmoitems.api.event.item.UpgradeItemEvent.class);
+    when(upgradePlain.getTargetItem()).thenReturn(mock(net.Indyuce.mmoitems.api.item.mmoitem.MMOItem.class));
+    guard.onUpgrade(upgradePlain);
+    verify(upgradePlain, never()).setCancelled(anyBoolean());
+  }
+
+  @Test
   void dungeonItemsAreNeverReforged() {
     var guard = new ReforgeGuard(it -> it != null);
     var event = mock(net.Indyuce.mmoitems.api.event.MMOItemReforgeEvent.class, RETURNS_DEEP_STUBS);

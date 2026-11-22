@@ -231,6 +231,7 @@ class RunManagerTest {
       if (p.getName().equals("Ann")) {
         throw new IllegalStateException("broken item plugin");
       }
+      throw new NoClassDefFoundError("a soft dependency is missing");
     });
     into(a, RoomType.VAULT);
     ticks(2);

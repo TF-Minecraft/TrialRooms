@@ -99,9 +99,10 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         // The find, the marks and the counters go to disk in one write: none can be kept without the rest.
         String id = found == null ? null : lockers.file(l, found);
         if (!lockers.saveLocker(p, l)) {
+            // Everything stays in the locker as it is in memory (the find with its marks and counters):
+            // the next save that works writes it all together.
             if (id != null) {
-                l.remove(id);
-                p.sendMessage("§cYou found something, but your locker could not keep it. Tell staff.");
+                p.sendMessage("§cYou found " + name(found) + "§c, but your locker could not be saved yet. Tell staff.");
             }
             return;
         }

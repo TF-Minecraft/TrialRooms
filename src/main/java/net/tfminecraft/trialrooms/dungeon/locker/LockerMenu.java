@@ -261,6 +261,10 @@ public final class LockerMenu implements InventoryHolder {
                 && !gem(service.show(l, id))) {
             player.sendMessage(extras.socket(player, selected, id));
             selected = null;
+            // Show the page the item is on: TLibs puts a socketed item's look back a tick later on a
+            // matching item in the open screen, and this keeps that the item's own icon here.
+            int at = new ArrayList<>(l.items().keySet()).indexOf(id);
+            page = Math.max(0, at) / PAGE;
             return;
         }
         selected = id.equals(selected) ? null : id;
