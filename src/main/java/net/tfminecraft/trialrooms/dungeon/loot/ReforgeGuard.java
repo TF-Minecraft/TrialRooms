@@ -9,6 +9,10 @@ import org.bukkit.inventory.ItemStack;
 
 import net.Indyuce.mmoitems.api.event.MMOItemReforgeEvent;
 import net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent;
+import net.Indyuce.mmoitems.api.event.item.ApplySoulboundEvent;
+import net.Indyuce.mmoitems.api.event.item.DeconstructItemEvent;
+import net.Indyuce.mmoitems.api.event.item.RepairItemEvent;
+import net.Indyuce.mmoitems.api.event.item.UpgradeItemEvent;
 import net.Indyuce.mmoitems.api.event.item.UnsocketGemStoneEvent;
 import net.Indyuce.mmoitems.api.interaction.GemStone;
 import net.Indyuce.mmoitems.api.item.mmoitem.MMOItem;
@@ -43,6 +47,35 @@ public final class ReforgeGuard implements Listener {
         if (!MmoLootForge.socketing() && (dungeon(event.getGemStone()) || dungeon(event.getTargetItem()))) {
             event.setCancelled(true);
             event.setResult(GemStone.ResultType.NONE);
+        }
+    }
+
+    /** MMOItems' other consumables never work on a dungeon item (deconstructing one would make loot of it). */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onDeconstruct(DeconstructItemEvent event) {
+        cancelOn(event, event.getDeconstructedItem());
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onUpgrade(UpgradeItemEvent event) {
+        if (dungeon(event.getTargetItem())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onRepair(RepairItemEvent event) {
+        cancelOn(event, event.getTargetItem());
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onSoulbound(ApplySoulboundEvent event) {
+        cancelOn(event, event.getTargetItem());
+    }
+
+    private void cancelOn(org.bukkit.event.Cancellable event, io.lumine.mythic.lib.api.item.NBTItem target) {
+        if (target != null && dungeonItem.test(target.getItem())) {
+            event.setCancelled(true);
         }
     }
 

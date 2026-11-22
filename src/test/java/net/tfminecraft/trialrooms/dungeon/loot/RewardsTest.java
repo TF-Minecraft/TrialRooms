@@ -193,11 +193,11 @@ public class RewardsTest {
     when(lockers.saveLocker(ann, locker)).thenReturn(false);
     locker.put("id", new byte[] {1});
     rewards(doubles(0.9)).reward(ann, "d", 1, Moment.VAULT, run);
-    verify(ann).sendMessage("§cYou found something, but your locker could not keep it. Tell staff.");
-    assertNull(locker.item("id"), "the find is taken back out with the failed save");
+    verify(ann).sendMessage("§cYou found Rimebound Sword§c, but your locker could not be saved yet. Tell staff.");
+    assertNotNull(locker.item("id"), "the find stays with its marks for the next save that works");
     clearInvocations(ann);
     rewards(doubles(0.9)).reward(ann, "d", 1, Moment.ELITE, UUID.randomUUID()); // nothing found, save fails quietly
-    verify(ann, never()).sendMessage("§cYou found something, but your locker could not keep it. Tell staff.");
+    verify(ann, never()).sendMessage(contains("could not be saved yet"));
     when(lockers.saveLocker(ann, locker)).thenReturn(true);
     // a moment worth nothing and no marks: no message at all about marks
     clearInvocations(ann);
