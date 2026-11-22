@@ -243,6 +243,145 @@ class MmoLootForgeTest {
     }
   }
 
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  @Test
+  void gemsAreMadeAndSocketedTheMmoItemsWay() {
+    MMOItems plugin = mock(MMOItems.class);
+    StatManager stats = mock(StatManager.class);
+    when(plugin.getStats()).thenReturn(stats);
+    ItemStat health = mock(ItemStat.class);
+    when(stats.get("MAX_HEALTH")).thenReturn(health);
+    MMOItems.plugin = plugin;
+    ItemStack template = mock(ItemStack.class);
+    when(template.getType()).thenReturn(Material.AMETHYST_SHARD);
+    when(items.getCreator().getItemFromPath("m.gemstones.larimar")).thenReturn(template);
+    when(items.getCreator().getItemFromPath("m.gemstones.none")).thenReturn(null);
+    ItemStack built = mock(ItemStack.class);
+    MmoLootForge.builder = m -> built;
+    LootRoller.GemPlan plan = new LootRoller.GemPlan(LootCoreTest.shipped().rarity("rare"), 1, "Glacial Rimestone",
+        "max_health", 1.5, List.of("Rare dungeon gem, tier 1"));
+    try (MockedConstruction<LiveMMOItem> live = mockConstruction(LiveMMOItem.class)) {
+      assertSame(built, forge.makeGem(plan, "gemstones.larimar", "Dungeon Gem"));
+      LiveMMOItem m = live.constructed().getFirst();
+      verify(m).setData(eq(ItemStats.GEM_COLOR), argThat(d -> "Dungeon Gem".equals(((net.Indyuce.mmoitems.stat.data.StringData) d).getString())));
+      verify(m).setData(eq(health), argThat(d -> ((DoubleData) d).getValue() == 1.5));
+      assertNull(forge.makeGem(plan, "gemstones.none", "Dungeon Gem"));
+    }
+    Player p = mock(Player.class);
+    ItemStack item = mock(ItemStack.class);
+    ItemStack gem = mock(ItemStack.class);
+    ItemStack socketed = mock(ItemStack.class);
+    // (TLibs' merger hands back the rebuilt item as it is when the old one is empty, as this stand-in is)
+    when(item.getType()).thenReturn(Material.AIR);
+    ItemStack merged = socketed;
+    try (MockedStatic<PlayerData> pd = mockStatic(PlayerData.class);
+        MockedStatic<net.Indyuce.mmoitems.api.Type> types = mockStatic(net.Indyuce.mmoitems.api.Type.class)) {
+      pd.when(() -> PlayerData.get(p)).thenReturn(mock(PlayerData.class));
+      for (var result : List.of(net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.SUCCESS,
+          net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.FAILURE,
+          net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.NONE)) {
+        var applied = mock(net.Indyuce.mmoitems.api.interaction.GemStone.ApplyResult.class);
+        when(applied.getType()).thenReturn(result);
+        when(applied.getResult()).thenReturn(socketed);
+        try (MockedConstruction<net.Indyuce.mmoitems.api.interaction.GemStone> stones =
+            mockConstruction(net.Indyuce.mmoitems.api.interaction.GemStone.class,
+                (s, c) -> when(s.applyOntoItem(any(NBTItem.class), any())).thenAnswer(i -> {
+                  assertTrue(MmoLootForge.socketing(), "the guard lets the locker's own socketing through");
+                  return applied;
+                }))) {
+          LootForge.Socketed s = forge.socket(p, item, gem);
+          assertEquals(switch (result) {
+            case SUCCESS -> LootForge.Socketing.DONE;
+            case FAILURE -> LootForge.Socketing.BROKE;
+            default -> LootForge.Socketing.NO_FIT;
+          }, s.result());
+          assertEquals(result == net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.SUCCESS ? merged : null, s.item(),
+              "the look TLibs keeps is put back on the rebuilt item");
+          assertFalse(MmoLootForge.socketing());
+        }
+      }
+    }
+  }
+
+  @Test
+  void gemsNeverComeOutOfOrGoIntoDungeonItemsOutsideTheLocker() {
+    ItemStack dungeon = mock(ItemStack.class);
+    var guard = new ReforgeGuard(it -> it == dungeon);
+    var read = mock(net.Indyuce.mmoitems.api.item.mmoitem.VolatileMMOItem.class, RETURNS_DEEP_STUBS);
+    when(read.getNBT().getItem()).thenReturn(dungeon);
+    var plainRead = mock(net.Indyuce.mmoitems.api.item.mmoitem.VolatileMMOItem.class, RETURNS_DEEP_STUBS);
+    when(plainRead.getNBT().getItem()).thenReturn(mock(ItemStack.class));
+    var fresh = mock(net.Indyuce.mmoitems.api.item.mmoitem.MMOItem.class);
+    var unsocket = mock(net.Indyuce.mmoitems.api.event.item.UnsocketGemStoneEvent.class);
+    when(unsocket.getTargetItem()).thenReturn(read);
+    guard.onUnsocket(unsocket);
+    verify(unsocket).setCancelled(true);
+    var unsocketPlain = mock(net.Indyuce.mmoitems.api.event.item.UnsocketGemStoneEvent.class);
+    when(unsocketPlain.getTargetItem()).thenReturn(fresh);
+    guard.onUnsocket(unsocketPlain);
+    verify(unsocketPlain, never()).setCancelled(anyBoolean());
+    var gemIn = mock(net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent.class);
+    when(gemIn.getGemStone()).thenReturn(read);
+    guard.onSocket(gemIn);
+    verify(gemIn).setCancelled(true);
+    verify(gemIn).setResult(net.Indyuce.mmoitems.api.interaction.GemStone.ResultType.NONE);
+    var into = mock(net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent.class);
+    when(into.getGemStone()).thenReturn(plainRead);
+    when(into.getTargetItem()).thenReturn(read);
+    guard.onSocket(into);
+    verify(into).setCancelled(true);
+    var normal = mock(net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent.class);
+    when(normal.getGemStone()).thenReturn(plainRead);
+    when(normal.getTargetItem()).thenReturn(plainRead);
+    guard.onSocket(normal);
+    verify(normal, never()).setCancelled(anyBoolean());
+    MmoLootForge.socketing = true;
+    try {
+      var locker = mock(net.Indyuce.mmoitems.api.event.item.ApplyGemStoneEvent.class);
+      when(locker.getGemStone()).thenReturn(read);
+      guard.onSocket(locker);
+      verify(locker, never()).setCancelled(anyBoolean());
+    } finally {
+      MmoLootForge.socketing = false;
+    }
+  }
+
+  @Test
+  void otherConsumablesNeverWorkOnDungeonItems() {
+    ItemStack dungeon = mock(ItemStack.class);
+    var guard = new ReforgeGuard(it -> it == dungeon);
+    NBTItem marked = mock(NBTItem.class);
+    when(marked.getItem()).thenReturn(dungeon);
+    NBTItem plain = mock(NBTItem.class);
+    when(plain.getItem()).thenReturn(mock(ItemStack.class));
+    var deconstruct = mock(net.Indyuce.mmoitems.api.event.item.DeconstructItemEvent.class);
+    when(deconstruct.getDeconstructedItem()).thenReturn(marked);
+    guard.onDeconstruct(deconstruct);
+    verify(deconstruct).setCancelled(true);
+    var repair = mock(net.Indyuce.mmoitems.api.event.item.RepairItemEvent.class);
+    when(repair.getTargetItem()).thenReturn(plain);
+    guard.onRepair(repair);
+    verify(repair, never()).setCancelled(anyBoolean());
+    var soulbound = mock(net.Indyuce.mmoitems.api.event.item.ApplySoulboundEvent.class);
+    when(soulbound.getTargetItem()).thenReturn(null);
+    guard.onSoulbound(soulbound);
+    verify(soulbound, never()).setCancelled(anyBoolean());
+    var soulbound2 = mock(net.Indyuce.mmoitems.api.event.item.ApplySoulboundEvent.class);
+    when(soulbound2.getTargetItem()).thenReturn(marked);
+    guard.onSoulbound(soulbound2);
+    verify(soulbound2).setCancelled(true);
+    var read = mock(net.Indyuce.mmoitems.api.item.mmoitem.VolatileMMOItem.class, RETURNS_DEEP_STUBS);
+    when(read.getNBT().getItem()).thenReturn(dungeon);
+    var upgrade = mock(net.Indyuce.mmoitems.api.event.item.UpgradeItemEvent.class);
+    when(upgrade.getTargetItem()).thenReturn(read);
+    guard.onUpgrade(upgrade);
+    verify(upgrade).setCancelled(true);
+    var upgradePlain = mock(net.Indyuce.mmoitems.api.event.item.UpgradeItemEvent.class);
+    when(upgradePlain.getTargetItem()).thenReturn(mock(net.Indyuce.mmoitems.api.item.mmoitem.MMOItem.class));
+    guard.onUpgrade(upgradePlain);
+    verify(upgradePlain, never()).setCancelled(anyBoolean());
+  }
+
   @Test
   void dungeonItemsAreNeverReforged() {
     var guard = new ReforgeGuard(it -> it != null);

@@ -101,6 +101,7 @@ class DungeonModuleTest {
     assertSame(world, m.world());
     assertNotNull(m.lootKit(), "the bundled loot.yml");
     assertEquals(30, m.lootKit().bases().size());
+    assertNotNull(m.rewardRules(), "and its rewards");
     // a second start keeps edited files
     Files.writeString(data.resolve("dungeons/recipes.yml"), "x: 1\n");
     Files.delete(data.resolve("dungeons/kits/greybox/rooms/rest_camp.yml"));
@@ -279,7 +280,7 @@ class DungeonModuleTest {
     }
     c.run(console, new String[] {"reload"});
     verify(console).sendMessage(startsWith("§c- recipe bad"));
-    assertEquals(List.of("map"), c.complete(new String[] {"M"}));
+    assertEquals(List.of("map", "marks"), c.complete(new String[] {"M"}));
     assertEquals(List.of(), c.complete(new String[] {"map", "z"}));
     assertEquals(List.of(), c.complete(new String[] {"clear", ""}));
     assertEquals(List.of(), c.complete(new String[] {"map", "", ""}));

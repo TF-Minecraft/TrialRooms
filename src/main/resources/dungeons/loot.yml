@@ -60,6 +60,23 @@ bonus:
     projectile_damage_reduction: [1.5, 3]
     magic_damage_reduction: [1.5, 3]
 
+# What runs hand out. Personal loot: each player rolls their own, for their own class, straight into
+# their locker. chance: the chance of an item at each moment (vault, boss, elite room, room event);
+# gem-chance: the share of won rolls that give a dungeon gem instead; pity: added to the next chance
+# after each roll that gives nothing (back to 0 on a win). marks: dungeon marks each moment pays,
+# spent in the locker's shop at prices (by rarity; items are made at shop-tier). weekly: each
+# character rolls items from runs: runs of each dungeon a week (later runs pay marks only) and earns
+# at most marks: marks a week. gems: the MMOItems gem template and the bonus pool of their one stat.
+rewards:
+  chance: {vault: 1.0, boss: 0.35, elite: 0.1, event: 0.15}
+  gem-chance: 0.25
+  pity: 0.1
+  marks: {vault: 10, boss: 5, elite: 2, event: 2}
+  weekly: {runs: 3, marks: 60}
+  prices: {rare: 30, epic: 80}
+  shop-tier: 1
+  gems: {template: gemstones.larimar, pool: jewellery}
+
 # What can drop. recipe: an AdvancedCrafting recipe; template: an MMOItems template (file.id) with
 # its own stats: [min, max]. %material% in the name is where a prefix goes.
 items:

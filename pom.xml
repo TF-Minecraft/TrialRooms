@@ -112,6 +112,13 @@
             <version>1.7.1-SNAPSHOT-tfmc-225aa7f75d4e</version>
             <scope>provided</scope>
         </dependency>
+        <!-- TLibs' item rebuild merger reads NBT-API types; the server has it, tests need it to load. -->
+        <dependency>
+            <groupId>local</groupId>
+            <artifactId>item-nbt-api-plugin</artifactId>
+            <version>2.16.1-tfmc-c571502e7686</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>

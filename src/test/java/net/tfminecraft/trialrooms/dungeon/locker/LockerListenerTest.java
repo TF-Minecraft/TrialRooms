@@ -34,11 +34,18 @@ class LockerListenerTest {
   LockerListener l;
   ItemStack bound = mock(ItemStack.class);
   ItemStack plain = mock(ItemStack.class);
+  ItemStack gemItem = mock(ItemStack.class);
   Player p;
   PlayerInventory inv;
 
+  @org.junit.jupiter.api.AfterEach
+  void tearDown() {
+    LockerMenu.isGem = LockerMenu::mmoGem;
+  }
+
   @BeforeEach
   void setUp() {
+    LockerMenu.isGem = it -> it == gemItem;
     lockers = mock(LockerService.class);
     when(lockers.isDungeonItem(bound)).thenReturn(true);
     l = new LockerListener(lockers);
@@ -83,9 +90,10 @@ class LockerListenerTest {
     InventoryClickEvent e = click(top, p);
     when(e.getClickedInventory()).thenReturn(top);
     when(e.getRawSlot()).thenReturn(4);
+    when(e.isShiftClick()).thenReturn(true);
     l.onClick(e);
     verify(e).setCancelled(true);
-    verify(menu).click(4);
+    verify(menu).click(4, true);
     InventoryClickEvent below = click(top, p);
     when(below.getClickedInventory()).thenReturn(inv);
     l.onClick(below);
@@ -126,6 +134,27 @@ class LockerListenerTest {
     when(scoop.getClickedInventory()).thenReturn(inv);
     l.onClick(scoop);
     verify(scoop).setCancelled(true);
+    when(lockers.isDungeonItem(gemItem)).thenReturn(true);
+    InventoryClickEvent swapped = click(grid, p);
+    when(swapped.getCursor()).thenReturn(bound);
+    when(swapped.getCurrentItem()).thenReturn(plain);
+    when(swapped.getClickedInventory()).thenReturn(inv);
+    when(swapped.getAction()).thenReturn(org.bukkit.event.inventory.InventoryAction.SWAP_WITH_CURSOR);
+    l.onClick(swapped);
+    verify(swapped, never()).setCancelled(anyBoolean()); // swapping a dungeon item about is fine
+    InventoryClickEvent socketing = click(grid, p);
+    when(socketing.getCursor()).thenReturn(gemItem);
+    when(socketing.getCurrentItem()).thenReturn(plain);
+    when(socketing.getClickedInventory()).thenReturn(inv);
+    when(socketing.getAction()).thenReturn(org.bukkit.event.inventory.InventoryAction.SWAP_WITH_CURSOR);
+    l.onClick(socketing);
+    verify(socketing).setCancelled(true);
+    InventoryClickEvent pickup = click(grid, p);
+    when(pickup.getCurrentItem()).thenReturn(bound);
+    when(pickup.getClickedInventory()).thenReturn(inv);
+    when(pickup.getAction()).thenReturn(org.bukkit.event.inventory.InventoryAction.SWAP_WITH_CURSOR);
+    l.onClick(pickup);
+    verify(pickup, never()).setCancelled(anyBoolean()); // the dungeon item is the one picked up, not dropped
     InventoryClickEvent plainSwap = click(grid, p);
     when(plainSwap.getCursor()).thenReturn(plain);
     when(plainSwap.getCurrentItem()).thenReturn(bound);
@@ -141,7 +170,7 @@ class LockerListenerTest {
     when(current.getCurrentItem()).thenReturn(bound);
     l.onClick(current);
     verify(current).setCancelled(true);
-    verify(p, times(4)).sendMessage("§cDungeon items stay with you.");
+    verify(p, times(5)).sendMessage("§cDungeon items stay with you.");
     InventoryClickEvent cursor = click(chest, p);
     when(cursor.getCursor()).thenReturn(bound);
     l.onClick(cursor);

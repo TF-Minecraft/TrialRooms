@@ -71,6 +71,36 @@ public final class DungeonLoot {
         return item == null ? new Rolled(null, "The item " + base.id() + " could not be built.") : new Rolled(item, null);
     }
 
+    /** A dungeon gem of a rarity (null: by chance at the tier) with one stat from a pool. */
+    public Rolled gem(int tier, String rarityId, String pool, String template) {
+        LootKit k = kit.get();
+        if (k == null) {
+            return new Rolled(null, "Dungeon loot is off: loot.yml has problems (see /tr dungeon reload).");
+        }
+        Rarity rarity = rarityId == null ? LootRoller.rarity(k, tier, rng) : k.rarity(rarityId);
+        if (rarity == null) {
+            return new Rolled(null, "There is no rarity " + rarityId + ".");
+        }
+        ItemStack gem = forge.makeGem(LootRoller.gem(k, pool, tier, rarity, rng), template, k.socket());
+        return gem == null ? new Rolled(null, "The gem template " + template + " is missing.") : new Rolled(gem, null);
+    }
+
+    /** The items a player's class can use. */
+    public List<Base> usable(Player p) {
+        LootKit k = kit.get();
+        if (k == null) {
+            return List.of();
+        }
+        Map<String, Optional<Source>> sources = new HashMap<>();
+        String cls = forge.playerClass(p);
+        return k.bases().stream().filter(b -> usable(k, b, cls, sources)).toList();
+    }
+
+    /** Puts a gem in an item (MMOItems' own socketing). */
+    public LootForge.Socketed socket(Player p, ItemStack item, ItemStack gem) {
+        return forge.socket(p, item, gem);
+    }
+
     private Optional<Source> source(LootKit k, Base b, Map<String, Optional<Source>> cache) {
         return cache.computeIfAbsent(b.id(), id -> {
             if (b.template() != null) {

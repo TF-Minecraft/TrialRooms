@@ -91,6 +91,8 @@ public final class RunManager {
     private long heldUntilMs;
     /** Dungeon lockers; null runs without them (loadouts can't be worn). */
     private LockerService lockers;
+    /** What runs hand out; null hands out nothing. */
+    private RunRewards rewards;
 
     /** A party leader waiting for a dungeon of a recipe. */
     record Waiting(UUID leader, String recipe) {
@@ -217,6 +219,29 @@ public final class RunManager {
 
     public LockerService lockers() {
         return lockers;
+    }
+
+    /** Hands out loot and marks at a run's moments (elite rooms, events, the boss, the vault). */
+    public void rewards(RunRewards rewards) {
+        this.rewards = rewards;
+    }
+
+    /** Tells every member playing the run in the dungeon world about a reward moment. */
+    private void reward(ActiveRun ar, RunRewards.Moment moment) {
+        if (rewards == null) {
+            return;
+        }
+        for (Player p : online(ar)) {
+            if (isPlayingMember(ar, p)) { // (the step counts anyone outside the dungeon world as away)
+                try {
+                    rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id());
+                } catch (Exception | LinkageError e) {
+                    // one player's failed reward never stops the others' or the run
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "[dungeons] the " + moment + " reward for " + p.getName() + " failed", e);
+                }
+            }
+        }
     }
 
     public boolean blocksCommand(String commandLine) {
@@ -848,7 +873,8 @@ public final class RunManager {
         ar.run.clearRoom(room);
         ar.roomMobs.remove(room);
         setDoors(ar, room, false, false);
-        boolean boss = ar.run.layout().rooms().get(room).node().type() == RoomType.BOSS;
+        RoomType type = ar.run.layout().rooms().get(room).node().type();
+        boolean boss = type == RoomType.BOSS;
         for (Player p : online(ar)) {
             p.playSound(p.getLocation(), "minecraft:block.iron_door.open", 1f, 1.2f);
             Member m = ar.run.member(p.getUniqueId());
@@ -858,6 +884,21 @@ public final class RunManager {
                 p.sendMessage("§aThe room is clear. The doors open.");
             }
         }
+        RunRewards.Moment moment = clearedMoment(type, ar.planned.containsKey(room));
+        if (moment != null) {
+            reward(ar, moment);
+        }
+    }
+
+    /** What clearing a room of this type pays out: the boss, an elite room, or a finished event. */
+    static RunRewards.Moment clearedMoment(RoomType type, boolean event) {
+        if (type == RoomType.BOSS) {
+            return RunRewards.Moment.BOSS;
+        }
+        if (type == RoomType.ELITE) {
+            return RunRewards.Moment.ELITE;
+        }
+        return event ? RunRewards.Moment.EVENT : null;
     }
 
     /**
@@ -1299,6 +1340,7 @@ public final class RunManager {
         ar.finishAtMs = clock.getAsLong() + settings().finishSeconds() * 1000L;
         tell(ar, "§6The vault is yours. §7Right-click by the exit to leave; everyone is sent back in "
                 + settings().finishSeconds() + " seconds.");
+        reward(ar, RunRewards.Moment.VAULT);
     }
 
     private void fail(ActiveRun ar) {

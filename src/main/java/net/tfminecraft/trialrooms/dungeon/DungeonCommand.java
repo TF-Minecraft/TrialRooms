@@ -28,9 +28,9 @@ public final class DungeonCommand {
 
     static final String USAGE = "§eUsage: /tr dungeon <map|preview|start> <recipe> [seed] | clear | reload | runs"
             + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave | ready"
-            + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item]";
+            + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "allies", "gate", "leave", "ready", "locker", "loot");
+            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks");
     /** What players without the staff permission may use. */
     public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker");
 
@@ -56,6 +56,7 @@ public final class DungeonCommand {
             case "ready" -> ready(sender);
             case "locker" -> locker(sender, args);
             case "loot" -> loot(sender, args);
+            case "marks" -> marks(sender, args);
             case "clear" -> sender.sendMessage("§aCleared " + module.clearPreviews() + " dungeon previews.");
             case "reload" -> {
                 List<String> problems = module.reload();
@@ -226,7 +227,7 @@ public final class DungeonCommand {
             sender.sendMessage("§cOnly a player has a locker.");
             return;
         }
-        new LockerMenu(lockers, p, module.runs()::inLobby).open();
+        new LockerMenu(lockers, p, module.runs()::inLobby, module.rewards()).open();
     }
 
     /** Staff: files a copy of the item in hand in a player's locker as a dungeon item (until loot drops them). */
@@ -270,7 +271,10 @@ public final class DungeonCommand {
             return;
         }
         String rarity = args.length >= 4 && !args[3].equalsIgnoreCase("any") ? args[3] : null;
-        DungeonLoot.Rolled r = loot.roll(target, tier, rarity, args.length >= 5 ? args[4] : null);
+        boolean gem = args.length >= 5 && args[4].equalsIgnoreCase("gem");
+        var rules = module.rewardRules();
+        DungeonLoot.Rolled r = gem && rules != null ? loot.gem(tier, rarity, rules.gemPool(), rules.gemTemplate())
+                : loot.roll(target, tier, rarity, args.length >= 5 ? args[4] : null);
         if (r.item() == null) {
             sender.sendMessage("§c" + r.problem());
             return;
@@ -280,6 +284,25 @@ public final class DungeonCommand {
         sender.sendMessage(lockers.add(target, r.item()) == null
                 ? "§c" + target.getName() + " has no usable locker (no character played?)."
                 : "§a" + name + " is in " + target.getName() + "'s dungeon locker.");
+    }
+
+    /** Staff: gives (or with a negative amount takes) dungeon marks, for testing the shop. */
+    private void marks(CommandSender sender, String[] args) {
+        LockerService lockers = module.runs().lockers();
+        Player target = args.length >= 3 ? Bukkit.getPlayerExact(args[1]) : null;
+        var locker = target == null || lockers == null ? null : lockers.locker(target);
+        if (locker == null) {
+            sender.sendMessage("§cUsage: /tr dungeon marks <player> <amount> (the player needs a usable locker)");
+            return;
+        }
+        try {
+            locker.marks(locker.marks() + Integer.parseInt(args[2]));
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cThe amount must be a whole number.");
+            return;
+        }
+        lockers.saveLocker(target, locker);
+        sender.sendMessage("§a" + target.getName() + " has " + locker.marks() + " dungeon marks.");
     }
 
     /** Tab completion for the arguments after {@code dungeon}. */

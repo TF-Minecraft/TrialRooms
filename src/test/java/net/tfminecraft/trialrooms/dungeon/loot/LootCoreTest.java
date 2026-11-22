@@ -167,6 +167,17 @@ public class LootCoreTest {
   }
 
   @Test
+  void gemsCarryOneScaledStat() {
+    LootKit k = shipped();
+    LootRoller.GemPlan g = LootRoller.gem(k, "melee", 3, k.rarity("legendary"), fixed(1.0));
+    assertEquals("physical_damage", g.stat(), "the first of the pool with a lowest pick");
+    assertEquals(round(6 * 1.55 * 1.75), g.value());
+    assertEquals("Rimebound Rimestone", g.name());
+    assertEquals(3, g.tier());
+    assertEquals("Legendary dungeon gem, tier 3", g.lore().getFirst());
+  }
+
+  @Test
   void namesWithoutAPlaceAndArmourWithoutLooks() {
     Rarity r = new Rarity("a", "A", 1, 1, 0, 0, "#abcdef");
     Base cap = new Base("cap", "Cap", Slot.HELMET, "x", null, "p", Map.of(), "heavy");

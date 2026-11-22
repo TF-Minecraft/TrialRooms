@@ -549,6 +549,15 @@ class LockerServiceTest {
   }
 
   @Test
+  void aSocketedItemKeepsItsId() {
+    String id = lockers.add(ann, named(Material.DIAMOND_SWORD, "Rime Edge"));
+    Locker l = lockers.locker(ann);
+    lockers.replace(l, id, named(Material.DIAMOND_SWORD, "Rime Edge (socketed)"));
+    assertEquals("Rime Edge (socketed)", name(lockers.show(l, id)));
+    assertEquals(id, lockers.idOf(lockers.show(l, id)));
+  }
+
+  @Test
   void accessoryPlaceholdersComeFromMmoInventory() {
     Player p = server.addPlayer("Bo");
     Accessories.refill(null, p); // no MMOInventory

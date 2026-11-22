@@ -164,18 +164,32 @@ public final class LockerService {
         if (l == null || empty(item)) {
             return null;
         }
+        String id = file(l, item);
+        if (!save(p, l)) {
+            l.remove(id);
+            return null;
+        }
+        return id;
+    }
+
+    /**
+     * Files a copy of an item in a locker as a new dungeon item without saving, so a caller can save
+     * it together with other changes in one write. Returns its id.
+     */
+    public String file(Locker l, ItemStack item) {
         String id = UUID.randomUUID().toString();
+        replace(l, id, item);
+        return id;
+    }
+
+    /** Replaces a locker item with a changed one (a socketed gem), keeping its id. */
+    public void replace(Locker l, String id, ItemStack item) {
         ItemStack copy = item.clone();
         ItemMeta meta = copy.getItemMeta();
         meta.getPersistentDataContainer().set(itemKey, PersistentDataType.STRING, id);
         meta.getPersistentDataContainer().remove(wornKey);
         copy.setItemMeta(meta);
         l.put(id, codec.encode(copy));
-        if (!save(p, l)) {
-            l.remove(id);
-            return null;
-        }
-        return id;
     }
 
     /** A locker item as an item, for showing. */

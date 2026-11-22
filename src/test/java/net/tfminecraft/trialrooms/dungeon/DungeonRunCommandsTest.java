@@ -251,6 +251,31 @@ class DungeonRunCommandsTest {
     c.run(console, new String[] {"loot", "Ann", "2", "ANY"});
     verify(console, times(2)).sendMessage("§aRimebound Sword is in Ann's dungeon locker.");
     assertTrue(c.complete(new String[] {"lo"}).containsAll(List.of("locker", "loot")));
+    // a gem, when the rewards say how gems are made
+    when(module.rewardRules()).thenReturn(net.tfminecraft.trialrooms.dungeon.loot.RewardsTest.shippedRules());
+    when(loot.gem(1, "rare", "jewellery", "gemstones.larimar"))
+        .thenReturn(new net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot.Rolled(rolled, null));
+    c.run(console, new String[] {"loot", "Ann", "1", "rare", "gem"});
+    verify(console, times(3)).sendMessage("§aRimebound Sword is in Ann's dungeon locker.");
+    when(module.rewardRules()).thenReturn(null);
+    when(loot.roll(ann, 1, null, "gem")).thenReturn(new net.tfminecraft.trialrooms.dungeon.loot.DungeonLoot.Rolled(null, "no gem rules"));
+    c.run(console, new String[] {"loot", "Ann", "1", "any", "gem"});
+    verify(console).sendMessage("§cno gem rules");
+    // marks, for trying the shop
+    net.tfminecraft.trialrooms.dungeon.locker.Locker annLocker = new net.tfminecraft.trialrooms.dungeon.locker.Locker();
+    when(lockers.locker(ann)).thenReturn(annLocker);
+    c.run(console, new String[] {"marks", "Ann", "40"});
+    assertEquals(40, annLocker.marks());
+    verify(console).sendMessage("§aAnn has 40 dungeon marks.");
+    c.run(console, new String[] {"marks", "Ann", "lots"});
+    verify(console).sendMessage("§cThe amount must be a whole number.");
+    c.run(console, new String[] {"marks", "Ann"});
+    c.run(console, new String[] {"marks", "Nobody", "5"});
+    verify(console, times(2)).sendMessage(startsWith("§cUsage: /tr dungeon marks"));
+    when(runs.lockers()).thenReturn(null);
+    c.run(console, new String[] {"marks", "Ann", "5"});
+    verify(console, times(3)).sendMessage(startsWith("§cUsage: /tr dungeon marks"));
+    when(runs.lockers()).thenReturn(lockers);
 
     assertEquals(List.of("give"), c.complete(new String[] {"locker", "g"}));
     assertEquals(List.of(), c.complete(new String[] {"locker", "x"}));
@@ -284,6 +309,8 @@ class DungeonRunCommandsTest {
     when(pm.isPluginEnabled("AdvancedCrafting")).thenReturn(true);
     m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
     assertNotNull(m.loot());
+    assertNotNull(m.rewards());
+    assertNull(m.rewardRules(), "nothing loaded in this module yet");
     // the ally filter and its staff report
     DungeonCommand dc = new DungeonCommand(m);
     CommandSender staff = mock(CommandSender.class);

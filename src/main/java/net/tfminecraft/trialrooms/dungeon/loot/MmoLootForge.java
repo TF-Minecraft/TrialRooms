@@ -18,6 +18,8 @@ import org.bukkit.inventory.ItemStack;
 import io.lumine.mythic.lib.api.item.NBTItem;
 import net.Indyuce.mmoitems.ItemStats;
 import net.Indyuce.mmoitems.MMOItems;
+import net.Indyuce.mmoitems.api.Type;
+import net.Indyuce.mmoitems.api.interaction.GemStone;
 import net.Indyuce.mmoitems.api.item.mmoitem.LiveMMOItem;
 import net.Indyuce.mmoitems.api.item.mmoitem.MMOItem;
 import net.Indyuce.mmoitems.api.player.PlayerData;
@@ -25,6 +27,7 @@ import net.Indyuce.mmoitems.stat.data.BooleanData;
 import net.Indyuce.mmoitems.stat.data.DoubleData;
 import net.Indyuce.mmoitems.stat.data.GemSocketsData;
 import net.Indyuce.mmoitems.stat.type.NameData;
+import net.Indyuce.mmoitems.stat.data.StringData;
 import net.Indyuce.mmoitems.stat.data.StringListData;
 import net.Indyuce.mmoitems.stat.type.ItemStat;
 import net.Indyuce.mmoitems.stat.type.StatHistory;
@@ -35,6 +38,7 @@ import net.tfminecraft.advancedcrafting.objects.ingredients.Ingredient;
 import net.tfminecraft.advancedcrafting.objects.stats.StatModifier;
 import net.tfminecraft.advancedcrafting.utils.CraftStatCalculator;
 import net.tfminecraft.tlibs.TLibs;
+import net.tfminecraft.tlibs.objects.api.subapi.ItemRebuildMerger;
 
 /**
  * Loot on the server's item plugins. Stats come from AdvancedCrafting's own calculator, so a
@@ -130,13 +134,7 @@ public final class MmoLootForge implements LootForge {
             }
         }
         plan.stats().forEach((stat, v) -> set(mmo, stat, v, false));
-        String name = colour(plan.rarity().colour()) + plan.name();
-        mmo.setData(ItemStats.NAME, new NameData(name));
-        StatHistory names = mmo.computeStatHistory(ItemStats.NAME);
-        if (names != null && names.getOriginalData() instanceof NameData og) {
-            og.setString(name);
-            mmo.setStatHistory(ItemStats.NAME, names);
-        }
+        name(mmo, colour(plan.rarity().colour()) + plan.name());
         List<String> lore = new ArrayList<>();
         plan.lore().forEach(line -> lore.add("§7" + line));
         mmo.setData(ItemStats.LORE, new StringListData(lore));
@@ -144,6 +142,47 @@ public final class MmoLootForge implements LootForge {
         mmo.setData(ItemStats.UNBREAKABLE, new BooleanData(true));
         ItemStack built = builder.apply(mmo);
         return plan.look() == null ? built : TLibs.getItemAPI().getArmorMerger().merge(built, Optional.empty(), plan.look());
+    }
+
+    @Override
+    public ItemStack makeGem(LootRoller.GemPlan plan, String template, String socket) {
+        MMOItem mmo = template(template);
+        if (mmo == null) {
+            return null;
+        }
+        set(mmo, plan.stat(), plan.value(), false);
+        mmo.setData(ItemStats.GEM_COLOR, new StringData(socket));
+        name(mmo, colour(plan.rarity().colour()) + plan.name());
+        List<String> lore = new ArrayList<>();
+        plan.lore().forEach(line -> lore.add("§7" + line));
+        mmo.setData(ItemStats.LORE, new StringListData(lore));
+        return builder.apply(mmo);
+    }
+
+    /** True while the locker sockets a gem: the one time a dungeon gem may go into an item. */
+    static boolean socketing;
+
+    static boolean socketing() {
+        return socketing;
+    }
+
+    @Override
+    public Socketed socket(Player player, ItemStack item, ItemStack gem) {
+        NBTItem host = NBTItem.get(item);
+        GemStone.ApplyResult r;
+        socketing = true;
+        try {
+            r = new GemStone(PlayerData.get(player), NBTItem.get(gem)).applyOntoItem(host, Type.get(host));
+        } finally {
+            socketing = false;
+        }
+        return switch (r.getType()) {
+            // MMOItems rebuilds the item from its template: TLibs puts its look (skin, model) back
+            case SUCCESS -> new Socketed(Socketing.DONE,
+                    ItemRebuildMerger.applyBaseline(item, r.getResult(), TLibs.getRebuildConfig()));
+            case FAILURE -> new Socketed(Socketing.BROKE, null);
+            default -> new Socketed(Socketing.NO_FIT, null);
+        };
     }
 
     /** A stat on the external layer, as crafting writes them; {@code zero} also zeroes the template's own. */
@@ -169,6 +208,16 @@ public final class MmoLootForge implements LootForge {
             hist.registerExternalData(data);
         }
         mmo.setStatHistory(type, hist);
+    }
+
+    /** Names an item; the history's original too, or the build puts the template's name back. */
+    private static void name(MMOItem mmo, String name) {
+        mmo.setData(ItemStats.NAME, new NameData(name));
+        StatHistory names = mmo.computeStatHistory(ItemStats.NAME);
+        if (names != null && names.getOriginalData() instanceof NameData og) {
+            og.setString(name);
+            mmo.setStatHistory(ItemStats.NAME, names);
+        }
     }
 
     /** Builds an MMOItem into an item (MMOItems' builder needs a running server to even load). */

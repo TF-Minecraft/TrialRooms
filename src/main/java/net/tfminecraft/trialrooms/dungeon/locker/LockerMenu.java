@@ -28,11 +28,16 @@ import net.kyori.adventure.text.format.TextDecoration;
  * <li>the bottom three rows: every dungeon item in the locker, a page at a time.</li>
  * </ul>
  * Click an item below, then a loadout slot, to put it there; click a filled slot to empty it.
+ * Click a dungeon gem, then a dungeon item, to socket it. The shop button turns the screen into the
+ * mark shop: click an item to buy it at the first rarity, shift-click for the second.
  */
 public final class LockerMenu implements InventoryHolder {
 
     static final int WEAR = 4;
     static final int OWN = 5;
+    static final int SHOP = 7;
+    static final int BACK = 0;
+    static final int OFFERS = 9;
     static final int PREV = 16;
     static final int NEXT = 17;
     static final int STASH = 27;
@@ -50,16 +55,29 @@ public final class LockerMenu implements InventoryHolder {
     private final Player player;
     private final Predicate<Player> canSwap;
     private final Inventory inventory;
+    private final LockerExtras extras;
+    private boolean shopping;
+    private List<LockerExtras.Offer> offers = List.of();
     private int loadout;
     private int page;
     private String selected;
 
     /** @param canSwap whether the player stands where loadouts may be put on and taken off */
     public LockerMenu(LockerService service, Player player, Predicate<Player> canSwap) {
+        this(service, player, canSwap, null);
+    }
+
+    /** @param extras the mark shop and socketing, or null without dungeon loot */
+    public LockerMenu(LockerService service, Player player, Predicate<Player> canSwap, LockerExtras extras) {
         this.service = service;
         this.player = player;
         this.canSwap = canSwap;
+        this.extras = extras;
         this.inventory = Bukkit.createInventory(this, 54, Component.text("Dungeon locker"));
+    }
+
+    boolean shopping() {
+        return shopping;
     }
 
     @Override
@@ -97,6 +115,14 @@ public final class LockerMenu implements InventoryHolder {
         if (l == null) {
             return;
         }
+        if (shopping) {
+            renderShop(l);
+            return;
+        }
+        if (extras != null) {
+            inventory.setItem(SHOP, button(Material.EMERALD, "Mark shop", false, "Dungeon marks: " + l.marks(),
+                    "Buy a dungeon item of your choice."));
+        }
         for (int i = 0; i < Locker.LOADOUTS; i++) {
             boolean worn = l.worn() == i;
             inventory.setItem(i, button(i == loadout ? Material.WRITABLE_BOOK : Material.BOOK,
@@ -111,6 +137,7 @@ public final class LockerMenu implements InventoryHolder {
         inventory.setItem(8, button(Material.KNOWLEDGE_BOOK, "Dungeon items stay in the dungeons", false,
                 "Click an item below, then a slot above, to put it in this loadout.",
                 "Click a filled slot to empty it. One item can be in several loadouts.",
+                "Click a gem, then an item, to socket it.",
                 "Leaving a dungeon puts your own items back, whatever happens."));
         Map<Integer, String> slots = l.loadout(loadout);
         LOADOUT_SLOTS.forEach((menuSlot, invSlot) -> {
@@ -141,6 +168,42 @@ public final class LockerMenu implements InventoryHolder {
         }
     }
 
+    private void renderShop(Locker l) {
+        offers = extras.offers(player);
+        inventory.setItem(BACK, button(Material.ARROW, "Back to the locker", false));
+        inventory.setItem(4, button(Material.EMERALD, "Dungeon marks: " + l.marks(), false,
+                "Click an item to buy it at the first rarity, shift-click for the second."));
+        int fit = Math.min(offers.size(), 54 - OFFERS);
+        for (int i = 0; i < fit; i++) {
+            LockerExtras.Offer o = offers.get(i);
+            List<String> lines = new ArrayList<>();
+            List<String> rarities = new ArrayList<>(o.prices().keySet());
+            int shown = Math.min(rarities.size(), 2); // a click and a shift-click
+            for (int r = 0; r < shown; r++) {
+                lines.add((r == 0 ? "Click: " : "Shift-click: ") + rarities.get(r) + " for " + o.prices().get(rarities.get(r))
+                        + " marks");
+            }
+            inventory.setItem(OFFERS + i, button(Material.PAPER, o.name(), false, lines.toArray(String[]::new)));
+        }
+    }
+
+    private void shopClick(int slot, boolean shift) {
+        if (slot == BACK) {
+            shopping = false;
+            return;
+        }
+        int at = slot - OFFERS;
+        if (at < 0 || at >= offers.size()) {
+            return;
+        }
+        LockerExtras.Offer o = offers.get(at);
+        List<String> rarities = new ArrayList<>(o.prices().keySet());
+        int pick = shift ? 1 : 0;
+        if (pick < rarities.size()) {
+            player.sendMessage(extras.buy(player, o.id(), rarities.get(pick)));
+        }
+    }
+
     private static ItemStack button(Material type, String name, boolean glint, String... lore) {
         ItemStack it = new ItemStack(type);
         ItemMeta meta = it.getItemMeta();
@@ -159,12 +222,21 @@ public final class LockerMenu implements InventoryHolder {
 
     /** A click on the menu's own slots (raw slot 0-53). */
     public void click(int slot) {
+        click(slot, false);
+    }
+
+    /** A click, plain or with shift held. */
+    public void click(int slot, boolean shift) {
         Locker l = service.locker(player);
         if (l == null) {
             inventory.clear(); // the character went away under the menu
             return;
         }
-        if (slot < Locker.LOADOUTS) {
+        if (shopping) {
+            shopClick(slot, shift);
+        } else if (slot == SHOP && extras != null) {
+            shopping = true;
+        } else if (slot < Locker.LOADOUTS) {
             loadout = slot;
         } else if (slot == WEAR || slot == OWN) {
             swap(slot == WEAR);
@@ -178,11 +250,35 @@ public final class LockerMenu implements InventoryHolder {
             List<String> ids = new ArrayList<>(l.items().keySet());
             int at = page * PAGE + slot - STASH;
             if (at < ids.size()) {
-                String id = ids.get(at);
-                selected = id.equals(selected) ? null : id;
+                stashClick(l, ids.get(at));
             }
         }
         render();
+    }
+
+    private void stashClick(Locker l, String id) {
+        if (extras != null && selected != null && !selected.equals(id) && gem(service.show(l, selected))
+                && !gem(service.show(l, id))) {
+            player.sendMessage(extras.socket(player, selected, id));
+            selected = null;
+            // Show the page the item is on: TLibs puts a socketed item's look back a tick later on a
+            // matching item in the open screen, and this keeps that the item's own icon here.
+            int at = new ArrayList<>(l.items().keySet()).indexOf(id);
+            page = Math.max(0, at) / PAGE;
+            return;
+        }
+        selected = id.equals(selected) ? null : id;
+    }
+
+    static boolean gem(ItemStack item) {
+        return isGem.test(item);
+    }
+
+    /** Whether an item is a gem: it carries a gem colour (gem templates come in more than one MMOItems type). */
+    static Predicate<ItemStack> isGem = LockerMenu::mmoGem;
+
+    static boolean mmoGem(ItemStack item) {
+        return mythicLib.getAsBoolean() && io.lumine.mythic.lib.api.item.NBTItem.get(item).hasTag("MMOITEMS_GEM_COLOR");
     }
 
     private void slotClick(Locker l, int invSlot) {
@@ -195,7 +291,8 @@ public final class LockerMenu implements InventoryHolder {
         } else {
             ItemStack item = service.show(l, selected);
             if (!fits(item, invSlot)) {
-                player.sendMessage("§cThat doesn't go in the " + SLOT_NAMES.get(invSlot).toLowerCase() + " slot.");
+                player.sendMessage("§cThat doesn't go in the " + SLOT_NAMES.getOrDefault(invSlot, "hotbar").toLowerCase()
+                        + " slot.");
                 return;
             }
             l.assign(loadout, invSlot, selected);
@@ -206,9 +303,12 @@ public final class LockerMenu implements InventoryHolder {
 
     /**
      * Armour slots take only what is worn there, the ring and amulet slots only MMOItems rings and
-     * amulets (as MMOInventory allows); the off hand and hotbar take anything.
+     * amulets (as MMOInventory allows); the off hand and hotbar take anything but dungeon gems.
      */
     static boolean fits(ItemStack item, int invSlot) {
+        if (gem(item)) {
+            return false; // gems are socketed from the locker, never carried
+        }
         if (invSlot == 9 || invSlot == 10) {
             return (invSlot == 9 ? "RING" : "AMULET").equalsIgnoreCase(itemType.apply(item));
         }

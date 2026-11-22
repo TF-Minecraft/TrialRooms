@@ -31,4 +31,19 @@ public interface LootForge {
 
     /** Builds a rolled item on its template. */
     ItemStack make(LootRoller.Plan plan, String template, Set<String> managed, String socket);
+
+    /** Builds a dungeon gem on a gem template, coloured for dungeon sockets. */
+    ItemStack makeGem(LootRoller.GemPlan plan, String template, String socket);
+
+    /** How a socketing went. */
+    enum Socketing {
+        DONE, BROKE, NO_FIT
+    }
+
+    /** A socketing: the item with the gem in it when DONE. */
+    record Socketed(Socketing result, ItemStack item) {
+    }
+
+    /** Puts a gem into an item's free socket, as MMOItems does for a player. */
+    Socketed socket(Player player, ItemStack item, ItemStack gem);
 }

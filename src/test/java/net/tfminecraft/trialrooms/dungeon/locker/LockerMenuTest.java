@@ -54,6 +54,7 @@ class LockerMenuTest {
     LockerMenu.materialSlot = Material::getEquipmentSlot;
     LockerMenu.itemType = LockerMenu::mmoType;
     LockerMenu.mythicLib = LockerMenu::mythicLibEnabled;
+    LockerMenu.isGem = LockerMenu::mmoGem;
     MockBukkit.unmock();
   }
 
@@ -227,6 +228,97 @@ class LockerMenuTest {
     assertTrue(LockerMenu.fits(new ItemStack(Material.STONE), 3));
   }
 
+  /** Extras that record what was asked. */
+  static final class FakeExtras implements LockerExtras {
+    final java.util.List<String> asked = new java.util.ArrayList<>();
+    java.util.List<Offer> offers = java.util.List.of(
+        new Offer("heavy_helmet", "Heavy Helmet", new java.util.LinkedHashMap<>(java.util.Map.of("rare", 30))),
+        new Offer("sword", "Sword", new java.util.LinkedHashMap<>(java.util.Map.of("rare", 30))));
+
+    @Override
+    public java.util.List<Offer> offers(org.bukkit.entity.Player p) {
+      return offers;
+    }
+
+    @Override
+    public String buy(org.bukkit.entity.Player p, String item, String rarity) {
+      asked.add("buy " + item + " " + rarity);
+      return "bought";
+    }
+
+    @Override
+    public String socket(org.bukkit.entity.Player p, String gem, String item) {
+      asked.add("socket " + gem + " " + item);
+      return "socketed";
+    }
+  }
+
+  @Test
+  void theMarkShopSellsItemsOfYourChoice() {
+    FakeExtras extras = new FakeExtras();
+    java.util.LinkedHashMap<String, Integer> two = new java.util.LinkedHashMap<>();
+    two.put("rare", 30);
+    two.put("epic", 80);
+    extras.offers = java.util.List.of(new LockerExtras.Offer("heavy_helmet", "Heavy Helmet", two),
+        new LockerExtras.Offer("sword", "Sword", new java.util.LinkedHashMap<>(java.util.Map.of("rare", 30))));
+    lockers.locker(ann).marks(45);
+    LockerMenu m = new LockerMenu(lockers, ann, p -> true, extras);
+    m.open();
+    assertEquals(Material.EMERALD, m.getInventory().getItem(LockerMenu.SHOP).getType());
+    m.click(LockerMenu.SHOP);
+    assertTrue(m.shopping());
+    assertEquals(Material.PAPER, m.getInventory().getItem(LockerMenu.OFFERS).getType());
+    m.click(LockerMenu.OFFERS);
+    m.click(LockerMenu.OFFERS, true);
+    m.click(LockerMenu.OFFERS + 1, true); // the sword has one price only: shift does nothing
+    m.click(LockerMenu.OFFERS + 5); // no offer there
+    m.click(4); // the marks sign
+    assertEquals(java.util.List.of("buy heavy_helmet rare", "buy heavy_helmet epic"), extras.asked);
+    assertEquals("bought", last());
+    m.click(LockerMenu.BACK);
+    assertFalse(m.shopping());
+    assertEquals(Material.BOOK, m.getInventory().getItem(1).getType());
+    // no extras: no shop button, and the slot does nothing
+    LockerMenu plain = menu();
+    plain.open();
+    assertNull(plain.getInventory().getItem(LockerMenu.SHOP));
+    plain.click(LockerMenu.SHOP);
+    assertFalse(plain.shopping());
+  }
+
+  @Test
+  void gemsAreSocketedFromTheStash() {
+    LockerMenu.isGem = it -> it.getType() == Material.AMETHYST_SHARD;
+    FakeExtras extras = new FakeExtras();
+    String gem = lockers.add(ann, new ItemStack(Material.AMETHYST_SHARD));
+    String helm = lockers.add(ann, new ItemStack(Material.DIAMOND_HELMET));
+    String gem2 = lockers.add(ann, new ItemStack(Material.AMETHYST_SHARD));
+    LockerMenu m = new LockerMenu(lockers, ann, p -> true, extras);
+    m.open();
+    m.click(LockerMenu.STASH); // the gem
+    m.click(LockerMenu.STASH); // again: let go
+    assertNull(m.selected());
+    m.click(LockerMenu.STASH);
+    m.click(LockerMenu.STASH + 2); // another gem: just picks that one
+    assertEquals(gem2, m.selected());
+    m.click(LockerMenu.STASH + 1); // the helmet: socket it
+    assertEquals(java.util.List.of("socket " + gem2 + " " + helm), extras.asked);
+    assertEquals(0, m.page(), "the item's page is shown");
+    assertNull(m.selected());
+    assertEquals("socketed", last());
+    m.click(LockerMenu.STASH + 1); // the helmet picked, then a gem: just picks the gem
+    m.click(LockerMenu.STASH);
+    assertEquals(gem, m.selected());
+    m.click(18); // a gem never goes in a loadout
+    assertTrue(last().contains("doesn't go in the hotbar slot"));
+    // without extras a gem click is a plain pick
+    LockerMenu plain = menu();
+    plain.open();
+    plain.click(LockerMenu.STASH);
+    plain.click(LockerMenu.STASH + 1);
+    assertEquals(helm, plain.selected());
+  }
+
   @Test
   void jewelleryGoesInTheRingAndAmuletSlots() {
     assertTrue(LockerMenu.fits(new ItemStack(Material.GOLD_NUGGET), 9));
@@ -246,10 +338,14 @@ class LockerMenuTest {
     when(tag.getType()).thenReturn("RING");
     assertFalse(LockerMenu.mythicLibEnabled());
     assertNull(LockerMenu.mmoType(item), "no MythicLib on this server: no MMOItems types");
+    assertFalse(LockerMenu.mmoGem(item), "nor gems");
     LockerMenu.mythicLib = () -> true;
     try (var nbt = mockStatic(io.lumine.mythic.lib.api.item.NBTItem.class)) {
       nbt.when(() -> io.lumine.mythic.lib.api.item.NBTItem.get(item)).thenReturn(tag);
       assertEquals("RING", LockerMenu.mmoType(item));
+      assertFalse(LockerMenu.mmoGem(item), "a ring has no gem colour");
+      when(tag.hasTag("MMOITEMS_GEM_COLOR")).thenReturn(true);
+      assertTrue(LockerMenu.mmoGem(item), "a gem colour makes a gem");
     }
   }
 
