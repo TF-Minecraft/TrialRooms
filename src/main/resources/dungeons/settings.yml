@@ -36,9 +36,10 @@ queue-hold-seconds: 60
 harmful-auras: [Slowed, Weakened, Wounded, Silenced, Silence_Struck, Burnt, Frozen, Stun_Aura, Vine_Wave_Stun, TFMC_Guard_Vibrative_Strike_STUN, Sanguine_Chain_Lock, Glacial_Quills_Stack]
 # helpful-auras: buffs players never put on mobs here.
 helpful-auras: [guardian_angel, Guardian_Angel_Ward, TFMC_Guard_Shield_Wall_Ward, Rhapsody_aura, Angelic_Serenade_aura, TFMC_Guard_Restoration]
-# Weekly affixes: each ISO week the pool is shuffled the same way for everyone, and a run gets the
-# first affixes of that order, as many as per-tier gives its tier (Hard is tier 2, Nightmare 3, so
-# Nightmare always has Hard's affix and one more). The gate's difficulty screen shows them.
+# Weekly affixes: the weeks (UTC, Monday to Monday, the same on every server) go through the pool in
+# turns, each affix leading once a turn and never two weeks running. A run gets as many as per-tier
+# gives its tier (Hard is tier 2, Nightmare 3, so Nightmare always has Hard's affix and one more).
+# The gate's difficulty screen shows them.
 #   fortified: ordinary enemies' health; tyrannical: bosses' health and damage;
 #   volatile: every enemy bursts soon after it dies (the kit's burst numbers);
 #   raging: enemies below this share of their health hit this much harder;

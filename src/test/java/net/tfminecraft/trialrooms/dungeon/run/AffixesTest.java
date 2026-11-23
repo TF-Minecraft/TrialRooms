@@ -53,6 +53,16 @@ public class AffixesTest {
     assertEquals(1, Affixes.week(java.time.LocalDate.of(2026, 1, 12).atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()));
     Affixes one = new Affixes(List.of(WeeklyAffix.RAGING), Map.of(2, 1), 1, 1, 1, 0.3, 1, 0, 1);
     assertEquals(List.of(WeeklyAffix.RAGING), one.of(7, 2), "a pool of one");
+    for (int size = 2; size <= 5; size++) {
+      Affixes p = new Affixes(List.of(WeeklyAffix.values()).subList(0, size), Map.of(2, 1, 3, 2), 1, 1, 1, 0.3, 1, 0, 1);
+      for (long w = -50; w < 3000; w++) {
+        assertNotEquals(p.of(w, 2), p.of(w + 1, 2), "pool of " + size + ", week " + w);
+        if (size >= 4) {
+          assertNotEquals(java.util.Set.copyOf(p.of(w, 3)), java.util.Set.copyOf(p.of(w + 1, 3)),
+              "Nightmare's pair never repeats (pool of " + size + ", week " + w + ")");
+        }
+      }
+    }
     for (WeeklyAffix w : WeeklyAffix.values()) {
       assertFalse(w.title().isBlank());
       assertFalse(w.hint().isBlank());

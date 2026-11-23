@@ -76,14 +76,32 @@ public record Affixes(List<WeeklyAffix> pool, Map<Integer, Integer> byTier, doub
         return List.copyOf(out);
     }
 
+    /**
+     * A turn's order: a shuffle that never starts with the affix the last turn ended on, and (four
+     * affixes or more) never repeats Nightmare's pair across the turn's start. Two affixes simply
+     * alternate.
+     */
     private List<WeeklyAffix> turn(long turn) {
-        List<WeeklyAffix> order = new ArrayList<>(pool);
-        Collections.shuffle(order, new Random(turn));
-        List<WeeklyAffix> before = new ArrayList<>(pool);
-        Collections.shuffle(before, new Random(turn - 1));
-        if (order.size() > 1 && order.getFirst() == before.getLast()) {
+        if (pool.size() <= 2) {
+            return pool;
+        }
+        List<WeeklyAffix> order = raw(turn);
+        List<WeeklyAffix> before = raw(turn - 1);
+        // the last turn's own first swap changes only its first two, so its last stays raw
+        WeeklyAffix beforeLast = before.getLast();
+        WeeklyAffix beforeFirst = before.getFirst() == raw(turn - 2).getLast() ? before.get(1) : before.getFirst();
+        if (order.getFirst() == beforeLast) {
             Collections.swap(order, 0, 1);
         }
+        if (order.size() >= 4 && order.get(0) == beforeFirst && order.get(1) == beforeLast) {
+            Collections.swap(order, 1, 2); // (the last week of a turn pairs its last affix with its first)
+        }
+        return order;
+    }
+
+    private List<WeeklyAffix> raw(long turn) {
+        List<WeeklyAffix> order = new ArrayList<>(pool);
+        Collections.shuffle(order, new Random(turn));
         return order;
     }
 

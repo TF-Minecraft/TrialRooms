@@ -523,8 +523,12 @@ class FightsTest {
     enc.alive.add(v3);
     f.died(ar, v3);
     assertEquals(bursts + 2, enc.telegraphs.size(), "a death elsewhere bursts on its own");
+    Entity above = mob(at(middle(fight)).add(0, 10, 0), "Above");
+    enc.alive.add(above);
+    f.died(ar, above);
+    assertEquals(bursts + 3, enc.telegraphs.size(), "and so does one on another level");
     f.died(ar, mob(at(middle(fight)), "Stranger"));
-    assertEquals(bursts + 2, enc.telegraphs.size());
+    assertEquals(bursts + 3, enc.telegraphs.size());
     assertTrue(Fights.busy(enc));
     enc.telegraphs.remove(slam);
     assertFalse(Fights.busy(enc), "bursts never keep a boss from its mechanics");

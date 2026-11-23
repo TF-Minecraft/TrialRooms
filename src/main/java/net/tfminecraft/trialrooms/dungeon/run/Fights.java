@@ -963,11 +963,12 @@ final class Fights {
         }
     }
 
-    /** Whether a burst already waits within its radius of a spot. */
+    /** Whether a waiting burst overlaps one at a spot (within two radii, on the same level). */
     private static boolean burstNear(ActiveRun ar, Encounter enc, Location l) {
         double r = ar.kit.fights().tuning().burstRadius();
         return enc.telegraphs.stream().anyMatch(a -> a.t.kind() == Telegraph.Kind.BURST
-                && Math.hypot(a.t.x() - l.getX(), a.t.z() - l.getZ()) <= r);
+                && Math.abs(a.t.y() - l.getY()) <= Telegraph.BAND
+                && Math.hypot(a.t.x() - l.getX(), a.t.z() - l.getZ()) <= 2 * r);
     }
 
     /** Bolstering: the enemies near a death (adds too, never the boss) hit harder from now on. */
