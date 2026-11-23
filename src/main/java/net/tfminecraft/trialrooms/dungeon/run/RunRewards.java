@@ -20,4 +20,11 @@ public interface RunRewards {
     }
 
     void reward(Player player, String recipe, int tier, Moment moment, UUID run);
+
+    /**
+     * Spoils that leave the dungeon (act materials, rare items): what a proper player earns in
+     * {@code hours} of play, by the act system's hourly budgets.
+     */
+    default void spoils(Player player, String recipe, double hours, UUID run) {
+    }
 }

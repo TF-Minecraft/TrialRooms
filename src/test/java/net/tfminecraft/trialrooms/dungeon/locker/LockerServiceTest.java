@@ -216,7 +216,7 @@ class LockerServiceTest {
     lockers.settle(ann, false);
     assertTrue(l.owed().isEmpty());
     assertEquals("own sword", name(ann.getInventory().getItem(3)));
-    assertTrue(ann.nextMessage().contains("are back"));
+    assertTrue(ann.nextMessage().contains("are in your inventory"));
   }
 
   @Test
@@ -541,7 +541,7 @@ class LockerServiceTest {
     lockers.takeOff(ann);
     assertNull(ann.getInventory().getItem(9), "never handed out as an item");
     l.owe(codec.encode(placeholder()));
-    l.owe(codec.encode(named(Material.STONE, "owed stone")));
+    lockers.owe(l, named(Material.STONE, "owed stone")); // (as spoils are owed)
     lockers.settle(ann, false);
     assertTrue(l.owed().isEmpty());
     assertEquals(1, java.util.Arrays.stream(ann.getInventory().getContents()).filter(java.util.Objects::nonNull).count(),

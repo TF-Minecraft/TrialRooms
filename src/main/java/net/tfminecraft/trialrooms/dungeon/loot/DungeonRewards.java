@@ -41,15 +41,61 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     private final Random rng;
     private final LongSupplier clock;
     private final ZoneId zone;
+    private final Supplier<Spoils> spoils;
+    private final java.util.logging.Logger log;
 
     public DungeonRewards(DungeonLoot loot, LockerService lockers, Supplier<RewardRules> rules, Random rng,
             LongSupplier clock, ZoneId zone) {
+        this(loot, lockers, rules, rng, clock, zone, () -> null, java.util.logging.Logger.getLogger("TrialRooms"));
+    }
+
+    public DungeonRewards(DungeonLoot loot, LockerService lockers, Supplier<RewardRules> rules, Random rng,
+            LongSupplier clock, ZoneId zone, Supplier<Spoils> spoils, java.util.logging.Logger log) {
         this.loot = loot;
         this.lockers = lockers;
         this.rules = rules;
         this.rng = rng;
         this.clock = clock;
         this.zone = zone;
+        this.spoils = spoils;
+        this.log = log;
+    }
+
+    /**
+     * Spoils: act materials and rare items for {@code hours} of proper play. They wait in the
+     * locker (saved with it) and are the player's once they are back outside the dungeon.
+     */
+    @Override
+    public void spoils(Player p, String recipe, double hours, UUID run) {
+        Spoils s = spoils.get();
+        Locker l = s == null ? null : lockers.locker(p);
+        if (l == null) {
+            return;
+        }
+        List<String> got = new java.util.ArrayList<>();
+        for (Map.Entry<String, Integer> e : s.roll(hours, rng).entrySet()) {
+            ItemStack it = loot.item(e.getKey());
+            if (it == null) {
+                log.warning("[dungeons] spoils: no item " + e.getKey());
+                continue;
+            }
+            for (int left = e.getValue(); left > 0; ) {
+                ItemStack stack = it.clone();
+                stack.setAmount(Math.min(left, it.getMaxStackSize()));
+                left -= stack.getAmount();
+                lockers.owe(l, stack);
+            }
+            got.add(e.getValue() + " " + name(it));
+        }
+        if (got.isEmpty()) {
+            return;
+        }
+        if (!lockers.saveLocker(p, l)) {
+            // they stay in the locker in memory, for the next save that works
+            p.sendMessage("§cYour spoils could not be saved yet. Tell staff.");
+            return;
+        }
+        p.sendMessage("§eSpoils: §f" + String.join(", ", got) + " §7(yours when you leave the dungeon)");
     }
 
     /** The ISO week a moment falls in, as 2026-W47. */

@@ -493,8 +493,16 @@ public final class LockerService {
         still.forEach(l::owe);
         save(p, l);
         if (still.isEmpty()) {
-            p.sendMessage("§aYour own items that found no room earlier are back.");
+            p.sendMessage("§aThe items waiting for you (spoils, or your own items that found no room) are in your inventory.");
         }
+    }
+
+    /**
+     * Adds an item the player gets once they are back outside (spoils that leave the dungeon). It
+     * waits in the locker, saved with it, and is handed over like owed own items, never lost for room.
+     */
+    public void owe(Locker l, ItemStack item) {
+        l.owe(codec.encode(item));
     }
 
     /** Whether the player carries the mark of a wear for their current character (for tests and staff). */

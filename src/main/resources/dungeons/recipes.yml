@@ -67,10 +67,14 @@ delve_seithr:
   boss: ice_golem
   event-chance: 0.4
   max-events: 2
+  # How long a proper party takes for a run, in minutes: its spoils (act materials and rare items
+  # that leave the dungeon) pay that much play at the act system's hourly budgets, a share for each
+  # fight room cleared. 0 or none: no spoils. A difficulty can give its own.
+  minutes: 20
   # Chosen at the gate. tier: the run's tier (bigger fights, harder boss mechanics, loot of that
   # tier); health and damage: enemy multipliers on top of the party's; needs: the difficulty the
   # leader must have won here first. Normal is made for this act's roleplay gear.
   difficulties:
     normal: {name: Normal, tier: 1, advice: "Made for this act's roleplay gear."}
-    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, advice: "Made for rare dungeon gear."}
-    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, advice: "Made for epic and legendary dungeon gear."}
+    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 25, advice: "Made for rare dungeon gear."}
+    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 30, advice: "Made for epic and legendary dungeon gear."}

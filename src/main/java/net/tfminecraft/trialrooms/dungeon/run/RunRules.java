@@ -14,10 +14,19 @@ package net.tfminecraft.trialrooms.dungeon.run;
  * @param enemiesPerExtraPlayer extra fight budget (more enemies) per player beyond the first, as a fraction
  * @param eventChance        chance that a plain fight room gets one of the kit's room events (0 to 1)
  * @param maxEvents          the most room events in one dungeon
+ * @param minutes            how long a proper party takes for a run: what its spoils (act materials and
+ *                           rare items that leave the dungeon) are sized on; 0 = no spoils
  */
 public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
         double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
-        int maxEvents) {
+        int maxEvents, double minutes) {
+
+    public RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
+            double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
+            int maxEvents) {
+        this(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, tier, boss, enemiesPerExtraPlayer,
+                eventChance, maxEvents, 0);
+    }
 
     public RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
             double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer) {
@@ -38,7 +47,13 @@ public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives
     /** The same rules at another tier (a harder difficulty). */
     public RunRules withTier(int t) {
         return new RunRules(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, t, boss,
-                enemiesPerExtraPlayer, eventChance, maxEvents);
+                enemiesPerExtraPlayer, eventChance, maxEvents, minutes);
+    }
+
+    /** The same rules played at a difficulty: its tier, and its run length when it gives one. */
+    public RunRules with(Difficulty d) {
+        return new RunRules(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, d.tier(), boss,
+                enemiesPerExtraPlayer, eventChance, maxEvents, d.minutes() > 0 ? d.minutes() : minutes);
     }
 
     public RunRules {
@@ -54,6 +69,9 @@ public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives
         }
         if (!(eventChance >= 0 && eventChance <= 1) || maxEvents < 0) {
             throw new IllegalArgumentException("event-chance must be between 0 and 1, max-events not negative");
+        }
+        if (!(minutes >= 0) || Double.isInfinite(minutes)) {
+            throw new IllegalArgumentException("minutes must not be negative");
         }
         keyPath = keyPath == null ? "" : keyPath.trim();
         boss = boss == null ? "" : boss.trim();

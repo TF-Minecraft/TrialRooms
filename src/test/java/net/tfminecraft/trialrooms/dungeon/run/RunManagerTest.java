@@ -329,6 +329,43 @@ class RunManagerTest {
   }
 
   @Test
+  void clearedFightRoomsPayTheirShareOfTheRunsSpoils() {
+    rules = new RunRules(1, 3, "m.key", 1, 1, 0.5, 1, "", 0, 0, 0, 30);
+    List<String> paid = new ArrayList<>();
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run) {
+      }
+
+      @Override
+      public void spoils(org.bukkit.entity.Player p, String recipe, double hours, java.util.UUID run) {
+        paid.add(p.getName() + " " + recipe + " " + hours);
+      }
+    });
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    long fights = layout.rooms().stream().filter(r -> DungeonRun.isFight(r.node().type())).count();
+    into(a, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    assertEquals(List.of("Ann delve " + (0.5 / fights)), paid, "half an hour over the run's fight rooms");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a run given no length pays no spoils
+    rules = new RunRules(1, 3, "m.key", 1, 1, 0.5);
+    paid.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"));
+    into(a, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    assertEquals(List.of(), paid);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    RunRewards itemsOnly = (p, recipe, tier, moment, run) -> { };
+    itemsOnly.spoils(a, "delve", 1, null); // rewards without spoils pay none
+  }
+
+  @Test
   void runsTellTheirRewardMoments() {
     List<String> told = new ArrayList<>();
     runs.rewards((p, recipe, tier, moment, run) -> told.add(p.getName() + " " + recipe + " " + tier + " " + moment));

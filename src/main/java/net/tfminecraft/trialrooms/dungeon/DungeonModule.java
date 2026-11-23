@@ -81,6 +81,7 @@ public final class DungeonModule {
     private AllyFilter allyFilter;
     private LootKit lootKit;
     private RewardRules rewardRules;
+    private net.tfminecraft.trialrooms.dungeon.loot.Spoils spoils;
     private DungeonLoot loot;
     private DungeonRewards rewards;
 
@@ -134,7 +135,7 @@ public final class DungeonModule {
         if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
             rewards = new DungeonRewards(loot, lockers, this::rewardRules, new java.util.Random(),
-                    System::currentTimeMillis, java.time.ZoneId.systemDefault());
+                    System::currentTimeMillis, java.time.ZoneId.systemDefault(), this::spoils, plugin.getLogger());
             runs.rewards(rewards);
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
@@ -187,6 +188,11 @@ public final class DungeonModule {
         return rewardRules;
     }
 
+    /** What leaves dungeons with the players (act materials, rare items); null when none. */
+    public net.tfminecraft.trialrooms.dungeon.loot.Spoils spoils() {
+        return spoils;
+    }
+
     /** What runs hand out (and the locker's shop and socketing), or null without loot. */
     public DungeonRewards rewards() {
         return rewards;
@@ -217,6 +223,7 @@ public final class DungeonModule {
         var lootYml = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootFile);
         lootKit = lootFile.isFile() ? LootKit.load(lootYml, problems) : null;
         rewardRules = RewardRules.load(lootYml, lootKit, problems);
+        spoils = net.tfminecraft.trialrooms.dungeon.loot.Spoils.load(lootYml, problems);
         File settingsFile = new File(root, "settings.yml");
         settings = settingsFile.isFile()
                 ? RunSettings.from(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile))

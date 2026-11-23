@@ -46,4 +46,7 @@ public interface LootForge {
 
     /** Puts a gem into an item's free socket, as MMOItems does for a player. */
     Socketed socket(Player player, ItemStack item, ItemStack gem);
+
+    /** One of an ordinary item by its TLibs item path (m.type.id, v.material); null when it doesn't exist. */
+    ItemStack item(String path);
 }

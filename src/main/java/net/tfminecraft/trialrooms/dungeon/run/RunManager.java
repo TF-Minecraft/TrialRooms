@@ -238,17 +238,34 @@ public final class RunManager {
 
     /** Tells every member playing the run in the dungeon world about a reward moment. */
     private void reward(ActiveRun ar, RunRewards.Moment moment) {
-        if (rewards == null) {
+        if (rewards != null) {
+            forPlaying(ar, "the " + moment + " reward",
+                    p -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id()));
+        }
+    }
+
+    /**
+     * A cleared fight room's spoils: its share of what a proper party earns in the run's length
+     * (only fight rooms are cleared; a run given no length pays no spoils).
+     */
+    private void spoils(ActiveRun ar) {
+        if (rewards == null || !(ar.rules.minutes() > 0)) {
             return;
         }
+        long fights = ar.run.layout().rooms().stream().filter(r -> DungeonRun.isFight(r.node().type())).count();
+        double hours = ar.rules.minutes() / 60.0 / fights;
+        forPlaying(ar, "the spoils", p -> rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id()));
+    }
+
+    /** Hands something to each member still playing; one player's failure never stops the others' or the run. */
+    private void forPlaying(ActiveRun ar, String what, java.util.function.Consumer<Player> give) {
         for (Player p : online(ar)) {
             if (isPlayingMember(ar, p)) { // (the step counts anyone outside the dungeon world as away)
                 try {
-                    rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id());
+                    give.accept(p);
                 } catch (Exception | LinkageError e) {
-                    // one player's failed reward never stops the others' or the run
                     plugin.getLogger().log(java.util.logging.Level.WARNING,
-                            "[dungeons] the " + moment + " reward for " + p.getName() + " failed", e);
+                            "[dungeons] " + what + " for " + p.getName() + " failed", e);
                 }
             }
         }
@@ -423,7 +440,7 @@ public final class RunManager {
 
     private void begin(Player leader, List<Player> group, RecipeLoader.Entry entry, String recipeId, long seed,
             String keyPath, Difficulty difficulty) {
-        RunRules rules = difficulty == null ? entry.rules() : entry.rules().withTier(difficulty.tier());
+        RunRules rules = difficulty == null ? entry.rules() : entry.rules().with(difficulty);
         DungeonLayout layout;
         LayoutPlacer placer;
         try {
@@ -943,6 +960,7 @@ public final class RunManager {
         if (moment != null) {
             reward(ar, moment);
         }
+        spoils(ar);
     }
 
     /** What clearing a room of this type pays out: the boss, an elite room, or a finished event. */

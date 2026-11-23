@@ -136,11 +136,7 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
                 ConfigurationSection s = ts.getConfigurationSection(t);
                 tiers.put(Integer.parseInt(t), new Tier(s.getDouble("power", 1), s.getDouble("luck", 0)));
             }
-            Map<String, Map<String, Range>> pools = new LinkedHashMap<>();
-            ConfigurationSection ps = section(y, "bonus");
-            for (String pool : ps.getKeys(false)) {
-                pools.put(pool, ranges(ps.getConfigurationSection(pool)));
-            }
+            Map<String, Map<String, Range>> pools = pools(y);
             List<Base> bases = new ArrayList<>();
             ConfigurationSection is = section(y, "items");
             for (String id : is.getKeys(false)) {
@@ -180,6 +176,35 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
             s.getKeys(false).forEach(k -> out.put(k.toLowerCase(Locale.ROOT), s.getString(k)));
         }
         return out;
+    }
+
+    /**
+     * Bonus pools: each lists stats, and every bonus stat is worth the same, bonus-worth [min, max]
+     * units, where worth gives what one unit of each stat is (so no pick is better than another).
+     */
+    private static Map<String, Map<String, Range>> pools(ConfigurationSection y) {
+        List<Double> span = y.getDoubleList("bonus-worth");
+        if (span.size() != 2) {
+            throw new IllegalArgumentException("bonus-worth: give [min, max]");
+        }
+        ConfigurationSection worth = section(y, "worth");
+        Map<String, Map<String, Range>> pools = new LinkedHashMap<>();
+        ConfigurationSection ps = section(y, "bonus");
+        for (String pool : ps.getKeys(false)) {
+            Map<String, Range> stats = new LinkedHashMap<>();
+            for (String stat : ps.getStringList(pool)) {
+                double unit = worth.getDouble(stat, 0);
+                if (!(unit > 0)) {
+                    throw new IllegalArgumentException("bonus pool " + pool + ": no worth for " + stat);
+                }
+                stats.put(stat.toLowerCase(Locale.ROOT), new Range(unit * span.get(0), unit * span.get(1)));
+            }
+            if (stats.isEmpty()) {
+                throw new IllegalArgumentException("bonus pool " + pool + " lists no stats");
+            }
+            pools.put(pool, stats);
+        }
+        return pools;
     }
 
     /** stat: [min, max] lists. */

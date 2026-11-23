@@ -59,6 +59,13 @@ class DungeonLootTest {
     public Socketed socket(Player player, ItemStack item, ItemStack gem) {
       return new Socketed(Socketing.DONE, item);
     }
+
+    final Map<String, ItemStack> items = new HashMap<>();
+
+    @Override
+    public ItemStack item(String path) {
+      return items.get(path);
+    }
   }
 
   LootKit kit = LootCoreTest.shipped();
@@ -138,6 +145,8 @@ class DungeonLootTest {
     assertEquals(List.of("sword"), l.usable(ann).stream().map(LootKit.Base::id).toList());
     ItemStack item = mock(ItemStack.class);
     assertSame(item, l.socket(ann, item, mock(ItemStack.class)).item());
+    forge.items.put("m.materials.ignitium", item);
+    assertSame(item, l.item("m.materials.ignitium"), "spoils are ordinary items");
     kit = null;
     assertTrue(l.gem(1, null, "jewellery", "x").problem().startsWith("Dungeon loot is off"));
     assertEquals(List.of(), l.usable(ann));

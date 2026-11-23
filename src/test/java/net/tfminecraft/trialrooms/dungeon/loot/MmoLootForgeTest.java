@@ -140,6 +140,9 @@ class MmoLootForgeTest {
       assertNull(forge.classes("helmets.missing"));
       assertNull(forge.classes("helmets.air"));
     }
+    assertSame(it, forge.item("m.helmets.heavy"), "an ordinary item by its path (a spoil)");
+    assertNull(forge.item("m.helmets.air"));
+    assertNull(forge.item("m.helmets.missing"));
     try (MockedConstruction<LiveMMOItem> live = mockConstruction(LiveMMOItem.class)) {
       assertEquals(List.of(), forge.classes("helmets.heavy"), "no class list: anyone");
     }
