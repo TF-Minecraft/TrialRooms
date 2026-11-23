@@ -106,6 +106,9 @@ class DungeonModuleTest {
         try {
           var layout = m.generate(big, seed);
           made++;
+          int[] b = layout.bounds(); // {minX, minZ, maxX, maxZ} in cells
+          int reach = Math.max(Math.max(Math.abs(b[0]), Math.abs(b[2])), Math.max(Math.abs(b[1]), Math.abs(b[3]))) + 1;
+          assertTrue(reach * 16 <= DungeonModule.SLOT_SPACING / 2, big + " seed " + seed + " reaches " + reach + " cells");
           for (var room : layout.rooms()) {
             var type = room.node().type();
             if (type == net.tfminecraft.trialrooms.dungeon.template.RoomType.COMBAT
@@ -122,12 +125,16 @@ class DungeonModuleTest {
     assertEquals(4, m.recipes().get("warband_seithr").rules().minRoomCells());
     assertEquals(2.5, m.recipes().get("warband_seithr").rules().bossHealth());
     assertEquals(6, m.recipes().get("warband_seithr").rules().minPlayers());
+    assertEquals(10, m.recipes().get("warband_seithr").rules().healthCap());
+    assertEquals(8, m.recipes().get("warband_seithr").rules().maxDepth());
+    assertEquals(1, m.cosmetics().trophies("warband_seithr", "nightmare").size(), "the bigger parties have trophies too");
+    assertEquals(1, m.cosmetics().skins("dungeon_seithr", "hard").size());
     assertSame(world, m.world());
     assertNotNull(m.lootKit(), "the bundled loot.yml");
     assertEquals(30, m.lootKit().bases().size());
     assertNotNull(m.rewardRules(), "and its rewards");
     assertEquals(18.9, m.spoils().perHour().get("m.materials.ignitium"), "and its spoils");
-    assertEquals(3, m.cosmetics().trophies().size(), "and its cosmetics");
+    assertEquals(9, m.cosmetics().trophies().size(), "and its cosmetics");
     assertEquals(5, m.affixes().pool().size(), "and the weekly affixes from settings.yml");
     assertEquals(20, m.recipes().get("delve_seithr").rules().minutes());
     // a second start keeps edited files
@@ -173,7 +180,9 @@ class DungeonModuleTest {
         + "  trunk-pool: {combat: 1}\n"
         + "big:\n  kit: greybox\n  trunk-pool: {combat: 1}\n  min-room-cells: 99\n"
         + "wide:\n  kit: greybox\n  trunk-pool: {corridor: 1}\n  branches: 1\n  branch-length: 2\n"
-        + "  branch-pool: {elite: 1}\n  min-room-cells: 99\n");
+        + "  branch-pool: {elite: 1}\n  min-room-cells: 99\n"
+        + "unused:\n  kit: greybox\n  trunk-pool: {corridor: 1}\n  branches: 0\n  branch-pool: {elite: 1}\n"
+        + "  min-room-cells: 99\n");
     m.reload();
     assertTrue(m.problems().stream().anyMatch(p -> p.contains("big: kit greybox has no combat room of at least 99 cells")),
         m.problems().toString());
@@ -181,6 +190,7 @@ class DungeonModuleTest {
         m.problems().toString());
     assertFalse(m.recipes().containsKey("big"));
     assertFalse(m.recipes().containsKey("wide"));
+    assertTrue(m.recipes().containsKey("unused"), "a pool the generator never uses is no reason to refuse it");
     Files.delete(data.resolve("dungeons/loot.yml"));
     m.reload();
     assertNull(m.lootKit(), "no loot.yml: no loot");

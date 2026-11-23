@@ -253,10 +253,10 @@ public final class DungeonModule {
                 return true;
             }
             var roomy = kit.catalog().roomy(e.rules().minRoomCells());
+            var needed = DungeonGenerator.neededTypes(e.recipe());
             for (var type : java.util.List.of(net.tfminecraft.trialrooms.dungeon.template.RoomType.COMBAT,
                     net.tfminecraft.trialrooms.dungeon.template.RoomType.ELITE)) {
-                boolean wanted = e.recipe().trunkPool().containsKey(type) || e.recipe().branchPool().containsKey(type);
-                if (wanted && roomy.ofType(type).isEmpty()) {
+                if (e.rules().minRoomCells() > 1 && needed.contains(type) && roomy.ofType(type).isEmpty()) {
                     problems.add("recipe " + e.recipe().id() + ": kit " + e.kit() + " has no " + type.name().toLowerCase()
                             + " room of at least " + e.rules().minRoomCells() + " cells");
                     return true;

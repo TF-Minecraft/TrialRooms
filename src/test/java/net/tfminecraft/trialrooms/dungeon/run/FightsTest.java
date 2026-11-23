@@ -435,9 +435,11 @@ class FightsTest {
   @Test
   void bigPartyRecipesHaveATougherBoss() {
     useKit(fightKit(tuning(6, 0), warden()));
-    rules = new RunRules(1, 3, "", 1, 1, 0.5, 1, "warden", 0, 0, 0, 0, 0, 1, 2.5);
+    rules = new RunRules(1, 3, "", 1, 1, 0.5, 1, "warden", 0, 0, 0, 0, 0, 1, 2.5, 10, 0);
     RunManager.ActiveRun ar = enter(player("Ann"), room(RoomType.COMBAT));
     assertEquals(runs.fights().health(ar, 1) * 2.5, runs.fights().bossHealth(ar, 1), 1e-9);
+    assertEquals(8, runs.fights().health(ar, 8), 1e-9, "the recipe's cap (10) instead of the kit's (4)");
+    assertEquals(10, runs.fights().health(ar, 12), 1e-9);
   }
 
   @Test

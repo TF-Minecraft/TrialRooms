@@ -98,8 +98,8 @@ dungeon_seithr:
   branch-pool:
     combat: 2
     corridor: 1
-  attempts: 30
-  step-budget: 40000
+  attempts: 20
+  step-budget: 30000
   players: 3-5
   key: m.loot.trial_key
   lives: 5
@@ -110,6 +110,11 @@ dungeon_seithr:
   boss: ice_golem
   boss-health: 1.5
   min-room-cells: 2
+  # health-cap: the most an enemy's health is multiplied by (party and elite; 0 or none = the kit's);
+  # max-depth: fights grow with each cleared room up to this many (long runs stay within the
+  # enemy cap; 0 or none = no limit).
+  health-cap: 6
+  max-depth: 8
   event-chance: 0.4
   max-events: 3
   minutes: 35
@@ -134,8 +139,8 @@ warband_seithr:
   branch-pool:
     combat: 2
     corridor: 1
-  attempts: 40
-  step-budget: 80000
+  attempts: 20
+  step-budget: 50000
   players: 6-10
   key: m.loot.trial_key
   lives: 8
@@ -146,6 +151,8 @@ warband_seithr:
   boss: ice_golem
   boss-health: 2.5
   min-room-cells: 4
+  health-cap: 10
+  max-depth: 8
   event-chance: 0.4
   max-events: 4
   minutes: 50

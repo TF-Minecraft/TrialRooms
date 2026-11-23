@@ -190,6 +190,11 @@ final class Fights {
         }
     }
 
+    /** The most an enemy's health is multiplied by: the recipe's cap, or the kit's. */
+    private static double cap(ActiveRun ar) {
+        return ar.rules.healthCap() > 0 ? ar.rules.healthCap() : ar.kit.fights().tuning().healthCap();
+    }
+
     /** Whether a mechanic is marked on the ground (a burst from a dead enemy doesn't count: it is not the boss's). */
     static boolean busy(Encounter enc) {
         return enc.telegraphs.stream().anyMatch(a -> a.t.kind() != Telegraph.Kind.BURST);
@@ -198,13 +203,13 @@ final class Fights {
     /** Multiplies a mob's max health by {@code factor} (one keyed modifier, so it is never doubled) and fills it. */
     /** A health factor: the party's (and an elite's) up to the kit's cap, then the difficulty's on top. */
     double health(ActiveRun ar, double factor) {
-        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth
+        return Math.min(factor, cap(ar)) * ar.difficultyHealth
                 * (ar.has(WeeklyAffix.FORTIFIED) ? ar.affixConfig.fortified() : 1);
     }
 
     /** A boss's health factor: as {@link #health} without Fortified, with Tyrannical. */
     double bossHealth(ActiveRun ar, double factor) {
-        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth * ar.rules.bossHealth()
+        return Math.min(factor, cap(ar)) * ar.difficultyHealth * ar.rules.bossHealth()
                 * (ar.has(WeeklyAffix.TYRANNICAL) ? ar.affixConfig.tyrantHealth() : 1);
     }
 
@@ -249,7 +254,7 @@ final class Fights {
         long seed = new java.util.SplittableRandom(ar.run.layout().seed() * 31 + room).nextLong();
         Random rng = new Random(seed);
         List<String> tags = ar.geo.markerTags(room, "spawn");
-        int depth = ar.run.roomsCleared();
+        int depth = ar.rules.depth(ar.run.roomsCleared());
         BossDef def = type == RoomType.BOSS ? kit.boss(ar.rules.boss()) : null;
         // the party's size and the room's own size both scale the fight
         double factor = ar.enemyFactor * ar.run.layout().rooms().get(room).template().threat();
