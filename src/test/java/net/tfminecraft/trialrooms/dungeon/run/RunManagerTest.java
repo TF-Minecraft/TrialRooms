@@ -673,7 +673,7 @@ class RunManagerTest {
     runs.sweep(b);
     assertTrue(got.contains("Bo BOSS"), "back during the finish: their finds are theirs " + got);
     assertFalse(got.contains("Bo EVENT"));
-    assertTrue(nextMatching(b, "Your finds are secured."));
+    assertTrue(nextMatching(b, "Some of your finds could not be paid. Tell staff."), "his event roll failed");
     runs.sweep(b); // (nothing held any more)
     runs.rewards(null);
     runs.sweep(a);

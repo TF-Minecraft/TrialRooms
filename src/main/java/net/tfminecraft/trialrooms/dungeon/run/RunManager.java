@@ -173,6 +173,10 @@ public final class RunManager {
         boolean hardcore;
         /** A hardcore run's unsecured finds, per member. */
         final Map<UUID, Unsecured> unsecured = new HashMap<>();
+        /** Whether finds are still held (a hardcore run until its vault; after it, finds are paid at once). */
+        boolean holding;
+        /** Who was in the run when it reached the vault (named on trophies secured later). */
+        List<String> securedParty = List.of();
 
         boolean has(WeeklyAffix a) {
             return affixes.contains(a);
@@ -275,7 +279,7 @@ public final class RunManager {
     }
 
     private void reward(ActiveRun ar, RunRewards.Moment moment, boolean underPar) {
-        if (rewards != null && ar.hardcore && moment != RunRewards.Moment.VAULT) {
+        if (rewards != null && ar.holding) { // (holding ends as the vault is reached)
             // unsecured until the vault: kept as moments, rolled there (or lost on a fall)
             forPlaying(ar, "the unsecured " + moment, p -> {
                 if (ar.run.member(p.getUniqueId()).status() != Status.OUT) { // (out of the fight: nothing to find)
@@ -320,7 +324,7 @@ public final class RunManager {
             if (ar.run.member(p.getUniqueId()).status() == Status.OUT) {
                 return;
             }
-            if (ar.hardcore && !won) {
+            if (ar.holding) {
                 held(ar, p).hours += hours;
             } else {
                 rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id());
@@ -575,6 +579,7 @@ public final class RunManager {
             ar.difficulty = difficulty;
             ar.ranked = ranked;
             ar.hardcore = hardcore;
+            ar.holding = hardcore;
             ar.affixConfig = module.affixes();
             ar.affixes = weeklyAffixes(recipeId, rules.tier());
             ar.damageFactor = difficulty == null ? 1 : difficulty.damage();
@@ -1528,6 +1533,8 @@ public final class RunManager {
         tell(ar, "§6The vault is yours. §7Right-click by the exit to leave; everyone is sent back in "
                 + settings().finishSeconds() + " seconds.");
         recordWin(ar);
+        ar.securedParty = stayed(ar);
+        ar.holding = false; // (what is found from now on is paid at once)
         if (ar.hardcore) {
             secure(ar);
         }
@@ -1546,7 +1553,7 @@ public final class RunManager {
 
     /** A feat for each member still playing: trophies and wardrobe skins may come of it. */
     private void feat(ActiveRun ar, RunRewards.Moment moment) {
-        if (rewards != null && ar.hardcore && moment != RunRewards.Moment.VAULT) {
+        if (rewards != null && ar.holding) { // (holding ends as the vault is reached)
             return; // (a hardcore boss's trophy roll comes with its unsecured reward at the vault)
         }
         if (rewards != null) {
@@ -1608,24 +1615,28 @@ public final class RunManager {
             return;
         }
         String d = ar.difficulty == null ? "" : ar.difficulty.id();
-        List<String> party = stayed(ar);
+        List<String> party = ar.securedParty;
+        boolean ok = true;
         for (RunRewards.Moment m : u.moments) {
-            safely(p, "a secured " + m, () -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), m, ar.run.id(), false, true));
+            ok &= safely(p, "a secured " + m,
+                    () -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), m, ar.run.id(), false, true));
             if (m == RunRewards.Moment.BOSS) {
-                safely(p, "a secured trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), party));
+                ok &= safely(p, "a secured trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), party));
             }
         }
         if (u.hours > 0) {
-            safely(p, "the secured spoils", () -> rewards.spoils(p, ar.run.recipeId(), u.hours, ar.run.id()));
+            ok &= safely(p, "the secured spoils", () -> rewards.spoils(p, ar.run.recipeId(), u.hours, ar.run.id()));
         }
-        p.sendMessage("§a✦ Your finds are secured.");
+        p.sendMessage(ok ? "§a✦ Your finds are secured." : "§cSome of your finds could not be paid. Tell staff.");
     }
 
-    private void safely(Player p, String what, Runnable give) {
+    private boolean safely(Player p, String what, Runnable give) {
         try {
             give.run();
+            return true;
         } catch (Exception | LinkageError e) {
             plugin.getLogger().log(java.util.logging.Level.WARNING, "[dungeons] " + what + " for " + p.getName() + " failed", e);
+            return false;
         }
     }
 
