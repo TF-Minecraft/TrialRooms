@@ -22,6 +22,11 @@ public interface RunRewards {
 
     void reward(Player player, String recipe, int tier, Moment moment, UUID run);
 
+    /** A reward for a run that may have beaten its par time (a better vault). */
+    default void reward(Player player, String recipe, int tier, Moment moment, UUID run, boolean underPar) {
+        reward(player, recipe, tier, moment, run);
+    }
+
     /**
      * Spoils that leave the dungeon (act materials, rare items): what a proper player earns in
      * {@code hours} of play, by the act system's hourly budgets.

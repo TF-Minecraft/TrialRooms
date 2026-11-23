@@ -71,10 +71,13 @@ delve_seithr:
   # that leave the dungeon) pay that much play at the act system's hourly budgets, a share for each
   # fight room cleared. 0 or none: no spoils. A difficulty can give its own.
   minutes: 20
+  # Par time in minutes: reaching the vault within it gives a better vault (extra marks and luck, see
+  # loot.yml rewards par:). A difficulty can give its own.
+  par: 15
   # Chosen at the gate. tier: the run's tier (bigger fights, harder boss mechanics, loot of that
   # tier); health and damage: enemy multipliers on top of the party's; needs: the difficulty the
   # leader must have won here first. Normal is made for this act's roleplay gear.
   difficulties:
     normal: {name: Normal, tier: 1, advice: "Made for this act's roleplay gear."}
-    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 25, advice: "Made for rare dungeon gear."}
-    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 30, advice: "Made for epic and legendary dungeon gear."}
+    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 25, par: 20, advice: "Made for rare dungeon gear."}
+    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 30, par: 25, advice: "Made for epic and legendary dungeon gear."}

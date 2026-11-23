@@ -337,6 +337,10 @@ public class RunCoreTest {
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, -1));
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, Double.POSITIVE_INFINITY));
+    assertEquals(0, party.par(), "no par time");
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, -1));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, Double.POSITIVE_INFINITY));
     assertEquals(5, d.selfReviveSeconds());
     assertEquals(10, d.aloneBleedOutSeconds());
     YamlConfiguration alone = new YamlConfiguration();

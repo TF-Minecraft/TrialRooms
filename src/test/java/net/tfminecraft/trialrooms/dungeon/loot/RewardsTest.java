@@ -76,8 +76,8 @@ public class RewardsTest {
     when(lockers.saveLocker(ann, locker)).thenReturn(true);
     when(sword.effectiveName()).thenReturn(Component.text("Rimebound Sword"));
     when(gem.effectiveName()).thenReturn(Component.text("Glacial Rimestone"));
-    when(loot.roll(eq(ann), anyInt(), any(), any())).thenReturn(new DungeonLoot.Rolled(sword, null));
-    when(loot.gem(anyInt(), any(), any(), any())).thenReturn(new DungeonLoot.Rolled(gem, null));
+    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any())).thenReturn(new DungeonLoot.Rolled(sword, null));
+    when(loot.gem(anyInt(), anyDouble(), any(), any(), any())).thenReturn(new DungeonLoot.Rolled(gem, null));
   }
 
   @Test
@@ -89,6 +89,14 @@ public class RewardsTest {
     assertEquals(60, rules.weeklyMarks());
     assertEquals(Map.of("rare", 30, "epic", 80), rules.prices());
     assertEquals("gemstones.larimar", rules.gemTemplate());
+    assertEquals(5, rules.parMarks());
+    assertEquals(0.5, rules.parLuck());
+    assertThrows(IllegalArgumentException.class,
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", -1, 0));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, Double.POSITIVE_INFINITY));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, -0.5));
     assertEquals(0.0, new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p").chance(Moment.BOSS));
     assertEquals(0, new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p").marks(Moment.BOSS));
   }
@@ -137,6 +145,13 @@ public class RewardsTest {
   }
 
   @Test
+  void aVaultUnderParPaysMoreAndRollsLuckier() {
+    rewards(doubles(0.9)).reward(ann, "delve_seithr", 1, Moment.VAULT, run, true);
+    assertEquals(15, locker.marks(), "10 for the vault, 5 for par");
+    verify(loot).roll(ann, 1, 0.5, null, null);
+  }
+
+  @Test
   void chancesGrowWithEachEmptyRollAndAWinStartsThemOver() {
     DungeonRewards r = rewards(doubles(0.5, 0.5, 0.5, 0.9));
     r.reward(ann, "d", 1, Moment.BOSS, run); // 0.5 >= 0.35: nothing
@@ -154,8 +169,8 @@ public class RewardsTest {
   void someWinsAreGemsAndClassesWithNoItemGetGems() {
     rewards(doubles(0.0, 0.1)).reward(ann, "d", 1, Moment.VAULT, run); // vault (no chance roll), 0.0 < gem-chance
     verify(lockers).file(locker, gem);
-    verify(loot, never()).roll(any(), anyInt(), any(), any());
-    when(loot.roll(eq(ann), anyInt(), any(), any())).thenReturn(new DungeonLoot.Rolled(null, "No dungeon item fits"));
+    verify(loot, never()).roll(any(), anyInt(), anyDouble(), any(), any());
+    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any())).thenReturn(new DungeonLoot.Rolled(null, "No dungeon item fits"));
     rewards(doubles(0.9)).reward(ann, "d", 1, Moment.VAULT, UUID.randomUUID());
     verify(lockers, times(2)).file(locker, gem);
   }

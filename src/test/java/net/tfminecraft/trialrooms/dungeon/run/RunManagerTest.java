@@ -488,6 +488,33 @@ class RunManagerTest {
   }
 
   @Test
+  void reachingTheVaultUnderParGivesABetterVault() {
+    rules = new RunRules(1, 3, "m.key", 1, 1, 0.5, 1, "", 0, 0, 0, 0, 10);
+    List<String> vaults = new ArrayList<>();
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run) {
+      }
+
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run,
+          boolean underPar) {
+        if (moment == RunRewards.Moment.VAULT) {
+          vaults.add(p.getName() + " " + underPar);
+        }
+      }
+    });
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    win(a, 300_000);
+    assertTrue(nextMatching(a, "Under par (10:00)!"));
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"));
+    win(a, 900_000);
+    assertTrue(nextMatching(a, "Par was 10:00."));
+    assertEquals(List.of("Ann true", "Ann false"), vaults);
+  }
+
+  @Test
   void whatWaitsIsClaimedOutsideTheDungeon() {
     PlayerMock a = player("Ann");
     runs.claim(a);

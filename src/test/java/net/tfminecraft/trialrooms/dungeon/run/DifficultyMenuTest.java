@@ -106,6 +106,18 @@ class DifficultyMenuTest {
   }
 
   @Test
+  void theScreenShowsTheParTime() {
+    DungeonRecipe recipe = new DungeonRecipe("delve", 1, 1, Map.of(RoomType.COMBAT, 1), true, true, 0, 0, 1, 1, null, 20, 20000);
+    var timed = new RecipeLoader.Entry(recipe, "greybox",
+        new RunRules(1, 3, "", 3, 1, 0.5, 1, "", 0, 0, 0, 20, 15), List.of(normal, new Difficulty("hard", "Hard", 2,
+            1.5, 1.25, "normal", "", 0, 12.5)));
+    DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, timed);
+    m.open();
+    assertTrue(String.valueOf(m.getInventory().getItem(m.slot(0)).getItemMeta().lore()).contains("Par: 15:00 (beat it for a better vault)"));
+    assertTrue(String.valueOf(m.getInventory().getItem(m.slot(1)).getItemMeta().lore()).contains("Par: 12:30"));
+  }
+
+  @Test
   void theScreenShowsEachDifficultysRecords() {
     Records records = mock(Records.class);
     when(runs.records()).thenReturn(records);

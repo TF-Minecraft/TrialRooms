@@ -16,10 +16,18 @@ package net.tfminecraft.trialrooms.dungeon.run;
  * @param maxEvents          the most room events in one dungeon
  * @param minutes            how long a proper party takes for a run: what its spoils (act materials and
  *                           rare items that leave the dungeon) are sized on; 0 = no spoils
+ * @param par                the par time in minutes: reaching the vault within it gives a better vault; 0 = none
  */
 public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
         double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
-        int maxEvents, double minutes) {
+        int maxEvents, double minutes, double par) {
+
+    public RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
+            double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
+            int maxEvents, double minutes) {
+        this(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, tier, boss, enemiesPerExtraPlayer,
+                eventChance, maxEvents, minutes, 0);
+    }
 
     public RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
             double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
@@ -47,13 +55,14 @@ public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives
     /** The same rules at another tier (a harder difficulty). */
     public RunRules withTier(int t) {
         return new RunRules(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, t, boss,
-                enemiesPerExtraPlayer, eventChance, maxEvents, minutes);
+                enemiesPerExtraPlayer, eventChance, maxEvents, minutes, par);
     }
 
     /** The same rules played at a difficulty: its tier, and its run length when it gives one. */
     public RunRules with(Difficulty d) {
         return new RunRules(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, d.tier(), boss,
-                enemiesPerExtraPlayer, eventChance, maxEvents, d.minutes() > 0 ? d.minutes() : minutes);
+                enemiesPerExtraPlayer, eventChance, maxEvents, d.minutes() > 0 ? d.minutes() : minutes,
+                d.par() > 0 ? d.par() : par);
     }
 
     public RunRules {
@@ -70,8 +79,8 @@ public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives
         if (!(eventChance >= 0 && eventChance <= 1) || maxEvents < 0) {
             throw new IllegalArgumentException("event-chance must be between 0 and 1, max-events not negative");
         }
-        if (!(minutes >= 0) || Double.isInfinite(minutes)) {
-            throw new IllegalArgumentException("minutes must not be negative");
+        if (!(minutes >= 0) || Double.isInfinite(minutes) || !(par >= 0) || Double.isInfinite(par)) {
+            throw new IllegalArgumentException("minutes and par must not be negative");
         }
         keyPath = keyPath == null ? "" : keyPath.trim();
         boss = boss == null ? "" : boss.trim();

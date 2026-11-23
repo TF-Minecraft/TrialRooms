@@ -73,6 +73,9 @@ rewards:
   prices: {rare: 30, epic: 80}
   shop-tier: 1
   gems: {template: gemstones.larimar, pool: jewellery}
+  # Reaching the vault within the run's par time (recipes.yml par:): extra marks (inside the weekly
+  # cap) and extra luck for the vault's roll (0.5 makes Normal roll like Hard and Hard like Nightmare).
+  par: {marks: 5, luck: 0.5}
 
 # Spoils: what leaves the dungeon with the player (never dungeon gear). A dungeon is a run source of
 # the act system (ACT-SYSTEM.md rule 5): an hour of proper play pays a full act budget and a full
