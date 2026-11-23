@@ -30,9 +30,9 @@ public final class DungeonCommand {
             + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave | ready"
             + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim");
+            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim", "top");
     /** What players without the staff permission may use. */
-    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim");
+    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim", "top");
 
     private final DungeonModule module;
 
@@ -55,6 +55,7 @@ public final class DungeonCommand {
             case "leave" -> leave(sender);
             case "ready" -> ready(sender);
             case "claim" -> claim(sender);
+            case "top" -> top(sender, args);
             case "locker" -> locker(sender, args);
             case "loot" -> loot(sender, args);
             case "marks" -> marks(sender, args);
@@ -211,6 +212,64 @@ public final class DungeonCommand {
             p.sendMessage("§aYou are ready.");
         } else {
             sender.sendMessage("§cThere is nothing to get ready for: the doors are already open, or you are not in a dungeon.");
+        }
+    }
+
+    /**
+     * The leaderboards: /tr dungeon top lists the dungeons; with a dungeon, each difficulty's best
+     * time for each party size; with a difficulty (and a party size, solo by default), its board.
+     */
+    private void top(CommandSender sender, String[] args) {
+        var records = module.runs().records();
+        if (records == null) {
+            sender.sendMessage("§cDungeon leaderboards are off.");
+            return;
+        }
+        if (args.length < 2) {
+            sender.sendMessage("§eUsage: /tr dungeon top <dungeon> [difficulty] [party size]. §7Dungeons: "
+                    + String.join(", ", module.recipes().keySet()));
+            return;
+        }
+        var entry = module.recipes().get(args[1]);
+        if (entry == null) {
+            sender.sendMessage("§cNo dungeon " + args[1] + ".");
+            return;
+        }
+        List<String> difficulties = entry.difficulties().isEmpty() ? java.util.Collections.singletonList(null)
+                : entry.difficulties().stream().map(net.tfminecraft.trialrooms.dungeon.run.Difficulty::id).toList();
+        if (args.length < 3) {
+            sender.sendMessage("§6Records of " + args[1]);
+            for (String d : difficulties) {
+                var best = records.best(args[1], d);
+                String label = d == null ? "Best" : entry.difficulty(d).name();
+                sender.sendMessage("§f" + label + ": §7" + (best.isEmpty() ? "no clears yet" : best.entrySet().stream()
+                        .map(e -> net.tfminecraft.trialrooms.dungeon.run.Records.time(e.getValue().millis()) + " "
+                                + RunManager.size(e.getKey()))
+                        .collect(java.util.stream.Collectors.joining(" · "))));
+            }
+            return;
+        }
+        var difficulty = entry.difficulty(args[2]);
+        if (difficulty == null && !entry.difficulties().isEmpty()) {
+            sender.sendMessage("§c" + args[1] + " has no difficulty " + args[2] + ".");
+            return;
+        }
+        int size;
+        try {
+            size = args.length > 3 ? Integer.parseInt(args[3]) : 1;
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cA party size is a number.");
+            return;
+        }
+        var board = records.top(args[1], difficulty == null ? null : difficulty.id(), size);
+        sender.sendMessage("§6" + args[1] + (difficulty == null ? "" : ", " + difficulty.name()) + ", "
+                + RunManager.size(size) + (board.isEmpty() ? ": §7no clears yet" : ""));
+        java.time.format.DateTimeFormatter day = java.time.format.DateTimeFormatter.ofPattern("d MMM")
+                .withZone(java.time.ZoneId.systemDefault());
+        for (int i = 0; i < board.size(); i++) {
+            var c = board.get(i);
+            sender.sendMessage("§f" + (i + 1) + ". " + net.tfminecraft.trialrooms.dungeon.run.Records.time(c.millis())
+                    + " §7" + String.join(", ", c.names()) + " (" + day.format(java.time.Instant.ofEpochMilli(c.at())) + ")");
         }
     }
 

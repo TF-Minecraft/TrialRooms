@@ -66,6 +66,13 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
             if (!d.advice().isBlank()) {
                 lore.add(d.advice());
             }
+            Records records = runs.records();
+            var best = records == null ? java.util.Map.<Integer, Records.Clear>of() : records.best(gate.recipe(), d.id());
+            if (!best.isEmpty()) {
+                lore.add("Records: " + best.entrySet().stream()
+                        .map(e -> Records.time(e.getValue().millis()) + " " + RunManager.size(e.getKey()))
+                        .collect(java.util.stream.Collectors.joining(" · ")));
+            }
             if (!open) {
                 Difficulty needs = entry.difficulty(d.needs());
                 lore.add("Opens once you have won " + (needs == null ? d.needs() : needs.name()) + " here.");

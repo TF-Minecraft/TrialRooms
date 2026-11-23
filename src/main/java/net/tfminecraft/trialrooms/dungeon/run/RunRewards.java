@@ -1,5 +1,6 @@
 package net.tfminecraft.trialrooms.dungeon.run;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.bukkit.entity.Player;
@@ -26,5 +27,15 @@ public interface RunRewards {
      * {@code hours} of play, by the act system's hourly budgets.
      */
     default void spoils(Player player, String recipe, double hours, UUID run) {
+    }
+
+    /**
+     * A feat for cosmetics that leave the dungeon: the boss down (a trophy may drop) or the vault
+     * reached (a wardrobe skin may unlock).
+     *
+     * @param difficulty the run's difficulty id, blank for a dungeon without difficulties
+     * @param party      who played the run
+     */
+    default void feat(Player player, String recipe, String difficulty, Moment moment, UUID run, List<String> party) {
     }
 }

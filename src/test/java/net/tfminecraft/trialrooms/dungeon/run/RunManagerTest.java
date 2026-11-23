@@ -411,6 +411,67 @@ class RunManagerTest {
     itemsOnly.spoils(a, "delve", 1, null); // rewards without spoils pay none
   }
 
+  /** Plays a run from where it starts to the vault, taking {@code millis} after the doors open. */
+  void win(PlayerMock a, long millis) {
+    now.addAndGet(millis);
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(a, RoomType.VAULT);
+    ticks(2);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
+  void wonGateRunsGoOnTheLeaderboardsAndFeatsAreTold() {
+    Records records = new Records(temp.resolve("records.yml").toFile(), Logger.getLogger("t"));
+    assertNull(runs.records(), "off until set");
+    runs.records(records);
+    assertSame(records, runs.records());
+    List<String> feats = new ArrayList<>();
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run) {
+      }
+
+      @Override
+      public void feat(org.bukkit.entity.Player p, String recipe, String difficulty, RunRewards.Moment moment,
+          java.util.UUID run, List<String> party) {
+        feats.add(p.getName() + " " + recipe + " [" + difficulty + "] " + moment + " " + party);
+      }
+    });
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    win(a, 65_000);
+    assertEquals(List.of("Ann delve [] BOSS [Ann]", "Ann delve [] VAULT [Ann]"), feats);
+    assertEquals(65_000, records.top("delve", null, 1).getFirst().millis());
+    assertTrue(nextMatching(a, "A new record: §f1:05 §7(solo)"));
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"));
+    win(a, 70_000);
+    assertTrue(nextMatching(a, "Your time: §f1:10§7, place 2 on the board (solo)"));
+    // a staff start chooses its layout: it never goes on the board
+    runs.startRun(a, "delve", 3);
+    win(a, 1_000);
+    assertEquals(2, records.top("delve", null, 1).size());
+    // a full board of faster clears: just the time
+    for (int i = 0; i < Records.KEEP; i++) {
+      records.add("delve", null, 1, new Records.Clear(1_000, List.of("X"), 1));
+    }
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"));
+    win(a, 80_000);
+    assertTrue(nextMatching(a, "Your time: 1:20 (solo)"));
+    // at a difficulty: its own board, and the feats name it
+    difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, ""));
+    runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "normal");
+    win(a, 90_000);
+    assertTrue(nextMatching(a, "A new record: §f1:30 §7(Normal, solo)"));
+    assertEquals(1, records.top("delve", "normal", 1).size());
+    assertTrue(feats.contains("Ann delve [normal] VAULT [Ann]"), feats.toString());
+    assertEquals("party of 3", RunManager.size(3));
+    assertEquals("solo", RunManager.size(1));
+  }
+
   @Test
   void whatWaitsIsClaimedOutsideTheDungeon() {
     PlayerMock a = player("Ann");

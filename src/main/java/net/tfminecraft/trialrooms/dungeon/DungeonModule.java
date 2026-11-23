@@ -82,6 +82,7 @@ public final class DungeonModule {
     private LootKit lootKit;
     private RewardRules rewardRules;
     private net.tfminecraft.trialrooms.dungeon.loot.Spoils spoils;
+    private net.tfminecraft.trialrooms.dungeon.loot.Cosmetics cosmetics;
     private DungeonLoot loot;
     private DungeonRewards rewards;
 
@@ -127,6 +128,8 @@ public final class DungeonModule {
         LockerService lockers = new LockerService(plugin, new LockerStore(root.resolve("lockers"), plugin.getLogger()),
                 ItemCodec.PAPER, characters::activeCharacterId, org.bukkit.entity.Player::saveData);
         runs.lockers(lockers);
+        runs.records(new net.tfminecraft.trialrooms.dungeon.run.Records(root.resolve("records.yml").toFile(),
+                plugin.getLogger()));
         var plugins = plugin.getServer().getPluginManager();
         if (plugins.isPluginEnabled("MMOItems")) {
             // lockers may hold MMOItems even with loot off: they are never reforged
@@ -135,7 +138,8 @@ public final class DungeonModule {
         if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
             rewards = new DungeonRewards(loot, lockers, this::rewardRules, new java.util.Random(),
-                    System::currentTimeMillis, java.time.ZoneId.systemDefault(), this::spoils, plugin.getLogger());
+                    System::currentTimeMillis, java.time.ZoneId.systemDefault(), this::spoils, plugin.getLogger())
+                    .cosmetics(this::cosmetics, net.tfminecraft.trialrooms.dungeon.loot.Cosmetics::runOnConsole);
             runs.rewards(rewards);
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
@@ -188,6 +192,11 @@ public final class DungeonModule {
         return rewardRules;
     }
 
+    /** Trophies and wardrobe skins; null when none. */
+    public net.tfminecraft.trialrooms.dungeon.loot.Cosmetics cosmetics() {
+        return cosmetics;
+    }
+
     /** What leaves dungeons with the players (act materials, rare items); null when none. */
     public net.tfminecraft.trialrooms.dungeon.loot.Spoils spoils() {
         return spoils;
@@ -224,6 +233,7 @@ public final class DungeonModule {
         lootKit = lootFile.isFile() ? LootKit.load(lootYml, problems) : null;
         rewardRules = RewardRules.load(lootYml, lootKit, problems);
         spoils = net.tfminecraft.trialrooms.dungeon.loot.Spoils.load(lootYml, problems);
+        cosmetics = net.tfminecraft.trialrooms.dungeon.loot.Cosmetics.load(lootYml, problems);
         File settingsFile = new File(root, "settings.yml");
         settings = settingsFile.isFile()
                 ? RunSettings.from(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile))

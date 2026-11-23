@@ -188,6 +188,39 @@ class DungeonRunCommandsTest {
     verify(console).sendMessage(startsWith("§cThere is nothing to get ready for"));
     c.run(p, new String[] {"claim"});
     verify(runs).claim(p);
+    // leaderboards
+    c.run(p, new String[] {"top"});
+    verify(p).sendMessage("§cDungeon leaderboards are off.");
+    net.tfminecraft.trialrooms.dungeon.run.Records records = new net.tfminecraft.trialrooms.dungeon.run.Records(
+        temp.resolve("records.yml").toFile(), java.util.logging.Logger.getLogger("t"));
+    when(runs.records()).thenReturn(records);
+    var d = new net.tfminecraft.trialrooms.dungeon.run.Difficulty("hard", "Hard", 2, 1, 1, null, "");
+    RecipeLoader.Entry laddered = mock(RecipeLoader.Entry.class);
+    when(laddered.difficulties()).thenReturn(List.of(d));
+    when(laddered.difficulty("hard")).thenReturn(d);
+    RecipeLoader.Entry plain = mock(RecipeLoader.Entry.class);
+    when(plain.difficulties()).thenReturn(List.of());
+    when(module.recipes()).thenReturn(new java.util.TreeMap<>(Map.of("delve", laddered, "plain", plain)));
+    records.add("delve", "hard", 2, new net.tfminecraft.trialrooms.dungeon.run.Records.Clear(90_000, List.of("Ann", "Bo"), 0));
+    c.run(p, new String[] {"top"});
+    verify(p).sendMessage(startsWith("§eUsage: /tr dungeon top <dungeon> [difficulty] [party size]. §7Dungeons: delve, plain"));
+    c.run(p, new String[] {"top", "nowhere"});
+    verify(p).sendMessage("§cNo dungeon nowhere.");
+    c.run(p, new String[] {"top", "delve"});
+    verify(p).sendMessage("§fHard: §71:30 party of 2");
+    c.run(p, new String[] {"top", "plain"});
+    verify(p).sendMessage("§fBest: §7no clears yet");
+    c.run(p, new String[] {"top", "delve", "easy"});
+    verify(p).sendMessage("§cdelve has no difficulty easy.");
+    c.run(p, new String[] {"top", "delve", "hard", "two"});
+    verify(p).sendMessage("§cA party size is a number.");
+    c.run(p, new String[] {"top", "delve", "hard", "2"});
+    verify(p).sendMessage("§6delve, Hard, party of 2");
+    verify(p).sendMessage(startsWith("§f1. 1:30 §7Ann, Bo ("));
+    c.run(p, new String[] {"top", "delve", "hard"});
+    verify(p).sendMessage("§6delve, Hard, solo: §7no clears yet");
+    c.run(p, new String[] {"top", "plain", "any"});
+    verify(p).sendMessage("§6plain, solo: §7no clears yet");
     c.run(console, new String[] {"claim"});
     verify(console).sendMessage("§cOnly players have things waiting for them.");
 

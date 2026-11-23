@@ -43,6 +43,82 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     private final ZoneId zone;
     private final Supplier<Spoils> spoils;
     private final java.util.logging.Logger log;
+    private Supplier<Cosmetics> cosmetics = () -> null;
+    private java.util.function.Consumer<String> console; // (only used once cosmetics are set)
+
+    /** Turns on cosmetics: what they are, and how a console command runs (skin unlocks). */
+    public DungeonRewards cosmetics(Supplier<Cosmetics> cosmetics, java.util.function.Consumer<String> console) {
+        this.cosmetics = cosmetics;
+        this.console = console;
+        return this;
+    }
+
+    /**
+     * Cosmetics: the boss may drop a trophy (it waits in the locker, like spoils, and is the
+     * player's outside), and the vault may unlock a wardrobe skin the player doesn't have. Both roll
+     * only on runs that still roll items this week, so they follow the weekly limit like gear.
+     */
+    @Override
+    public void feat(Player p, String recipe, String difficulty, Moment moment, UUID run, List<String> party) {
+        Cosmetics c = cosmetics.get();
+        Locker l = c == null ? null : lockers.locker(p);
+        if (l == null || !l.lastRun().equals(run.toString()) || !l.lastRunRewarded()) {
+            return;
+        }
+        if (moment == Moment.BOSS) {
+            for (Cosmetics.Trophy t : c.trophies(recipe, difficulty)) {
+                if (rng.nextDouble() < t.chance()) {
+                    trophy(p, l, t, party);
+                    return;
+                }
+            }
+            return;
+        }
+        for (Cosmetics.Skin s : c.skins(recipe, difficulty)) {
+            if (!p.hasPermission(s.permission()) && rng.nextDouble() < s.chance()) {
+                console.accept(c.unlockCommand().replace("{player}", p.getName()).replace("{permission}", s.permission()));
+                p.sendMessage("§d✦ You unlocked the " + s.name() + " skin! §7Use it on your own gear in /armourshop.");
+                p.playSound(p.getLocation(), "minecraft:ui.toast.challenge_complete", 1f, 1f);
+                return;
+            }
+        }
+    }
+
+    private void trophy(Player p, Locker l, Cosmetics.Trophy t, List<String> party) {
+        ItemStack it;
+        try {
+            it = loot.item(t.item());
+        } catch (RuntimeException | LinkageError ex) {
+            it = null;
+        }
+        if (it == null) {
+            log.warning("[dungeons] trophy: no item " + t.item());
+            return;
+        }
+        String day = java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.ENGLISH)
+                .format(Instant.ofEpochMilli(clock.getAsLong()).atZone(zone));
+        lockers.owe(l, dress(it, t.name(), List.of("Won on " + day, "By " + String.join(", ", party))));
+        if (!lockers.saveLocker(p, l)) {
+            p.sendMessage("§cYour trophy could not be saved yet. Tell staff.");
+            return;
+        }
+        p.sendMessage("§6✦ A trophy: " + t.name() + "! §7It waits for you outside the dungeon.");
+        p.playSound(p.getLocation(), "minecraft:ui.toast.challenge_complete", 1f, 1.2f);
+    }
+
+    /** One of an item, named and with lore lines (a trophy). */
+    static ItemStack dress(ItemStack item, String name, List<String> lore) {
+        ItemStack it = item.clone();
+        it.setAmount(1);
+        it.editMeta(meta -> {
+            meta.displayName(net.kyori.adventure.text.Component.text(name, net.kyori.adventure.text.format.NamedTextColor.GOLD)
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
+            meta.lore(lore.stream().map(line -> (net.kyori.adventure.text.Component) net.kyori.adventure.text.Component
+                    .text(line, net.kyori.adventure.text.format.NamedTextColor.GRAY)
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)).toList());
+        });
+        return it;
+    }
 
     public DungeonRewards(DungeonLoot loot, LockerService lockers, Supplier<RewardRules> rules, Random rng,
             LongSupplier clock, ZoneId zone) {

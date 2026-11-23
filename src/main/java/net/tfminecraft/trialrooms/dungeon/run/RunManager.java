@@ -66,6 +66,7 @@ public final class RunManager {
     private final DungeonModule module;
     private final Ports.Characters characters;
     private final Ports.Keys keys;
+    private Records records;
     private final Ports.Mobs mobs;
     private final Fights fights;
     private final Events events;
@@ -153,6 +154,10 @@ public final class RunManager {
         double spoilHours;
         /** Hours of play the run's cleared rooms have earned so far (paid as real time allows). */
         double dueHours;
+        /** Whether the run counts for the leaderboards (a gate run, not a staff start). */
+        boolean ranked;
+        /** Who entered the run, by display name, for the leaderboards and trophies. */
+        final List<String> party = new ArrayList<>();
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -455,7 +460,7 @@ public final class RunManager {
             enqueue(p, recipeId);
             return;
         }
-        begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "", difficulty);
+        begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "", difficulty, useKey);
     }
 
     /** The opener and every party member near the gate who can enter. */
@@ -476,7 +481,7 @@ public final class RunManager {
     }
 
     private void begin(Player leader, List<Player> group, RecipeLoader.Entry entry, String recipeId, long seed,
-            String keyPath, Difficulty difficulty) {
+            String keyPath, Difficulty difficulty, boolean ranked) {
         RunRules rules = difficulty == null ? entry.rules() : entry.rules().with(difficulty);
         DungeonLayout layout;
         LayoutPlacer placer;
@@ -517,6 +522,7 @@ public final class RunManager {
                     placer.originY(), placer.originZ());
             ActiveRun ar = new ActiveRun(run, geo, placer, kit, rules, leader.getUniqueId(), keyPath, arrival);
             ar.difficulty = difficulty;
+            ar.ranked = ranked;
             ar.damageFactor = difficulty == null ? 1 : difficulty.damage();
             ar.planned = EventPlanner.plan(layout, kit.events(), rules.eventChance(), rules.maxEvents());
             runs.put(run.id(), ar);
@@ -555,6 +561,8 @@ public final class RunManager {
                     continue;
                 }
                 n++;
+                ar.party.add(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                        .serialize(m.displayName()));
                 m.sendMessage("§6You step through the gate. §7Shared lives: " + run.lives()
                         + ". Leave at any time with /tr dungeon leave.");
                 if (difficulty != null) {
@@ -998,6 +1006,9 @@ public final class RunManager {
         RunRewards.Moment moment = clearedMoment(type, ar.planned.containsKey(room));
         if (moment != null) {
             reward(ar, moment);
+        }
+        if (moment == RunRewards.Moment.BOSS) {
+            feat(ar, moment);
         }
         spoils(ar, false);
     }
@@ -1454,7 +1465,47 @@ public final class RunManager {
                 + settings().finishSeconds() + " seconds.");
         recordWin(ar);
         reward(ar, RunRewards.Moment.VAULT);
+        feat(ar, RunRewards.Moment.VAULT);
         spoils(ar, true);
+        record(ar);
+    }
+
+    /** A feat for each member still playing: trophies and wardrobe skins may come of it. */
+    private void feat(ActiveRun ar, RunRewards.Moment moment) {
+        if (rewards != null) {
+            String d = ar.difficulty == null ? "" : ar.difficulty.id();
+            forPlaying(ar, "the " + moment + " cosmetics",
+                    p -> rewards.feat(p, ar.run.recipeId(), d, moment, ar.run.id(), ar.party));
+        }
+    }
+
+    /** A won gate run goes on its leaderboard (its dungeon, difficulty and party size); the party hears its time. */
+    private void record(ActiveRun ar) {
+        if (records == null || !ar.ranked) {
+            return;
+        }
+        long millis = clock.getAsLong() - ar.openedMs;
+        int place = records.add(ar.run.recipeId(), ar.difficulty == null ? null : ar.difficulty.id(), ar.party.size(),
+                new Records.Clear(millis, ar.party, clock.getAsLong()));
+        String board = (ar.difficulty == null ? "" : ar.difficulty.name() + ", ") + size(ar.party.size());
+        String time = Records.time(millis);
+        tell(ar, place == 1 ? "§6✦ A new record: §f" + time + " §7(" + board + ")"
+                : place > 0 ? "§eYour time: §f" + time + "§7, place " + place + " on the board (" + board + ")"
+                : "§7Your time: " + time + " (" + board + ")");
+    }
+
+    /** A party size as players read it. */
+    public static String size(int players) {
+        return players == 1 ? "solo" : "party of " + players;
+    }
+
+    /** The leaderboards, or null when they are off. */
+    public Records records() {
+        return records;
+    }
+
+    public void records(Records records) {
+        this.records = records;
     }
 
     /** A won run at a difficulty: each member playing it has won it, and may open what it leads to. */
