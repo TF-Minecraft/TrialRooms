@@ -103,8 +103,8 @@ public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives
         if (minRoomCells < 1 || !(bossHealth > 0) || Double.isInfinite(bossHealth)) {
             throw new IllegalArgumentException("min-room-cells must be at least 1 and boss-health above 0");
         }
-        if (!(healthCap >= 0) || Double.isInfinite(healthCap) || maxDepth < 0) {
-            throw new IllegalArgumentException("health-cap and max-depth must not be negative");
+        if (!(healthCap == 0 || healthCap >= 1) || Double.isInfinite(healthCap) || maxDepth < 0) {
+            throw new IllegalArgumentException("health-cap must be 0 (the kit's) or at least 1; max-depth not negative");
         }
         keyPath = keyPath == null ? "" : keyPath.trim();
         boss = boss == null ? "" : boss.trim();

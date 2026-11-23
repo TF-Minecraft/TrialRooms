@@ -152,7 +152,7 @@ warband_seithr:
   boss-health: 2.5
   min-room-cells: 4
   health-cap: 10
-  max-depth: 8
+  max-depth: 5
   event-chance: 0.4
   max-events: 4
   minutes: 50
