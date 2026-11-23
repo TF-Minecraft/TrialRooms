@@ -537,7 +537,7 @@ public final class RunManager {
             ar.difficulty = difficulty;
             ar.ranked = ranked;
             ar.affixConfig = module.affixes();
-            ar.affixes = weeklyAffixes(rules.tier());
+            ar.affixes = weeklyAffixes(recipeId, rules.tier());
             ar.damageFactor = difficulty == null ? 1 : difficulty.damage();
             ar.planned = EventPlanner.plan(layout, kit.events(), rules.eventChance(), rules.maxEvents());
             runs.put(run.id(), ar);
@@ -1534,10 +1534,15 @@ public final class RunManager {
         return players == 1 ? "solo" : "party of " + players;
     }
 
-    /** This week's affixes for a run of a tier (none without an affixes section). */
-    public List<WeeklyAffix> weeklyAffixes(int tier) {
+    /**
+     * This week's affixes for a run of a dungeon at a tier: none without an affixes section, or for
+     * a kit without a fight roster (the affixes work on its fights).
+     */
+    public List<WeeklyAffix> weeklyAffixes(String recipe, int tier) {
         Affixes a = module.affixes();
-        return a == null ? List.of() : a.of(Affixes.week(clock.getAsLong(), java.time.ZoneId.systemDefault()), tier);
+        RecipeLoader.Entry entry = module.recipes().get(recipe);
+        DungeonKit kit = entry == null ? null : module.kits().get(entry.kit());
+        return a == null || kit == null || kit.fights() == null ? List.of() : a.of(Affixes.week(clock.getAsLong()), tier);
     }
 
     /** The leaderboards, or null when they are off. */

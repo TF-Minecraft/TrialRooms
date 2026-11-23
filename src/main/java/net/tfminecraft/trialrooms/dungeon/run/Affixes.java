@@ -2,8 +2,8 @@ package net.tfminecraft.trialrooms.dungeon.run;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.temporal.IsoFields;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,9 +15,9 @@ import java.util.TreeMap;
 import org.bukkit.configuration.ConfigurationSection;
 
 /**
- * The weekly affixes, from settings.yml's {@code affixes:} section. Each ISO week the pool is
- * shuffled the same way for everyone; a run gets the first affixes of that order, as many as its
- * tier asks for (Hard one, Nightmare two: Nightmare always has Hard's affix and one more).
+ * The weekly affixes, from settings.yml's {@code affixes:} section. Every server agrees on the
+ * week's order (UTC weeks); a run gets the first affixes of it, as many as its tier asks for (Hard
+ * one, Nightmare two: Nightmare always has Hard's affix and one more).
  *
  * @param pool       the affixes that rotate
  * @param byTier     how many affixes a run of each tier gets (tiers not listed get none)
@@ -47,17 +47,44 @@ public record Affixes(List<WeeklyAffix> pool, Map<Integer, Integer> byTier, doub
         }
     }
 
-    /** The ISO week a moment falls in, as 2026-W47. */
-    public static String week(long millis, ZoneId zone) {
-        LocalDate d = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate();
-        return d.get(IsoFields.WEEK_BASED_YEAR) + "-W" + d.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
+    /** The week a moment falls in (UTC, weeks from Monday to Monday), counted from a fixed Monday. */
+    public static long week(long millis) {
+        LocalDate d = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate();
+        return ChronoUnit.WEEKS.between(MONDAY, d.with(java.time.DayOfWeek.MONDAY));
     }
 
-    /** This week's affixes for a run of a tier. */
-    public List<WeeklyAffix> of(String week, int tier) {
+    private static final LocalDate MONDAY = LocalDate.of(2026, 1, 5);
+
+    /**
+     * A week's affixes for a run of a tier. The weeks go through the pool in turns: each turn is
+     * one shuffled order, and week by week each affix leads once, so the first affix never comes two
+     * weeks running (a turn never starts with the affix the last one ended on).
+     */
+    public List<WeeklyAffix> of(long week, int tier) {
+        int n = pool.size();
+        int count = byTier.getOrDefault(tier, 0);
+        if (count == 0) {
+            return List.of();
+        }
+        long turn = Math.floorDiv(week, n);
+        List<WeeklyAffix> order = turn(turn);
+        int at = (int) Math.floorMod(week, n);
+        List<WeeklyAffix> out = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            out.add(order.get((at + i) % n));
+        }
+        return List.copyOf(out);
+    }
+
+    private List<WeeklyAffix> turn(long turn) {
         List<WeeklyAffix> order = new ArrayList<>(pool);
-        Collections.shuffle(order, new Random(week.hashCode()));
-        return List.copyOf(order.subList(0, byTier.getOrDefault(tier, 0)));
+        Collections.shuffle(order, new Random(turn));
+        List<WeeklyAffix> before = new ArrayList<>(pool);
+        Collections.shuffle(before, new Random(turn - 1));
+        if (order.size() > 1 && order.getFirst() == before.getLast()) {
+            Collections.swap(order, 0, 1);
+        }
+        return order;
     }
 
     /** Reads settings.yml's affixes section; null (with a problem) when it is wrong, null alone when there is none. */

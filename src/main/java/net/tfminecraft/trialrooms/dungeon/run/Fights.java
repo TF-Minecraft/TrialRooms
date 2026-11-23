@@ -190,6 +190,11 @@ final class Fights {
         }
     }
 
+    /** Whether a mechanic is marked on the ground (a burst from a dead enemy doesn't count: it is not the boss's). */
+    static boolean busy(Encounter enc) {
+        return enc.telegraphs.stream().anyMatch(a -> a.t.kind() != Telegraph.Kind.BURST);
+    }
+
     /** Multiplies a mob's max health by {@code factor} (one keyed modifier, so it is never doubled) and fills it. */
     /** A health factor: the party's (and an elite's) up to the kit's cap, then the difficulty's on top. */
     double health(ActiveRun ar, double factor) {
@@ -576,7 +581,7 @@ final class Fights {
     /** Enemies nobody has hit for a while (stuck or hiding) are moved to the marker nearest a player. */
     private void stall(ActiveRun ar, Encounter enc, long now, java.util.Collection<Entity> fighting) {
         FightTuning t = ar.kit.fights().tuning();
-        if (fighting.isEmpty() || now - enc.lastHitMs < t.stallSeconds() * 1000L || !enc.telegraphs.isEmpty()) {
+        if (fighting.isEmpty() || now - enc.lastHitMs < t.stallSeconds() * 1000L || busy(enc)) {
             return;
         }
         List<Player> here = inRoom(ar, enc.room);
@@ -668,7 +673,7 @@ final class Fights {
         if (boss.enrageAdds(now, enc.adds.size())) {
             spawnAdds(ar, enc, t.rallyCallAdds());
         }
-        Mechanic m = boss.next(now, !enc.telegraphs.isEmpty(), enc.adds.size());
+        Mechanic m = boss.next(now, busy(enc), enc.adds.size());
         if (m != null) {
             mechanic(ar, enc, m, now);
         }
@@ -868,13 +873,18 @@ final class Fights {
             return 1;
         }
         Affixes c = ar.affixConfig;
-        double f = 1 + c.bolster() * ar.bolstered.getOrDefault(source.getUniqueId(), 0);
-        if (ar.has(WeeklyAffix.RAGING) && source instanceof LivingEntity le && le.getAttribute(Attribute.MAX_HEALTH) != null
-                && le.getHealth() <= le.getAttribute(Attribute.MAX_HEALTH).getValue() * c.rageBelow()) {
-            f *= c.rageDamage();
-        }
+        double f = 1;
         if (ar.has(WeeklyAffix.TYRANNICAL) && ar.encounters.values().stream().anyMatch(e -> source.equals(e.bossMob))) {
             f *= c.tyrantDamage();
+        }
+        if (mechanic) { // a mechanic's damage is a share of health, tuned per tier: only Tyrannical touches it
+            return f;
+        }
+        f *= 1 + c.bolster() * ar.bolstered.getOrDefault(source.getUniqueId(), 0);
+        if (ar.has(WeeklyAffix.RAGING) && source instanceof LivingEntity le && le.getAttribute(Attribute.MAX_HEALTH) != null
+                && le.getHealth() <= le.getAttribute(Attribute.MAX_HEALTH).getValue() * c.rageBelow()
+                && ar.encounters.values().stream().noneMatch(e -> e.settling.containsKey(source))) {
+            f *= c.rageDamage(); // (not while its health is still being set after it spawned)
         }
         return f;
     }
@@ -938,7 +948,11 @@ final class Fights {
             if (ours && ar.has(WeeklyAffix.BOLSTERING)) {
                 bolster(ar, enc, mob);
             }
-            if (enc.elites.get(mob.getUniqueId()) == Affix.VOLATILE || ours && ar.has(WeeklyAffix.VOLATILE)) {
+            boolean elite = enc.elites.get(mob.getUniqueId()) == Affix.VOLATILE;
+            if (!elite && ours && ar.has(WeeklyAffix.VOLATILE) && burstNear(ar, enc, mob.getLocation())) {
+                continue; // one burst already waits here: enemies dying together burst once
+            }
+            if (elite || ours && ar.has(WeeklyAffix.VOLATILE)) {
                 FightTuning t = ar.kit.fights().tuning();
                 long now = clock.getAsLong();
                 Location l = mob.getLocation();
@@ -949,11 +963,20 @@ final class Fights {
         }
     }
 
-    /** Bolstering: the enemies near a death hit harder from now on. */
+    /** Whether a burst already waits within its radius of a spot. */
+    private static boolean burstNear(ActiveRun ar, Encounter enc, Location l) {
+        double r = ar.kit.fights().tuning().burstRadius();
+        return enc.telegraphs.stream().anyMatch(a -> a.t.kind() == Telegraph.Kind.BURST
+                && Math.hypot(a.t.x() - l.getX(), a.t.z() - l.getZ()) <= r);
+    }
+
+    /** Bolstering: the enemies near a death (adds too, never the boss) hit harder from now on. */
     private void bolster(ActiveRun ar, Encounter enc, Entity dead) {
         double r = ar.affixConfig.bolsterRadius();
         boolean any = false;
-        for (Entity e : new ArrayList<>(enc.alive)) {
+        List<Entity> others = new ArrayList<>(enc.alive);
+        others.addAll(enc.adds);
+        for (Entity e : others) {
             if (!e.equals(dead) && e.isValid() && dead.getLocation().getWorld().equals(e.getLocation().getWorld())
                     && e.getLocation().distance(dead.getLocation()) <= r) {
                 ar.bolstered.merge(e.getUniqueId(), 1, Integer::sum);

@@ -107,7 +107,7 @@ class DifficultyMenuTest {
 
   @Test
   void theScreenShowsThisWeeksAffixes() {
-    when(runs.weeklyAffixes(2)).thenReturn(List.of(WeeklyAffix.FORTIFIED, WeeklyAffix.VOLATILE));
+    when(runs.weeklyAffixes("delve", 2)).thenReturn(List.of(WeeklyAffix.FORTIFIED, WeeklyAffix.VOLATILE));
     DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(normal, hard)));
     m.open();
     assertFalse(String.valueOf(m.getInventory().getItem(m.slot(0)).getItemMeta().lore()).contains("This week"));

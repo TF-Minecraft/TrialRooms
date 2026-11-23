@@ -488,18 +488,14 @@ class RunManagerTest {
   }
 
   @Test
-  void runsGetThisWeeksAffixes() {
-    PlayerMock a = player("Ann");
-    assertEquals(List.of(), runs.weeklyAffixes(1), "no affixes section: none");
-    Affixes cfg = new Affixes(List.of(WeeklyAffix.FORTIFIED), Map.of(1, 1), 1.25, 1.3, 1.15, 0.3, 1.25, 0.1, 12);
-    when(module.affixes()).thenReturn(cfg);
-    assertEquals(List.of(WeeklyAffix.FORTIFIED), runs.weeklyAffixes(1));
-    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
-    RunManager.ActiveRun ar = only();
-    assertEquals(List.of(WeeklyAffix.FORTIFIED), ar.affixes);
-    assertSame(cfg, ar.affixConfig);
-    assertTrue(nextMatching(a, "This week: Fortified §7(ordinary enemies are tougher)"));
-    runs.runs().forEach(r -> runs.end(r, false, null));
+  void affixesNeedASectionAndAKitWithFights() {
+    assertEquals(List.of(), runs.weeklyAffixes("delve", 1), "no affixes section: none");
+    when(module.affixes()).thenReturn(new Affixes(List.of(WeeklyAffix.FORTIFIED), Map.of(1, 1), 1.25, 1.3, 1.15, 0.3,
+        1.25, 0.1, 12));
+    assertEquals(List.of(), runs.weeklyAffixes("delve", 1), "this kit has no fight roster: nothing for them to change");
+    assertEquals(List.of(), runs.weeklyAffixes("nowhere", 1));
+    when(module.kits()).thenReturn(Map.of());
+    assertEquals(List.of(), runs.weeklyAffixes("delve", 1), "the recipe's kit is gone");
   }
 
   @Test

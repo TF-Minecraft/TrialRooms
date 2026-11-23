@@ -433,6 +433,18 @@ class FightsTest {
   }
 
   @Test
+  void runsGetThisWeeksAffixes() {
+    useKit(fightKit(tuning(6, 0), warden()));
+    Affixes cfg = new Affixes(List.of(WeeklyAffix.FORTIFIED), Map.of(1, 1), 1.25, 1.3, 1.15, 0.3, 1.25, 0.1, 12);
+    when(module.affixes()).thenReturn(cfg);
+    PlayerMock a = player("Ann");
+    RunManager.ActiveRun ar = enter(a, room(RoomType.COMBAT));
+    assertEquals(List.of(WeeklyAffix.FORTIFIED), ar.affixes);
+    assertSame(cfg, ar.affixConfig);
+    assertTrue(said(a, "This week: Fortified §7(ordinary enemies are tougher)"));
+  }
+
+  @Test
   void weeklyAffixesChangeTheFight() {
     useKit(fightKit(tuning(6, 0), warden()));
     PlayerMock a = player("Ann");
@@ -455,6 +467,12 @@ class FightsTest {
     assertEquals(1, f.outgoing(ar, hurt), 1e-9);
     hurt.setHealth(5);
     assertEquals(1.25, f.outgoing(ar, hurt), 1e-9);
+    enc.settling.put(hurt, now.get());
+    assertEquals(1, f.outgoing(ar, hurt), 1e-9, "not while its health is still being set");
+    enc.settling.remove(hurt);
+    f.mechanic(true);
+    assertEquals(1, f.outgoing(ar, hurt), 1e-9, "a mechanic's damage is left alone");
+    f.mechanic(false);
     Entity thing = mock(Entity.class);
     when(thing.getUniqueId()).thenReturn(UUID.randomUUID());
     assertEquals(1, f.outgoing(ar, thing), 1e-9, "not a living thing");
@@ -475,20 +493,41 @@ class FightsTest {
     assertEquals(1.1, f.outgoing(ar, near), 1e-9);
     assertEquals(1, f.outgoing(ar, away), 1e-9);
     assertEquals(1, f.outgoing(ar, elsewhere), 1e-9, "another world is never near");
+    Entity add = mob(at(middle(fight)), "Add");
+    enc.adds.add(add);
+    Entity dead2 = mob(at(middle(fight)), "Dead2");
+    enc.alive.add(dead2);
+    f.died(ar, dead2);
+    assertEquals(1.1, f.outgoing(ar, add), 1e-9, "adds grow too");
+    assertEquals(1.2, f.outgoing(ar, near), 1e-9, "and it stacks");
     assertTrue(said(a, "grow stronger"));
     Entity lone = mob(at(middle(fight)).add(80, 0, 0), "Lone");
     enc.adds.add(lone);
     f.died(ar, lone); // nobody near: nobody grows
-    assertEquals(1.1, f.outgoing(ar, near), 1e-9);
+    assertEquals(1.2, f.outgoing(ar, near), 1e-9);
     // Volatile: every enemy bursts, but not one that isn't the room's
     ar.affixes = List.of(WeeklyAffix.VOLATILE);
+    Fights.Active slam = new Fights.Active(new Telegraph(Telegraph.Kind.SLAM, at(middle(fight)).getX(), 64,
+        at(middle(fight)).getZ(), 1, now.get(), now.get() + 99_000));
+    enc.telegraphs.add(slam); // (a mechanic's mark is no burst)
     int bursts = enc.telegraphs.size();
     Entity v = mob(at(middle(fight)), "V");
     enc.alive.add(v);
     f.died(ar, v);
     assertEquals(bursts + 1, enc.telegraphs.size());
+    Entity v2 = mob(at(middle(fight)), "V2");
+    enc.alive.add(v2);
+    f.died(ar, v2);
+    assertEquals(bursts + 1, enc.telegraphs.size(), "enemies dying together burst once");
+    Entity v3 = mob(at(middle(fight)).add(30, 0, 0), "V3");
+    enc.alive.add(v3);
+    f.died(ar, v3);
+    assertEquals(bursts + 2, enc.telegraphs.size(), "a death elsewhere bursts on its own");
     f.died(ar, mob(at(middle(fight)), "Stranger"));
-    assertEquals(bursts + 1, enc.telegraphs.size());
+    assertEquals(bursts + 2, enc.telegraphs.size());
+    assertTrue(Fights.busy(enc));
+    enc.telegraphs.remove(slam);
+    assertFalse(Fights.busy(enc), "bursts never keep a boss from its mechanics");
   }
 
   @Test
@@ -902,12 +941,12 @@ class FightsTest {
     runs.fights().hit(ar, mock(Entity.class));
     runs.fights().died(ar, plain);
     // stalls wait for a warning to land
-    enc.telegraphs.add(new Fights.Active(new Telegraph(Telegraph.Kind.BURST, 0, 64, 0, 1, now.get(), now.get() + 99_000)));
+    enc.telegraphs.add(new Fights.Active(new Telegraph(Telegraph.Kind.SLAM, 0, 64, 0, 1, now.get(), now.get() + 99_000)));
     long hit = enc.lastHitMs;
     now.addAndGet(30_000);
     runs.fights().step(ar, fight);
     assertEquals(hit, enc.lastHitMs);
-    // every enemy down, but a burst still to land: the room waits
+    // every enemy down, but a warning still to land: the room waits
     when(plain.isValid()).thenReturn(false);
     when(all.getLast().isValid()).thenReturn(false);
     assertFalse(runs.fights().step(ar, fight));
