@@ -96,8 +96,32 @@ class DungeonModuleTest {
     DungeonModule m = enabled();
     assertTrue(Files.isRegularFile(data.resolve("dungeons/kits/greybox/rooms/boss_arena.nbt")));
     assertEquals(java.util.Set.of("greybox", "seithr"), m.kits().keySet());
-    assertEquals(java.util.Set.of("delve_greybox", "delve_seithr"), m.recipes().keySet());
+    assertEquals(java.util.Set.of("delve_greybox", "delve_seithr", "dungeon_seithr", "warband_seithr"), m.recipes().keySet());
     assertEquals(List.of(), m.problems());
+    // big parties: longer runs of roomier fight rooms only, and a tougher boss
+    for (String big : List.of("dungeon_seithr", "warband_seithr")) {
+      var rules = m.recipes().get(big).rules();
+      int made = 0;
+      for (long seed = 1; seed <= 12; seed++) {
+        try {
+          var layout = m.generate(big, seed);
+          made++;
+          for (var room : layout.rooms()) {
+            var type = room.node().type();
+            if (type == net.tfminecraft.trialrooms.dungeon.template.RoomType.COMBAT
+                || type == net.tfminecraft.trialrooms.dungeon.template.RoomType.ELITE) {
+              assertTrue(room.template().cellList().size() >= rules.minRoomCells(), big + " " + room.template().id());
+            }
+          }
+        } catch (RuntimeException e) {
+          // a seed the generator gives up on; the gate tries another
+        }
+      }
+      assertTrue(made >= 10, big + ": " + made + " of 12 seeds make a layout");
+    }
+    assertEquals(4, m.recipes().get("warband_seithr").rules().minRoomCells());
+    assertEquals(2.5, m.recipes().get("warband_seithr").rules().bossHealth());
+    assertEquals(6, m.recipes().get("warband_seithr").rules().minPlayers());
     assertSame(world, m.world());
     assertNotNull(m.lootKit(), "the bundled loot.yml");
     assertEquals(30, m.lootKit().bases().size());
@@ -144,6 +168,19 @@ class DungeonModuleTest {
     Files.writeString(data.resolve("dungeons/recipes.yml"), "typo:\n  kit: greybox\n  boss: bone_wardn\n  trunk-pool: {combat: 1}\n");
     m.reload();
     assertTrue(m.problems().stream().anyMatch(p -> p.contains("has no boss 'bone_wardn'")), m.problems().toString());
+    // a recipe asking for bigger fight rooms than its kit has is refused
+    Files.writeString(data.resolve("dungeons/recipes.yml"), "typo:\n  kit: greybox\n  boss: bone_wardn\n"
+        + "  trunk-pool: {combat: 1}\n"
+        + "big:\n  kit: greybox\n  trunk-pool: {combat: 1}\n  min-room-cells: 99\n"
+        + "wide:\n  kit: greybox\n  trunk-pool: {corridor: 1}\n  branches: 1\n  branch-length: 2\n"
+        + "  branch-pool: {elite: 1}\n  min-room-cells: 99\n");
+    m.reload();
+    assertTrue(m.problems().stream().anyMatch(p -> p.contains("big: kit greybox has no combat room of at least 99 cells")),
+        m.problems().toString());
+    assertTrue(m.problems().stream().anyMatch(p -> p.contains("wide: kit greybox has no elite room of at least 99 cells")),
+        m.problems().toString());
+    assertFalse(m.recipes().containsKey("big"));
+    assertFalse(m.recipes().containsKey("wide"));
     Files.delete(data.resolve("dungeons/loot.yml"));
     m.reload();
     assertNull(m.lootKit(), "no loot.yml: no loot");
@@ -295,7 +332,8 @@ class DungeonModuleTest {
     }
     m.installDefaults();
     m.reload();
-    assertEquals(java.util.Set.of("delve_greybox", "delve_seithr"), java.util.Set.copyOf(c.complete(new String[] {"preview", "d"})));
+    assertEquals(java.util.Set.of("delve_greybox", "delve_seithr", "dungeon_seithr"),
+        java.util.Set.copyOf(c.complete(new String[] {"preview", "d"})));
   }
 
   @Test

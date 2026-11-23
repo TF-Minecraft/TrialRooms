@@ -204,7 +204,7 @@ final class Fights {
 
     /** A boss's health factor: as {@link #health} without Fortified, with Tyrannical. */
     double bossHealth(ActiveRun ar, double factor) {
-        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth
+        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth * ar.rules.bossHealth()
                 * (ar.has(WeeklyAffix.TYRANNICAL) ? ar.affixConfig.tyrantHealth() : 1);
     }
 

@@ -151,6 +151,8 @@ class LoadTest {
           trunk-pool: {combat: 1}
           minutes: 20
           par: 12
+          min-room-cells: 2
+          boss-health: 1.5
           difficulties:
             normal: {name: Normal, tier: 1, advice: "for own gear"}
             hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 25, par: 9}
@@ -195,6 +197,8 @@ class LoadTest {
     assertEquals(2, rules.with(hard).tier());
     assertEquals(20, rules.with(entry.difficulty("normal")).minutes(), "else the recipe's");
     assertEquals(12, rules.par());
+    assertEquals(2, rules.minRoomCells());
+    assertEquals(1.5, rules.bossHealth());
     assertEquals(9, rules.with(hard).par());
     assertEquals(12, rules.with(entry.difficulty("normal")).par());
     assertEquals(12, rules.withTier(2).par());

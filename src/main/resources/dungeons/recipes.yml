@@ -81,3 +81,76 @@ delve_seithr:
     normal: {name: Normal, tier: 1, advice: "Made for this act's roleplay gear."}
     hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 25, par: 20, advice: "Made for rare dungeon gear."}
     nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 30, par: 25, advice: "Made for epic and legendary dungeon gear."}
+
+# The Seithr dungeon for a full party (3-5): longer, only roomier fight rooms (min-room-cells: the
+# fewest cells a fight room fills) and a tougher boss (boss-health: its health on top of the party's).
+dungeon_seithr:
+  kit: seithr
+  trunk: 9-12
+  trunk-pool:
+    combat: 3
+    elite: 1
+    corridor: 2
+  rest-before-boss: true
+  vault: true
+  branches: 2-3
+  branch-length: 1-2
+  branch-pool:
+    combat: 2
+    corridor: 1
+  attempts: 30
+  step-budget: 40000
+  players: 3-5
+  key: m.loot.trial_key
+  lives: 5
+  mob-level: 1
+  health-per-extra-player: 0.5
+  enemies-per-extra-player: 0.3
+  tier: 1
+  boss: ice_golem
+  boss-health: 1.5
+  min-room-cells: 2
+  event-chance: 0.4
+  max-events: 3
+  minutes: 35
+  par: 26
+  difficulties:
+    normal: {name: Normal, tier: 1, advice: "Made for this act's roleplay gear."}
+    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 45, par: 34, advice: "Made for rare dungeon gear."}
+    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 55, par: 42, advice: "Made for epic and legendary dungeon gear."}
+
+# The Seithr warband (6-10): the longest run, only the big halls, and the toughest boss.
+warband_seithr:
+  kit: seithr
+  trunk: 12-16
+  trunk-pool:
+    combat: 3
+    elite: 1
+    corridor: 2
+  rest-before-boss: true
+  vault: true
+  branches: 3-4
+  branch-length: 1-2
+  branch-pool:
+    combat: 2
+    corridor: 1
+  attempts: 40
+  step-budget: 80000
+  players: 6-10
+  key: m.loot.trial_key
+  lives: 8
+  mob-level: 1
+  health-per-extra-player: 0.4
+  enemies-per-extra-player: 0.35
+  tier: 1
+  boss: ice_golem
+  boss-health: 2.5
+  min-room-cells: 4
+  event-chance: 0.4
+  max-events: 4
+  minutes: 50
+  par: 38
+  difficulties:
+    normal: {name: Normal, tier: 1, advice: "Made for this act's roleplay gear."}
+    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 62, par: 47, advice: "Made for rare dungeon gear."}
+    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 75, par: 57, advice: "Made for epic and legendary dungeon gear."}

@@ -338,6 +338,15 @@ public class RunCoreTest {
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, Double.POSITIVE_INFINITY));
     assertEquals(0, party.par(), "no par time");
+    assertEquals(1, party.minRoomCells(), "any fight room");
+    assertEquals(1, party.bossHealth());
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 0, 1));
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 0));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, Double.POSITIVE_INFINITY));
+    RunRules big = new RunRules(3, 5, "", 5, 1, 0.5, 1, "", 0.3, 0, 0, 35, 26, 2, 1.5);
+    assertEquals(2, big.withTier(2).minRoomCells());
+    assertEquals(1.5, big.with(new Difficulty("hard", "Hard", 2, 1, 1, null, "")).bossHealth());
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, -1));
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, Double.POSITIVE_INFINITY));

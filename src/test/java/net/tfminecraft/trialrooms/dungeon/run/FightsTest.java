@@ -433,6 +433,14 @@ class FightsTest {
   }
 
   @Test
+  void bigPartyRecipesHaveATougherBoss() {
+    useKit(fightKit(tuning(6, 0), warden()));
+    rules = new RunRules(1, 3, "", 1, 1, 0.5, 1, "warden", 0, 0, 0, 0, 0, 1, 2.5);
+    RunManager.ActiveRun ar = enter(player("Ann"), room(RoomType.COMBAT));
+    assertEquals(runs.fights().health(ar, 1) * 2.5, runs.fights().bossHealth(ar, 1), 1e-9);
+  }
+
+  @Test
   void runsGetThisWeeksAffixes() {
     useKit(fightKit(tuning(6, 0), warden()));
     Affixes cfg = new Affixes(List.of(WeeklyAffix.FORTIFIED), Map.of(1, 1), 1.25, 1.3, 1.15, 0.3, 1.25, 0.1, 12);
