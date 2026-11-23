@@ -27,6 +27,12 @@ public interface RunRewards {
         reward(player, recipe, tier, moment, run);
     }
 
+    /** A reward of a hardcore run, secured at the vault: it pays more for the risk. */
+    default void reward(Player player, String recipe, int tier, Moment moment, UUID run, boolean underPar,
+            boolean hardcore) {
+        reward(player, recipe, tier, moment, run, underPar);
+    }
+
     /**
      * Spoils that leave the dungeon (act materials, rare items): what a proper player earns in
      * {@code hours} of play, by the act system's hourly budgets.

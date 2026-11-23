@@ -85,15 +85,19 @@ class DungeonRunCommandsTest {
     Player p = mock(Player.class);
     c.run(console, new String[] {"start", "delve"});
     c.run(p, new String[] {"start"});
-    verify(runs, never()).startRun(any(), any(), anyLong(), any());
+    verify(runs, never()).startRun(any(), any(), anyLong(), any(), anyBoolean());
     c.run(p, new String[] {"start", "delve", "x"});
     verify(p).sendMessage("§cThe seed must be a whole number.");
     c.run(p, new String[] {"start", "delve", "5"});
-    verify(runs).startRun(p, "delve", 5, null);
+    verify(runs).startRun(p, "delve", 5, null, false);
     c.run(p, new String[] {"start", "delve", "6", "hard"});
-    verify(runs).startRun(p, "delve", 6, "hard");
+    verify(runs).startRun(p, "delve", 6, "hard", false);
+    c.run(p, new String[] {"start", "delve", "7", "hard", "hardcore"});
+    verify(runs).startRun(p, "delve", 7, "hard", true);
+    c.run(p, new String[] {"start", "delve", "8", "hard", "soft"});
+    verify(runs).startRun(p, "delve", 8, "hard", false);
     c.run(p, new String[] {"start", "delve"});
-    verify(runs, times(2)).startRun(eq(p), eq("delve"), anyLong(), isNull());
+    verify(runs, times(2)).startRun(eq(p), eq("delve"), anyLong(), isNull(), eq(false));
 
     RunManager.ActiveRun ar = run("12345678-0000-0000-0000-000000000000");
     when(runs.runs()).thenReturn(List.of(ar));

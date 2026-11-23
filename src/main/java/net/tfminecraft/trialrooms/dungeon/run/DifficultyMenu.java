@@ -32,6 +32,9 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
     private final GateStore.Gate gate;
     private final RecipeLoader.Entry entry;
     private final Inventory inventory;
+    /** The hardcore toggle's slot (bottom row, middle). */
+    static final int HARDCORE = 22;
+    private boolean hardcore;
 
     public DifficultyMenu(RunManager runs, Plugin plugin, Player player, GateStore.Gate gate, RecipeLoader.Entry entry) {
         this.runs = runs;
@@ -87,7 +90,14 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
             }
             inventory.setItem(slot(i), button(open ? ICONS[Math.min(i, ICONS.length - 1)] : Material.BARRIER, d.name(), lore));
         }
+        inventory.setItem(HARDCORE, button(hardcore ? Material.RED_DYE : Material.GRAY_DYE,
+                "Hardcore: " + (hardcore ? "on" : "off"), List.of("What you find is yours only once you reach the vault.",
+                        "Fall, or leave, and it is lost; it pays more for the risk.", "Click to turn it " + (hardcore ? "off." : "on."))));
         player.openInventory(inventory);
+    }
+
+    boolean hardcore() {
+        return hardcore;
     }
 
     private static ItemStack button(Material type, String name, List<String> lore) {
@@ -117,6 +127,11 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
 
     @Override
     public void click(int slot, boolean shift) {
+        if (slot == HARDCORE) {
+            hardcore = !hardcore;
+            open(); // (redrawn in place)
+            return;
+        }
         List<Difficulty> ds = entry.difficulties();
         for (int i = 0; i < ds.size() && i < 5; i++) {
             if (slot(i) == slot) {
@@ -129,7 +144,7 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     player.closeInventory();
                     if (stillAtGate()) {
-                        runs.useGate(player, gate, d.id());
+                        runs.useGate(player, gate, d.id(), hardcore);
                     } else if (player.isOnline()) {
                         player.sendMessage("§cYou are no longer at the gate.");
                     }

@@ -100,6 +100,12 @@ public final class RunManager {
     }
 
     /** A run with what it needs in the world. */
+    /** What a member found in a hardcore run before the vault: the reward moments, and hours of spoils. */
+    static final class Unsecured {
+        final List<RunRewards.Moment> moments = new ArrayList<>();
+        double hours;
+    }
+
     public static final class ActiveRun {
         final DungeonRun run;
         final RunGeometry geo;
@@ -163,6 +169,10 @@ public final class RunManager {
         Affixes affixConfig;
         /** Enemies made stronger by nearby deaths (Bolstering): how many times. */
         final Map<UUID, Integer> bolstered = new HashMap<>();
+        /** A hardcore run: what members find is theirs only once they reach the vault. */
+        boolean hardcore;
+        /** A hardcore run's unsecured finds, per member. */
+        final Map<UUID, Unsecured> unsecured = new HashMap<>();
 
         boolean has(WeeklyAffix a) {
             return affixes.contains(a);
@@ -265,9 +275,22 @@ public final class RunManager {
     }
 
     private void reward(ActiveRun ar, RunRewards.Moment moment, boolean underPar) {
+        if (rewards != null && ar.hardcore && moment != RunRewards.Moment.VAULT) {
+            // unsecured until the vault: kept as moments, rolled there (or lost on a fall)
+            forPlaying(ar, "the unsecured " + moment, p -> {
+                if (ar.run.member(p.getUniqueId()).status() != Status.OUT) { // (out of the fight: nothing to find)
+                    held(ar, p).moments.add(moment);
+                    p.sendMessage("§6Unsecured find §7(" + moment.name().toLowerCase() + "): yours once you reach the vault.");
+                }
+            });
+            return;
+        }
         if (rewards != null) {
-            forPlaying(ar, "the " + moment + " reward",
-                    p -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id(), underPar));
+            forPlaying(ar, "the " + moment + " reward", p -> {
+                if (!(ar.hardcore && ar.run.member(p.getUniqueId()).status() == Status.OUT)) { // (in hardcore, the fallen lose it)
+                    rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id(), underPar, ar.hardcore);
+                }
+            });
         }
     }
 
@@ -294,7 +317,12 @@ public final class RunManager {
         }
         ar.spoilHours += hours;
         forPlaying(ar, "the spoils", p -> {
-            if (ar.run.member(p.getUniqueId()).status() != Status.OUT) {
+            if (ar.run.member(p.getUniqueId()).status() == Status.OUT) {
+                return;
+            }
+            if (ar.hardcore && !won) {
+                held(ar, p).hours += hours;
+            } else {
                 rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id());
             }
         });
@@ -396,8 +424,13 @@ public final class RunManager {
 
     /** A player opens a gate at a difficulty (null: the first, or none). */
     public void useGate(Player p, GateStore.Gate gate, String difficulty) {
+        useGate(p, gate, difficulty, false);
+    }
+
+    /** As {@link #useGate(Player, GateStore.Gate, String)}, hardcore or not. */
+    public void useGate(Player p, GateStore.Gate gate, String difficulty, boolean hardcore) {
         Location at = new Location(p.getWorld(), gate.x() + 0.5, gate.y() + 0.5, gate.z() + 0.5);
-        open(p, gate.recipe(), at, ThreadLocalRandom.current().nextLong(), true, difficulty, true);
+        open(p, gate.recipe(), at, ThreadLocalRandom.current().nextLong(), true, difficulty, true, hardcore);
     }
 
     /** A staff member starts a run for themselves and their nearby party, without a key. */
@@ -407,7 +440,12 @@ public final class RunManager {
 
     /** As {@link #startRun(Player, String, long)}, at a difficulty (staff need not have opened it). */
     public void startRun(Player p, String recipeId, long seed, String difficulty) {
-        open(p, recipeId, p.getLocation(), seed, false, difficulty, false);
+        startRun(p, recipeId, seed, difficulty, false);
+    }
+
+    /** As {@link #startRun(Player, String, long, String)}, hardcore or not. */
+    public void startRun(Player p, String recipeId, long seed, String difficulty, boolean hardcore) {
+        open(p, recipeId, p.getLocation(), seed, false, difficulty, false, hardcore);
     }
 
     /** Whether a player may open a dungeon at a difficulty: it needs none, or they have won the one it needs. */
@@ -420,7 +458,7 @@ public final class RunManager {
     }
 
     private void open(Player p, String recipeId, Location at, long seed, boolean useKey, String difficultyId,
-            boolean checkOpen) {
+            boolean checkOpen, boolean hardcore) {
         RecipeLoader.Entry entry = module.recipes().get(recipeId);
         if (entry == null) {
             p.sendMessage("§cThis gate leads nowhere (unknown dungeon " + recipeId + ").");
@@ -473,7 +511,7 @@ public final class RunManager {
             enqueue(p, recipeId);
             return;
         }
-        begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "", difficulty, useKey);
+        begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "", difficulty, useKey, hardcore);
     }
 
     /** The opener and every party member near the gate who can enter. */
@@ -494,7 +532,7 @@ public final class RunManager {
     }
 
     private void begin(Player leader, List<Player> group, RecipeLoader.Entry entry, String recipeId, long seed,
-            String keyPath, Difficulty difficulty, boolean ranked) {
+            String keyPath, Difficulty difficulty, boolean ranked, boolean hardcore) {
         RunRules rules = difficulty == null ? entry.rules() : entry.rules().with(difficulty);
         DungeonLayout layout;
         LayoutPlacer placer;
@@ -536,6 +574,7 @@ public final class RunManager {
             ActiveRun ar = new ActiveRun(run, geo, placer, kit, rules, leader.getUniqueId(), keyPath, arrival);
             ar.difficulty = difficulty;
             ar.ranked = ranked;
+            ar.hardcore = hardcore;
             ar.affixConfig = module.affixes();
             ar.affixes = weeklyAffixes(recipeId, rules.tier());
             ar.damageFactor = difficulty == null ? 1 : difficulty.damage();
@@ -582,6 +621,10 @@ public final class RunManager {
                         + ". Leave at any time with /tr dungeon leave.");
                 if (difficulty != null) {
                     m.sendMessage("§7Difficulty: §f" + difficulty.name() + "§7 (tier " + difficulty.tier() + ").");
+                }
+                if (hardcore) {
+                    m.sendMessage("§4Hardcore: §7what you find is yours only once you reach the vault. Fall, or leave,"
+                            + " and it is lost. It pays more for the risk.");
                 }
                 for (WeeklyAffix a : ar.affixes) {
                     m.sendMessage("§5This week: " + a.title() + " §7(" + a.hint() + ")");
@@ -1238,7 +1281,7 @@ public final class RunManager {
     }
 
     private void bleedOut(ActiveRun ar, Player p) {
-        boolean back = ar.run.bleedOut(p.getUniqueId());
+        boolean back = fell(ar, p);
         event(ar, p.getName() + (back ? " bled out and spent a life" : " bled out with no lives left"));
         clearDowned(ar, p);
         p.teleport(wakePoint(ar));
@@ -1289,7 +1332,7 @@ public final class RunManager {
         if (ar != null && ar.run.state() != DungeonRun.State.FAILED && isPlayingMember(ar, p)) {
             diedInRun.add(p.getUniqueId());
             ar.downedAt.remove(p.getUniqueId());
-            ar.run.bleedOut(p.getUniqueId());
+            fell(ar, p);
             var cause = p.getLastDamageCause();
             event(ar, p.getName() + " died outright (" + (cause == null ? "unknown cause" : cause.getCause()) + ")");
         }
@@ -1341,7 +1384,7 @@ public final class RunManager {
         Member m = ar.run.member(p.getUniqueId());
         if (m.status() == Status.DOWNED) {
             clearDowned(ar, p);
-            ar.run.bleedOut(p.getUniqueId());
+            fell(ar, p);
         }
         ar.run.offline(p.getUniqueId(), clock.getAsLong());
     }
@@ -1482,6 +1525,9 @@ public final class RunManager {
         tell(ar, "§6The vault is yours. §7Right-click by the exit to leave; everyone is sent back in "
                 + settings().finishSeconds() + " seconds.");
         recordWin(ar);
+        if (ar.hardcore) {
+            secure(ar);
+        }
         long took = clock.getAsLong() - ar.openedMs;
         boolean underPar = ar.rules.par() > 0 && took <= ar.rules.par() * 60_000;
         if (ar.rules.par() > 0) {
@@ -1489,6 +1535,7 @@ public final class RunManager {
                     + ")! §7The vault favours you." : "§7Par was " + Records.time((long) (ar.rules.par() * 60_000)) + ".");
         }
         reward(ar, RunRewards.Moment.VAULT, underPar);
+        // (a hardcore vault's own reward is boosted too, through reward's hardcore flag)
         feat(ar, RunRewards.Moment.VAULT);
         spoils(ar, true);
         record(ar);
@@ -1496,6 +1543,9 @@ public final class RunManager {
 
     /** A feat for each member still playing: trophies and wardrobe skins may come of it. */
     private void feat(ActiveRun ar, RunRewards.Moment moment) {
+        if (rewards != null && ar.hardcore && moment != RunRewards.Moment.VAULT) {
+            return; // (a hardcore boss's trophy roll comes with its unsecured reward at the vault)
+        }
         if (rewards != null) {
             String d = ar.difficulty == null ? "" : ar.difficulty.id();
             List<String> party = stayed(ar);
@@ -1527,6 +1577,43 @@ public final class RunManager {
     private static List<String> stayed(ActiveRun ar) {
         return ar.party.entrySet().stream().filter(e -> ar.run.member(e.getKey()).status() != Status.LEFT)
                 .map(Map.Entry::getValue).toList();
+    }
+
+    /** A member falls (a bleed-out): a hardcore run's unsecured finds are lost. True when a life brought them back. */
+    /** A member's unsecured finds in a hardcore run (started on their first find). */
+    private static Unsecured held(ActiveRun ar, Player p) {
+        return ar.unsecured.computeIfAbsent(p.getUniqueId(), k -> new Unsecured());
+    }
+
+    private boolean fell(ActiveRun ar, Player p) {
+        boolean back = ar.run.bleedOut(p.getUniqueId());
+        if (ar.unsecured.remove(p.getUniqueId()) != null) {
+            p.sendMessage("§cYou fell: what you found this hardcore run is lost.");
+        }
+        return back;
+    }
+
+    /** A hardcore run reached the vault: each member still in it gets what they found, boosted for the risk. */
+    private void secure(ActiveRun ar) {
+        String d = ar.difficulty == null ? "" : ar.difficulty.id();
+        List<String> party = stayed(ar);
+        // (finds are only ever held while there are rewards, and a fall takes a member's away)
+        forPlaying(ar, "the secured finds", p -> {
+            Unsecured u = ar.unsecured.remove(p.getUniqueId());
+            if (u == null) {
+                return;
+            }
+            for (RunRewards.Moment m : u.moments) {
+                rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), m, ar.run.id(), false, true);
+                if (m == RunRewards.Moment.BOSS) {
+                    rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), party);
+                }
+            }
+            if (u.hours > 0) {
+                rewards.spoils(p, ar.run.recipeId(), u.hours, ar.run.id());
+            }
+            p.sendMessage("§a✦ Your finds are secured.");
+        });
     }
 
     /** A party size as players read it. */

@@ -551,6 +551,86 @@ class RunManagerTest {
   }
 
   @Test
+  void hardcoreFindsAreSecuredAtTheVaultOrLostOnAFall() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    List<String> got = new ArrayList<>();
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run) {
+      }
+
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run,
+          boolean underPar, boolean hardcore) {
+        got.add(p.getName() + " " + moment + (hardcore ? " hardcore" : ""));
+      }
+
+      @Override
+      public void spoils(org.bukkit.entity.Player p, String recipe, double hours, java.util.UUID run) {
+        got.add(p.getName() + " spoils");
+      }
+
+      @Override
+      public void feat(org.bukkit.entity.Player p, String recipe, String difficulty, RunRewards.Moment moment,
+          java.util.UUID run, List<String> party) {
+        got.add(p.getName() + " feat " + moment);
+      }
+    });
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    PlayerMock c = player("Cy");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId(), c.getUniqueId()));
+    runs.startRun(a, "delve", 7, null, true);
+    RunManager.ActiveRun ar = only();
+    assertTrue(ar.hardcore);
+    for (int i = 0; i < 4; i++) {
+      ar.run.bleedOut(c.getUniqueId()); // Cy is out before anything is found: nothing to hold for him
+    }
+    assertTrue(nextMatching(a, "Hardcore:"));
+    int combat = room(RoomType.COMBAT);
+    ar.planned = Map.of(combat, net.tfminecraft.trialrooms.dungeon.event.EventKind.ENDURE);
+    now.addAndGet(600_000);
+    into(a, RoomType.COMBAT);
+    into(b, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    assertEquals(List.of(), got, "nothing is handed out before the vault");
+    assertTrue(nextMatching(a, "Unsecured find"));
+    into(a, RoomType.BOSS);
+    into(b, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    assertEquals(List.of(), got);
+    // Bo falls after the boss (Cy used up the lives, so he is out): everything he found is lost
+    assertTrue(runs.down(b));
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    assertTrue(nextMatching(b, "You fell: what you found this hardcore run is lost."));
+    into(a, RoomType.VAULT);
+    ticks(2);
+    assertEquals(List.of("Ann EVENT hardcore", "Ann BOSS hardcore", "Ann feat BOSS", "Ann spoils",
+        "Ann VAULT hardcore", "Ann feat VAULT", "Ann spoils"), got,
+        "Ann's finds (boosted), then her vault; Bo and Cy fell, so nothing of this run is theirs");
+    assertTrue(nextMatching(a, "Your finds are secured."));
+    assertFalse(nextMatching(b, "Your finds are secured."));
+    assertFalse(nextMatching(c, "Unsecured find"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a gate run at a difficulty can be hardcore too; a run with no spoils holds only rewards
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5);
+    difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, ""));
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId()));
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal", true);
+    assertTrue(only().hardcore);
+    win(a, 60_000);
+    assertTrue(got.contains("Ann BOSS hardcore") && !got.contains("Ann spoils"), got.toString());
+    difficulties = List.of();
+  }
+
+  @Test
   void runsTellTheirRewardMoments() {
     List<String> told = new ArrayList<>();
     runs.rewards((p, recipe, tier, moment, run) -> told.add(p.getName() + " " + recipe + " " + tier + " " + moment));

@@ -90,13 +90,18 @@ public class RewardsTest {
     assertEquals(Map.of("rare", 30, "epic", 80), rules.prices());
     assertEquals("gemstones.larimar", rules.gemTemplate());
     assertEquals(5, rules.parMarks());
+    assertEquals(1.5, rules.hardcoreBoost());
+    assertThrows(IllegalArgumentException.class,
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, 0, 0.5));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, 0, Double.POSITIVE_INFINITY));
     assertEquals(0.5, rules.parLuck());
     assertThrows(IllegalArgumentException.class,
-        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", -1, 0));
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", -1, 0, 1));
     assertThrows(IllegalArgumentException.class,
-        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, Double.POSITIVE_INFINITY));
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, Double.POSITIVE_INFINITY, 1));
     assertThrows(IllegalArgumentException.class,
-        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, -0.5));
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, -0.5, 1));
     assertEquals(0.0, new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p").chance(Moment.BOSS));
     assertEquals(0, new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p").marks(Moment.BOSS));
   }
@@ -142,6 +147,13 @@ public class RewardsTest {
     assertEquals(DungeonRewards.week(now.get(), ZoneId.of("UTC")), locker.week());
     verify(ann).sendMessage("§6You found Rimebound Sword§6! §7It is in your dungeon locker.");
     verify(lockers).saveLocker(ann, locker); // one write for the find, the marks and the counters
+  }
+
+  @Test
+  void hardcoreFindsPayMoreForTheRisk() {
+    rewards(doubles(0.5)).reward(ann, "delve_seithr", 1, Moment.BOSS, run, false, true);
+    assertEquals(8, locker.marks(), "the boss's 5 marks x1.5, rounded");
+    verify(lockers).file(eq(locker), any()); // 0.5 < 0.35 x 1.5: a find a normal run would have missed
   }
 
   @Test

@@ -57,7 +57,7 @@ class DifficultyMenuTest {
     assertFalse(m.stillAtGate(), "the gate was removed");
     m.click(m.slot(0), false);
     server.getScheduler().performOneTick();
-    verify(runs, never()).useGate(any(), any(), any());
+    verify(runs, never()).useGate(any(), any(), any(), anyBoolean());
     assertEquals("§cYou are no longer at the gate.", ann.nextMessage());
     when(gates.at(any())).thenReturn(gate);
     ann.teleport(new org.bukkit.Location(server.addSimpleWorld("other"), 2, 2, 5));
@@ -69,7 +69,7 @@ class DifficultyMenuTest {
     assertFalse(m.stillAtGate(), "offline");
     m.click(m.slot(0), false);
     server.getScheduler().performOneTick();
-    verify(runs, never()).useGate(any(), any(), any());
+    verify(runs, never()).useGate(any(), any(), any(), anyBoolean());
   }
 
   @AfterEach
@@ -100,9 +100,25 @@ class DifficultyMenuTest {
     assertEquals("§cHard is not open for you yet.", ann.nextMessage());
     m.click(4, false); // nothing there
     m.click(11, false);
-    verify(runs, never()).useGate(any(), any(), any());
+    verify(runs, never()).useGate(any(), any(), any(), anyBoolean());
     server.getScheduler().performOneTick();
-    verify(runs).useGate(ann, gate, "normal");
+    verify(runs).useGate(ann, gate, "normal", false);
+  }
+
+  @Test
+  void hardcoreIsAToggleOnTheScreen() {
+    DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(normal)));
+    m.open();
+    assertEquals(Material.GRAY_DYE, m.getInventory().getItem(DifficultyMenu.HARDCORE).getType());
+    assertFalse(m.hardcore());
+    m.click(DifficultyMenu.HARDCORE, false);
+    assertTrue(m.hardcore());
+    assertEquals(Material.RED_DYE, m.getInventory().getItem(DifficultyMenu.HARDCORE).getType());
+    m.click(m.slot(0), false);
+    server.getScheduler().performOneTick();
+    verify(runs).useGate(ann, gate, "normal", true);
+    m.click(DifficultyMenu.HARDCORE, false);
+    assertFalse(m.hardcore(), "and off again");
   }
 
   @Test
@@ -156,6 +172,6 @@ class DifficultyMenuTest {
     m.click(26, false); // past the five buttons
     m.click(17, false);
     server.getScheduler().performOneTick();
-    verify(runs).useGate(ann, gate, "d4");
+    verify(runs).useGate(ann, gate, "d4", false);
   }
 }
