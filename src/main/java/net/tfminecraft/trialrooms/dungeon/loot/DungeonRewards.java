@@ -44,10 +44,10 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     private final Supplier<Spoils> spoils;
     private final java.util.logging.Logger log;
     private Supplier<Cosmetics> cosmetics = () -> null;
-    private java.util.function.Consumer<String> console; // (only used once cosmetics are set)
+    private java.util.function.Predicate<String> console; // (only used once cosmetics are set)
 
     /** Turns on cosmetics: what they are, and how a console command runs (skin unlocks). */
-    public DungeonRewards cosmetics(Supplier<Cosmetics> cosmetics, java.util.function.Consumer<String> console) {
+    public DungeonRewards cosmetics(Supplier<Cosmetics> cosmetics, java.util.function.Predicate<String> console) {
         this.cosmetics = cosmetics;
         this.console = console;
         return this;
@@ -76,7 +76,12 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         }
         for (Cosmetics.Skin s : c.skins(recipe, difficulty)) {
             if (!p.hasPermission(s.permission()) && rng.nextDouble() < s.chance()) {
-                console.accept(c.unlockCommand().replace("{player}", p.getName()).replace("{permission}", s.permission()));
+                String command = c.unlockCommand().replace("{player}", p.getName()).replace("{permission}", s.permission());
+                if (!console.test(command)) {
+                    log.warning("[dungeons] the skin unlock failed: " + command);
+                    p.sendMessage("§cYou earned the " + s.name() + " skin, but it could not be unlocked. Tell staff.");
+                    return;
+                }
                 p.sendMessage("§d✦ You unlocked the " + s.name() + " skin! §7Use it on your own gear in /armourshop.");
                 p.playSound(p.getLocation(), "minecraft:ui.toast.challenge_complete", 1f, 1f);
                 return;

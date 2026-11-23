@@ -53,9 +53,9 @@ public record Cosmetics(String unlockCommand, List<Trophy> trophies, List<Skin> 
         }
     }
 
-    /** Runs a command on the server console (how a skin unlock grants its permission). */
-    public static void runOnConsole(String command) {
-        org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), command);
+    /** Runs a command on the server console (how a skin unlock grants its permission); false when it failed. */
+    public static boolean runOnConsole(String command) {
+        return org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), command);
     }
 
     /** The trophies of a dungeon at a difficulty (blank for none). */

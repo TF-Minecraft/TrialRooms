@@ -69,6 +69,21 @@ public class RecordsTest {
     Records r = new Records(f, Logger.getLogger("t"));
     assertEquals(List.of(new Clear(5000, List.of("Ann"), 1)), r.top("delve", null, 1));
     assertEquals(List.of(1), List.copyOf(r.best("delve", null).keySet()), "a board with nothing left shows no best");
+    // a board with a broken name is skipped; a file that can't be read is kept aside, never overwritten
+    File named = temp.resolve("named.yml").toFile();
+    Files.writeString(named.toPath(), "boards:\n  delve/hard/solo:\n    - {millis: 1, names: [A], at: 1}\n");
+    assertEquals(java.util.Map.of(), new Records(named, Logger.getLogger("t")).best("delve", "hard"));
+    File broken = temp.resolve("broken.yml").toFile();
+    Files.writeString(broken.toPath(), "boards: [unclosed");
+    Records fresh = new Records(broken, Logger.getLogger("t"));
+    assertTrue(Files.exists(temp.resolve("broken.yml.broken")), "kept aside");
+    assertTrue(fresh.top("delve", null, 1).isEmpty());
+    File stuck = temp.resolve("stuck.yml").toFile();
+    Files.writeString(stuck.toPath(), "boards: [unclosed");
+    Files.createDirectories(temp.resolve("stuck.yml.broken"));
+    Files.writeString(temp.resolve("stuck.yml.broken").resolve("in-the-way"), "x");
+    assertTrue(new Records(stuck, Logger.getLogger("t")).top("delve", null, 1).isEmpty(),
+        "the copy can't be kept aside either: still nothing read, and it says so");
     assertTrue(new Records(temp.resolve("none.yml").toFile(), Logger.getLogger("t")).top("delve", null, 1).isEmpty());
     // the file can't be written: the board still holds the clear
     Path blocked = temp.resolve("blocked");

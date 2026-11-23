@@ -157,7 +157,7 @@ public final class RunManager {
         /** Whether the run counts for the leaderboards (a gate run, not a staff start). */
         boolean ranked;
         /** Who entered the run, by display name, for the leaderboards and trophies. */
-        final List<String> party = new ArrayList<>();
+        final Map<UUID, String> party = new LinkedHashMap<>();
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -561,8 +561,8 @@ public final class RunManager {
                     continue;
                 }
                 n++;
-                ar.party.add(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
-                        .serialize(m.displayName()));
+                ar.party.put(m.getUniqueId(), net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+                        .plainText().serialize(m.displayName()));
                 m.sendMessage("§6You step through the gate. §7Shared lives: " + run.lives()
                         + ". Leave at any time with /tr dungeon leave.");
                 if (difficulty != null) {
@@ -1474,8 +1474,12 @@ public final class RunManager {
     private void feat(ActiveRun ar, RunRewards.Moment moment) {
         if (rewards != null) {
             String d = ar.difficulty == null ? "" : ar.difficulty.id();
-            forPlaying(ar, "the " + moment + " cosmetics",
-                    p -> rewards.feat(p, ar.run.recipeId(), d, moment, ar.run.id(), ar.party));
+            List<String> party = stayed(ar);
+            forPlaying(ar, "the " + moment + " cosmetics", p -> {
+                if (ar.run.member(p.getUniqueId()).status() != Status.OUT) { // (spectators carried along get none)
+                    rewards.feat(p, ar.run.recipeId(), d, moment, ar.run.id(), party);
+                }
+            });
         }
     }
 
@@ -1485,13 +1489,20 @@ public final class RunManager {
             return;
         }
         long millis = clock.getAsLong() - ar.openedMs;
-        int place = records.add(ar.run.recipeId(), ar.difficulty == null ? null : ar.difficulty.id(), ar.party.size(),
-                new Records.Clear(millis, ar.party, clock.getAsLong()));
-        String board = (ar.difficulty == null ? "" : ar.difficulty.name() + ", ") + size(ar.party.size());
+        List<String> party = stayed(ar);
+        int place = records.add(ar.run.recipeId(), ar.difficulty == null ? null : ar.difficulty.id(), party.size(),
+                new Records.Clear(millis, party, clock.getAsLong()));
+        String board = (ar.difficulty == null ? "" : ar.difficulty.name() + ", ") + size(party.size());
         String time = Records.time(millis);
         tell(ar, place == 1 ? "§6✦ A new record: §f" + time + " §7(" + board + ")"
                 : place > 0 ? "§eYour time: §f" + time + "§7, place " + place + " on the board (" + board + ")"
                 : "§7Your time: " + time + " (" + board + ")");
+    }
+
+    /** Who entered the run and has not left it, by display name. */
+    private static List<String> stayed(ActiveRun ar) {
+        return ar.party.entrySet().stream().filter(e -> ar.run.member(e.getKey()).status() != Status.LEFT)
+                .map(Map.Entry::getValue).toList();
     }
 
     /** A party size as players read it. */

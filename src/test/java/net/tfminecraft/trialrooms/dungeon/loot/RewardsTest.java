@@ -359,6 +359,10 @@ public class RewardsTest {
     new DungeonRewards(loot, lockers, () -> rules, doubles(0.9), now::get, ZoneId.of("UTC"), () -> null, log)
         .cosmetics(() -> c, console::add).feat(ann, "d", "hard", Moment.VAULT, run, List.of("Ann"));
     assertEquals(1, console.size(), "a roll that misses unlocks nothing");
+    new DungeonRewards(loot, lockers, () -> rules, doubles(0.1), now::get, ZoneId.of("UTC"), () -> null, log)
+        .cosmetics(() -> c, cmd -> false).feat(ann, "d", "hard", Moment.VAULT, run, List.of("Ann"));
+    verify(log).warning("[dungeons] the skin unlock failed: lp user Ann permission set skin.glacial true");
+    verify(ann).sendMessage("§cYou earned the Glacial skin, but it could not be unlocked. Tell staff.");
     when(ann.hasPermission("skin.glacial")).thenReturn(true);
     r.feat(ann, "d", "hard", Moment.VAULT, run, List.of("Ann"));
     assertEquals(1, console.size(), "every skin is theirs: nothing more");

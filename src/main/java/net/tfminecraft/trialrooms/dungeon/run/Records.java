@@ -48,11 +48,30 @@ public final class Records {
     public Records(File file, Logger log) {
         this.file = file;
         this.log = log;
-        ConfigurationSection y = YamlConfiguration.loadConfiguration(file).getConfigurationSection("boards");
+        YamlConfiguration all = new YamlConfiguration();
+        if (file.isFile()) {
+            try {
+                all.load(file);
+            } catch (IOException | org.bukkit.configuration.InvalidConfigurationException e) {
+                // kept aside, so the next save can't wipe the boards
+                try {
+                    Files.copy(file.toPath(), file.toPath().resolveSibling(file.getName() + ".broken"),
+                            StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException copy) {
+                    log.severe("[dungeons] could not keep the broken records.yml aside: " + copy.getMessage());
+                }
+                log.severe("[dungeons] records.yml could not be read (kept as records.yml.broken): " + e.getMessage());
+            }
+        }
+        ConfigurationSection y = all.getConfigurationSection("boards");
         if (y == null) {
             return;
         }
         for (String key : y.getKeys(false)) {
+            if (!key.matches(".+/.+/\\d{1,3}")) {
+                log.warning("[dungeons] skipped a board with a broken name in records.yml: " + key);
+                continue;
+            }
             List<Clear> list = new ArrayList<>();
             for (Map<?, ?> m : y.getMapList(key)) {
                 if (m.get("millis") instanceof Number ms && m.get("names") instanceof List<?> names

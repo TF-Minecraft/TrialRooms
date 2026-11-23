@@ -468,6 +468,21 @@ class RunManagerTest {
     assertTrue(nextMatching(a, "A new record: §f1:30 §7(Normal, solo)"));
     assertEquals(1, records.top("delve", "normal", 1).size());
     assertTrue(feats.contains("Ann delve [normal] VAULT [Ann]"), feats.toString());
+    // a member who left is no part of the record; one out of the fight is, but rolls no cosmetics
+    difficulties = List.of();
+    feats.clear();
+    PlayerMock b = player("Bo");
+    PlayerMock c = player("Cy");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId(), c.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(11, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
+    runs.leave(b);
+    ar.run.bleedOut(c.getUniqueId());
+    ar.run.bleedOut(c.getUniqueId());
+    win(a, 100_000);
+    assertEquals(List.of("Ann delve [] BOSS [Ann, Cy]", "Ann delve [] VAULT [Ann, Cy]"), feats);
+    assertEquals(List.of("Ann", "Cy"), records.top("delve", null, 2).getFirst().names());
     assertEquals("party of 3", RunManager.size(3));
     assertEquals("solo", RunManager.size(1));
   }
