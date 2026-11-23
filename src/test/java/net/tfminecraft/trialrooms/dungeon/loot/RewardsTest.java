@@ -404,6 +404,32 @@ public class RewardsTest {
   }
 
   @Test
+  void anAccountsCharactersShareTheirCosmeticRuns(@org.junit.jupiter.api.io.TempDir java.nio.file.Path temp) {
+    Cosmetics c = new Cosmetics("", List.of(new Cosmetics.Trophy("d", "hard", 1, "v.skull", "Trophy")), List.of());
+    ItemStack skull = stackable("Skull", 64);
+    when(loot.item("v.skull")).thenReturn(skull);
+    AccountLimits limits = new AccountLimits(temp.resolve("accounts.yml").toFile(), java.util.logging.Logger.getLogger("t"));
+    DungeonRewards r = new DungeonRewards(loot, lockers, () -> rules, doubles(0.0), now::get, ZoneId.of("UTC"), () -> null,
+        java.util.logging.Logger.getLogger("t")).cosmetics(() -> c, cmd -> true).accounts(limits);
+    UUID account = UUID.randomUUID();
+    when(ann.getUniqueId()).thenReturn(account);
+    for (int i = 0; i < 4; i++) { // four runs, as if on four characters (each counts for its own character)
+      UUID each = UUID.randomUUID();
+      locker.lastRun(each.toString(), true);
+      r.feat(ann, "d", "hard", Moment.BOSS, each, List.of("Ann"));
+      r.feat(ann, "d", "hard", Moment.BOSS, each, List.of("Ann")); // (the same run asks again)
+    }
+    verify(lockers, times(6)).owe(eq(locker), any()); // 3 runs x 2 asks: the fourth run rolls none
+    // without reward rules there is no weekly number to count against: no limit
+    DungeonRewards loose = new DungeonRewards(loot, lockers, () -> null, doubles(0.0), now::get, ZoneId.of("UTC"),
+        () -> null, java.util.logging.Logger.getLogger("t")).cosmetics(() -> c, cmd -> true).accounts(limits);
+    UUID fifth = UUID.randomUUID();
+    locker.lastRun(fifth.toString(), true);
+    loose.feat(ann, "d", "hard", Moment.BOSS, fifth, List.of("Ann"));
+    verify(lockers, times(7)).owe(eq(locker), any());
+  }
+
+  @Test
   void weeksAreIsoWeeks() {
     assertEquals("2026-W39", DungeonRewards.week(1_790_000_000_000L, ZoneId.of("UTC")));
     assertEquals("2026-W53", DungeonRewards.week(1_798_761_600_000L, ZoneId.of("UTC")), "2027-01-01 is still in 2026's week 53");
