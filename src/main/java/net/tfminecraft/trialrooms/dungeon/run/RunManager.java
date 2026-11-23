@@ -158,6 +158,15 @@ public final class RunManager {
         boolean ranked;
         /** Who entered the run, by display name, for the leaderboards and trophies. */
         final Map<UUID, String> party = new LinkedHashMap<>();
+        /** This week's affixes on this run, and their numbers. */
+        List<WeeklyAffix> affixes = List.of();
+        Affixes affixConfig;
+        /** Enemies made stronger by nearby deaths (Bolstering): how many times. */
+        final Map<UUID, Integer> bolstered = new HashMap<>();
+
+        boolean has(WeeklyAffix a) {
+            return affixes.contains(a);
+        }
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -527,6 +536,8 @@ public final class RunManager {
             ActiveRun ar = new ActiveRun(run, geo, placer, kit, rules, leader.getUniqueId(), keyPath, arrival);
             ar.difficulty = difficulty;
             ar.ranked = ranked;
+            ar.affixConfig = module.affixes();
+            ar.affixes = weeklyAffixes(rules.tier());
             ar.damageFactor = difficulty == null ? 1 : difficulty.damage();
             ar.planned = EventPlanner.plan(layout, kit.events(), rules.eventChance(), rules.maxEvents());
             runs.put(run.id(), ar);
@@ -571,6 +582,9 @@ public final class RunManager {
                         + ". Leave at any time with /tr dungeon leave.");
                 if (difficulty != null) {
                     m.sendMessage("§7Difficulty: §f" + difficulty.name() + "§7 (tier " + difficulty.tier() + ").");
+                }
+                for (WeeklyAffix a : ar.affixes) {
+                    m.sendMessage("§5This week: " + a.title() + " §7(" + a.hint() + ")");
                 }
                 if (lobby) {
                     m.sendMessage(lobbyButtons());
@@ -1518,6 +1532,12 @@ public final class RunManager {
     /** A party size as players read it. */
     public static String size(int players) {
         return players == 1 ? "solo" : "party of " + players;
+    }
+
+    /** This week's affixes for a run of a tier (none without an affixes section). */
+    public List<WeeklyAffix> weeklyAffixes(int tier) {
+        Affixes a = module.affixes();
+        return a == null ? List.of() : a.of(Affixes.week(clock.getAsLong(), java.time.ZoneId.systemDefault()), tier);
     }
 
     /** The leaderboards, or null when they are off. */

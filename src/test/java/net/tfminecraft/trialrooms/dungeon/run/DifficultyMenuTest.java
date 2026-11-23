@@ -106,6 +106,15 @@ class DifficultyMenuTest {
   }
 
   @Test
+  void theScreenShowsThisWeeksAffixes() {
+    when(runs.weeklyAffixes(2)).thenReturn(List.of(WeeklyAffix.FORTIFIED, WeeklyAffix.VOLATILE));
+    DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(normal, hard)));
+    m.open();
+    assertFalse(String.valueOf(m.getInventory().getItem(m.slot(0)).getItemMeta().lore()).contains("This week"));
+    assertTrue(String.valueOf(m.getInventory().getItem(m.slot(1)).getItemMeta().lore()).contains("This week: Fortified, Volatile"));
+  }
+
+  @Test
   void theScreenShowsTheParTime() {
     DungeonRecipe recipe = new DungeonRecipe("delve", 1, 1, Map.of(RoomType.COMBAT, 1), true, true, 0, 0, 1, 1, null, 20, 20000);
     var timed = new RecipeLoader.Entry(recipe, "greybox",

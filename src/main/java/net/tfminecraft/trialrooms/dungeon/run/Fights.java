@@ -193,7 +193,14 @@ final class Fights {
     /** Multiplies a mob's max health by {@code factor} (one keyed modifier, so it is never doubled) and fills it. */
     /** A health factor: the party's (and an elite's) up to the kit's cap, then the difficulty's on top. */
     double health(ActiveRun ar, double factor) {
-        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth;
+        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth
+                * (ar.has(WeeklyAffix.FORTIFIED) ? ar.affixConfig.fortified() : 1);
+    }
+
+    /** A boss's health factor: as {@link #health} without Fortified, with Tyrannical. */
+    double bossHealth(ActiveRun ar, double factor) {
+        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth
+                * (ar.has(WeeklyAffix.TYRANNICAL) ? ar.affixConfig.tyrantHealth() : 1);
     }
 
     /** True while a boss mechanic lands its damage. */
@@ -429,7 +436,7 @@ final class Fights {
         if (max != null) {
             max.setBaseValue(def.health());
         }
-        scale(living, health(ar, ar.healthFactor));
+        scale(living, bossHealth(ar, ar.healthFactor));
         name(enc, living, Component.text(def.name(), NamedTextColor.DARK_RED));
         enc.boss = new BossFight(def, ar.kit.fights().tuning(), now);
         enc.bossMob = living;
@@ -852,6 +859,27 @@ final class Fights {
 
     /** How hard a run mob hits now: rallied, enraged, or not at all while charging a shockwave. */
     double outgoing(ActiveRun ar, Entity source) {
+        return base(ar, source) * affixed(ar, source);
+    }
+
+    /** What this week's affixes add to a hit: a boss's Tyrannical, a wounded enemy's Raging, Bolstering. */
+    private double affixed(ActiveRun ar, Entity source) {
+        if (ar.affixes.isEmpty()) {
+            return 1;
+        }
+        Affixes c = ar.affixConfig;
+        double f = 1 + c.bolster() * ar.bolstered.getOrDefault(source.getUniqueId(), 0);
+        if (ar.has(WeeklyAffix.RAGING) && source instanceof LivingEntity le && le.getAttribute(Attribute.MAX_HEALTH) != null
+                && le.getHealth() <= le.getAttribute(Attribute.MAX_HEALTH).getValue() * c.rageBelow()) {
+            f *= c.rageDamage();
+        }
+        if (ar.has(WeeklyAffix.TYRANNICAL) && ar.encounters.values().stream().anyMatch(e -> source.equals(e.bossMob))) {
+            f *= c.tyrantDamage();
+        }
+        return f;
+    }
+
+    private double base(ActiveRun ar, Entity source) {
         long now = clock.getAsLong();
         for (Encounter enc : ar.encounters.values()) {
             if (source.equals(enc.bossMob)) {
@@ -906,7 +934,11 @@ final class Fights {
     /** A run mob died: a volatile elite's remains start to burst. */
     void died(ActiveRun ar, Entity mob) {
         for (Encounter enc : ar.encounters.values()) {
-            if (enc.elites.get(mob.getUniqueId()) == Affix.VOLATILE) {
+            boolean ours = enc.alive.contains(mob) || enc.adds.contains(mob);
+            if (ours && ar.has(WeeklyAffix.BOLSTERING)) {
+                bolster(ar, enc, mob);
+            }
+            if (enc.elites.get(mob.getUniqueId()) == Affix.VOLATILE || ours && ar.has(WeeklyAffix.VOLATILE)) {
                 FightTuning t = ar.kit.fights().tuning();
                 long now = clock.getAsLong();
                 Location l = mob.getLocation();
@@ -914,6 +946,22 @@ final class Fights {
                         now + (long) (t.burstSeconds() * 1000)));
                 runs.tellRoom(ar, enc.room, "§cThe " + baseName(mob) + "'s remains crackle: step away!");
             }
+        }
+    }
+
+    /** Bolstering: the enemies near a death hit harder from now on. */
+    private void bolster(ActiveRun ar, Encounter enc, Entity dead) {
+        double r = ar.affixConfig.bolsterRadius();
+        boolean any = false;
+        for (Entity e : new ArrayList<>(enc.alive)) {
+            if (!e.equals(dead) && e.isValid() && dead.getLocation().getWorld().equals(e.getLocation().getWorld())
+                    && e.getLocation().distance(dead.getLocation()) <= r) {
+                ar.bolstered.merge(e.getUniqueId(), 1, Integer::sum);
+                any = true;
+            }
+        }
+        if (any) {
+            runs.tellRoom(ar, enc.room, "§5The enemies nearby grow stronger.");
         }
     }
 

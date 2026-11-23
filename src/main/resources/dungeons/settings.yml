@@ -36,5 +36,19 @@ queue-hold-seconds: 60
 harmful-auras: [Slowed, Weakened, Wounded, Silenced, Silence_Struck, Burnt, Frozen, Stun_Aura, Vine_Wave_Stun, TFMC_Guard_Vibrative_Strike_STUN, Sanguine_Chain_Lock, Glacial_Quills_Stack]
 # helpful-auras: buffs players never put on mobs here.
 helpful-auras: [guardian_angel, Guardian_Angel_Ward, TFMC_Guard_Shield_Wall_Ward, Rhapsody_aura, Angelic_Serenade_aura, TFMC_Guard_Restoration]
+# Weekly affixes: each ISO week the pool is shuffled the same way for everyone, and a run gets the
+# first affixes of that order, as many as per-tier gives its tier (Hard is tier 2, Nightmare 3, so
+# Nightmare always has Hard's affix and one more). The gate's difficulty screen shows them.
+#   fortified: ordinary enemies' health; tyrannical: bosses' health and damage;
+#   volatile: every enemy bursts soon after it dies (the kit's burst numbers);
+#   raging: enemies below this share of their health hit this much harder;
+#   bolstering: each death within radius blocks adds this much damage to the enemies near it.
+affixes:
+  pool: [fortified, tyrannical, volatile, raging, bolstering]
+  per-tier: {2: 1, 3: 2}
+  fortified: 1.25
+  tyrannical: {health: 1.3, damage: 1.15}
+  raging: {below: 0.3, damage: 1.25}
+  bolstering: {damage: 0.1, radius: 12}
 # Commands players can't use inside the dungeon world (staff can).
 blocked-commands: [home, homes, sethome, spawn, warp, tpa, tpahere, tpaccept, back, rtp]

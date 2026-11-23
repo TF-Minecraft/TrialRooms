@@ -83,6 +83,7 @@ public final class DungeonModule {
     private RewardRules rewardRules;
     private net.tfminecraft.trialrooms.dungeon.loot.Spoils spoils;
     private net.tfminecraft.trialrooms.dungeon.loot.Cosmetics cosmetics;
+    private net.tfminecraft.trialrooms.dungeon.run.Affixes affixes;
     private DungeonLoot loot;
     private DungeonRewards rewards;
 
@@ -192,6 +193,11 @@ public final class DungeonModule {
         return rewardRules;
     }
 
+    /** This week's affixes and their numbers; null when none. */
+    public net.tfminecraft.trialrooms.dungeon.run.Affixes affixes() {
+        return affixes;
+    }
+
     /** Trophies and wardrobe skins; null when none. */
     public net.tfminecraft.trialrooms.dungeon.loot.Cosmetics cosmetics() {
         return cosmetics;
@@ -235,6 +241,8 @@ public final class DungeonModule {
         spoils = net.tfminecraft.trialrooms.dungeon.loot.Spoils.load(lootYml, problems);
         cosmetics = net.tfminecraft.trialrooms.dungeon.loot.Cosmetics.load(lootYml, problems);
         File settingsFile = new File(root, "settings.yml");
+        affixes = settingsFile.isFile() ? net.tfminecraft.trialrooms.dungeon.run.Affixes.load(
+                org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile), problems) : null;
         settings = settingsFile.isFile()
                 ? RunSettings.from(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile))
                 : RunSettings.defaults();

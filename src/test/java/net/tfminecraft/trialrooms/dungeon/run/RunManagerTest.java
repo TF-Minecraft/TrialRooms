@@ -488,6 +488,21 @@ class RunManagerTest {
   }
 
   @Test
+  void runsGetThisWeeksAffixes() {
+    PlayerMock a = player("Ann");
+    assertEquals(List.of(), runs.weeklyAffixes(1), "no affixes section: none");
+    Affixes cfg = new Affixes(List.of(WeeklyAffix.FORTIFIED), Map.of(1, 1), 1.25, 1.3, 1.15, 0.3, 1.25, 0.1, 12);
+    when(module.affixes()).thenReturn(cfg);
+    assertEquals(List.of(WeeklyAffix.FORTIFIED), runs.weeklyAffixes(1));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
+    assertEquals(List.of(WeeklyAffix.FORTIFIED), ar.affixes);
+    assertSame(cfg, ar.affixConfig);
+    assertTrue(nextMatching(a, "This week: Fortified §7(ordinary enemies are tougher)"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
   void reachingTheVaultUnderParGivesABetterVault() {
     rules = new RunRules(1, 3, "m.key", 1, 1, 0.5, 1, "", 0, 0, 0, 0, 10);
     List<String> vaults = new ArrayList<>();

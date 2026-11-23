@@ -433,6 +433,65 @@ class FightsTest {
   }
 
   @Test
+  void weeklyAffixesChangeTheFight() {
+    useKit(fightKit(tuning(6, 0), warden()));
+    PlayerMock a = player("Ann");
+    int fight = room(RoomType.COMBAT);
+    RunManager.ActiveRun ar = enter(a, fight);
+    Fights.Encounter enc = ar.encounters.get(fight);
+    Fights f = runs.fights();
+    ar.affixConfig = new Affixes(List.of(WeeklyAffix.values()), Map.of(), 1.25, 1.3, 1.15, 0.3, 1.25, 0.1, 12);
+    double plain = f.health(ar, 1);
+    assertEquals(plain, f.bossHealth(ar, 1), 1e-9);
+    ar.affixes = List.of(WeeklyAffix.FORTIFIED);
+    assertEquals(plain * 1.25, f.health(ar, 1), 1e-9, "Fortified: ordinary enemies are tougher");
+    assertEquals(plain, f.bossHealth(ar, 1), 1e-9, "but not bosses");
+    ar.affixes = List.of(WeeklyAffix.TYRANNICAL);
+    assertEquals(plain * 1.3, f.bossHealth(ar, 1), 1e-9, "Tyrannical: bosses are tougher");
+    assertEquals(1, f.outgoing(ar, mob(at(middle(fight)), "Grunt")), 1e-9, "and only bosses hit harder");
+    // Raging: an enemy below 30% of its health hits harder
+    ar.affixes = List.of(WeeklyAffix.RAGING);
+    LivingEntity hurt = (LivingEntity) mob(at(middle(fight)), "Hurt");
+    assertEquals(1, f.outgoing(ar, hurt), 1e-9);
+    hurt.setHealth(5);
+    assertEquals(1.25, f.outgoing(ar, hurt), 1e-9);
+    Entity thing = mock(Entity.class);
+    when(thing.getUniqueId()).thenReturn(UUID.randomUUID());
+    assertEquals(1, f.outgoing(ar, thing), 1e-9, "not a living thing");
+    LivingEntity noMax = mock(LivingEntity.class);
+    when(noMax.getUniqueId()).thenReturn(UUID.randomUUID());
+    assertEquals(1, f.outgoing(ar, noMax), 1e-9, "no health to rage at");
+    // Bolstering: a death makes the enemies near it hit harder
+    ar.affixes = List.of(WeeklyAffix.BOLSTERING);
+    Entity near = mob(at(middle(fight)), "Near");
+    Entity away = mob(at(middle(fight)).add(40, 0, 0), "Away");
+    Entity gone = mob(at(middle(fight)), "Gone");
+    Entity dead = mob(at(middle(fight)), "Dead");
+    Entity elsewhere = mob(new Location(main, 0, 70, 0), "Elsewhere");
+    kill(gone);
+    enc.alive.addAll(List.of(near, away, gone, dead, elsewhere));
+    kill(dead);
+    f.died(ar, dead);
+    assertEquals(1.1, f.outgoing(ar, near), 1e-9);
+    assertEquals(1, f.outgoing(ar, away), 1e-9);
+    assertEquals(1, f.outgoing(ar, elsewhere), 1e-9, "another world is never near");
+    assertTrue(said(a, "grow stronger"));
+    Entity lone = mob(at(middle(fight)).add(80, 0, 0), "Lone");
+    enc.adds.add(lone);
+    f.died(ar, lone); // nobody near: nobody grows
+    assertEquals(1.1, f.outgoing(ar, near), 1e-9);
+    // Volatile: every enemy bursts, but not one that isn't the room's
+    ar.affixes = List.of(WeeklyAffix.VOLATILE);
+    int bursts = enc.telegraphs.size();
+    Entity v = mob(at(middle(fight)), "V");
+    enc.alive.add(v);
+    f.died(ar, v);
+    assertEquals(bursts + 1, enc.telegraphs.size());
+    f.died(ar, mob(at(middle(fight)), "Stranger"));
+    assertEquals(bursts + 1, enc.telegraphs.size());
+  }
+
+  @Test
   void aBossFightsInPhasesWithTelegraphs() {
     PlayerMock a = player("Ann");
     int boss = room(RoomType.BOSS);
@@ -518,6 +577,10 @@ class FightsTest {
     assertTrue(enc.boss.enraged());
     enc.telegraphs.clear();
     assertEquals(1.25, runs.outgoingFactor(mob), 1e-9);
+    ar.affixConfig = new Affixes(List.of(WeeklyAffix.values()), Map.of(), 1.25, 1.3, 1.15, 0.3, 1.25, 0.1, 12);
+    ar.affixes = List.of(WeeklyAffix.TYRANNICAL);
+    assertEquals(1.25 * 1.15, runs.outgoingFactor(mob), 1e-9, "Tyrannical: the boss hits harder");
+    ar.affixes = List.of();
     now.addAndGet(30_000);
     ticks(1);
     assertFalse(enc.adds.isEmpty());
