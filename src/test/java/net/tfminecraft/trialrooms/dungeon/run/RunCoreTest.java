@@ -338,6 +338,31 @@ public class RunCoreTest {
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, Double.POSITIVE_INFINITY));
     assertEquals(0, party.par(), "no par time");
+    assertEquals(1, party.minRoomCells(), "any fight room");
+    assertEquals(1, party.bossHealth());
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 0, 1));
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 0));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, Double.POSITIVE_INFINITY));
+    RunRules big = new RunRules(3, 5, "", 5, 1, 0.5, 1, "", 0.3, 0, 0, 35, 26, 2, 1.5);
+    assertEquals(2, big.withTier(2).minRoomCells());
+    assertEquals(1.5, big.with(new Difficulty("hard", "Hard", 2, 1, 1, null, "")).bossHealth());
+    RunRules capped = new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 1, 6, 8);
+    assertEquals(8, capped.depth(12), "fights stop growing after max-depth rooms");
+    assertEquals(3, capped.depth(3));
+    assertEquals(12, party.depth(12), "no limit by default");
+    assertEquals(6, capped.withTier(2).healthCap());
+    assertEquals(8, capped.with(new Difficulty("hard", "Hard", 2, 1, 1, null, "")).maxDepth());
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 1, -1, 0));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 1, Double.POSITIVE_INFINITY, 0));
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 1, 0, -1));
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 1, 0.5, 0),
+        "a cap below 1 would shrink every enemy");
+    assertEquals(2048, RunSettings.defaults().maxHealth());
+    YamlConfiguration hp = new YamlConfiguration();
+    hp.set("max-health", 1024);
+    assertEquals(1024, RunSettings.from(hp).maxHealth());
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, -1));
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, Double.POSITIVE_INFINITY));

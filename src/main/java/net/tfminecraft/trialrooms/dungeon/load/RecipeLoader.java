@@ -97,7 +97,9 @@ public final class RecipeLoader {
         return new RunRules(players[0], players[1], s.getString("key", "m.loot.trial_key"), s.getInt("lives", 3),
                 s.getInt("mob-level", 1), s.getDouble("health-per-extra-player", 0.5), s.getInt("tier", 1),
                 s.getString("boss", ""), s.getDouble("enemies-per-extra-player", 0.25), s.getDouble("event-chance", 0),
-                s.getInt("max-events", 2), s.getDouble("minutes", 0), s.getDouble("par", 0));
+                s.getInt("max-events", 2), s.getDouble("minutes", 0), s.getDouble("par", 0),
+                s.getInt("min-room-cells", 1), s.getDouble("boss-health", 1), s.getDouble("health-cap", 0),
+                s.getInt("max-depth", 0));
     }
 
     private static Map<RoomType, Integer> pool(ConfigurationSection s) {

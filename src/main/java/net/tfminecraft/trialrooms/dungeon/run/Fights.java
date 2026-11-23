@@ -190,6 +190,11 @@ final class Fights {
         }
     }
 
+    /** The most an enemy's health is multiplied by: the recipe's cap, or the kit's. */
+    private static double cap(ActiveRun ar) {
+        return ar.rules.healthCap() > 0 ? ar.rules.healthCap() : ar.kit.fights().tuning().healthCap();
+    }
+
     /** Whether a mechanic is marked on the ground (a burst from a dead enemy doesn't count: it is not the boss's). */
     static boolean busy(Encounter enc) {
         return enc.telegraphs.stream().anyMatch(a -> a.t.kind() != Telegraph.Kind.BURST);
@@ -198,13 +203,13 @@ final class Fights {
     /** Multiplies a mob's max health by {@code factor} (one keyed modifier, so it is never doubled) and fills it. */
     /** A health factor: the party's (and an elite's) up to the kit's cap, then the difficulty's on top. */
     double health(ActiveRun ar, double factor) {
-        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth
+        return Math.min(factor, cap(ar)) * ar.difficultyHealth
                 * (ar.has(WeeklyAffix.FORTIFIED) ? ar.affixConfig.fortified() : 1);
     }
 
     /** A boss's health factor: as {@link #health} without Fortified, with Tyrannical. */
     double bossHealth(ActiveRun ar, double factor) {
-        return Math.min(factor, ar.kit.fights().tuning().healthCap()) * ar.difficultyHealth
+        return Math.min(factor, cap(ar)) * ar.difficultyHealth * ar.rules.bossHealth()
                 * (ar.has(WeeklyAffix.TYRANNICAL) ? ar.affixConfig.tyrantHealth() : 1);
     }
 
@@ -235,8 +240,19 @@ final class Fights {
             max.addTransientModifier(new AttributeModifier(scaleKey, factor - 1,
                     AttributeModifier.Operation.MULTIPLY_SCALAR_1));
         }
+        // the server caps max health: what it can't hold, the mob takes as less damage instead
+        double intended = max.getBaseValue() * factor;
+        double limit = runs.settings().maxHealth();
+        if (intended > limit) {
+            tough.put(mob.getUniqueId(), limit / intended);
+        } else {
+            tough.remove(mob.getUniqueId());
+        }
         living.setHealth(max.getValue());
     }
+
+    /** Mobs scaled past the server's max health, and the share of each hit they take for it. */
+    private final Map<UUID, Double> tough = new HashMap<>();
 
     // ------------------------------------------------------------------ starting
 
@@ -249,7 +265,7 @@ final class Fights {
         long seed = new java.util.SplittableRandom(ar.run.layout().seed() * 31 + room).nextLong();
         Random rng = new Random(seed);
         List<String> tags = ar.geo.markerTags(room, "spawn");
-        int depth = ar.run.roomsCleared();
+        int depth = ar.rules.depth(ar.run.roomsCleared());
         BossDef def = type == RoomType.BOSS ? kit.boss(ar.rules.boss()) : null;
         // the party's size and the room's own size both scale the fight
         double factor = ar.enemyFactor * ar.run.layout().rooms().get(room).template().threat();
@@ -911,15 +927,16 @@ final class Fights {
     /** How much of a hit a run mob takes: none from a boss between phases, less from a shielded elite. */
     double incoming(ActiveRun ar, Entity mob) {
         long now = clock.getAsLong();
+        double share = tough.getOrDefault(mob.getUniqueId(), 1.0);
         for (Encounter enc : ar.encounters.values()) {
             if (mob.equals(enc.bossMob) && enc.boss.immune(now)) {
                 return 0;
             }
             if (enc.elites.get(mob.getUniqueId()) == Affix.SHIELDED && shieldUp(enc, mob)) {
-                return 1 - ar.kit.fights().tuning().shieldReduction();
+                return (1 - ar.kit.fights().tuning().shieldReduction()) * share;
             }
         }
-        return 1;
+        return share;
     }
 
     /** Most damage a hit may deal to a boss: no lower than its next phase's start. Infinite for other mobs. */
@@ -943,6 +960,7 @@ final class Fights {
 
     /** A run mob died: a volatile elite's remains start to burst. */
     void died(ActiveRun ar, Entity mob) {
+        tough.remove(mob.getUniqueId());
         for (Encounter enc : ar.encounters.values()) {
             boolean ours = enc.alive.contains(mob) || enc.adds.contains(mob);
             if (ours && ar.has(WeeklyAffix.BOLSTERING)) {

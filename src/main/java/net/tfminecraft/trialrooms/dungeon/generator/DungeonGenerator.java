@@ -43,7 +43,8 @@ public final class DungeonGenerator {
                 + " attempts (seed " + seed + ")");
     }
 
-    static Set<RoomType> neededTypes(DungeonRecipe recipe) {
+    /** The room types a recipe's layouts can use. */
+    public static Set<RoomType> neededTypes(DungeonRecipe recipe) {
         Set<RoomType> types = EnumSet.of(RoomType.START, RoomType.BOSS);
         if (recipe.trunkMax() > 0) {
             types.addAll(recipe.trunkPool().keySet());

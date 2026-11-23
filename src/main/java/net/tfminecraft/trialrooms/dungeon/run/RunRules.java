@@ -17,10 +17,28 @@ package net.tfminecraft.trialrooms.dungeon.run;
  * @param minutes            how long a proper party takes for a run: what its spoils (act materials and
  *                           rare items that leave the dungeon) are sized on; 0 = no spoils
  * @param par                the par time in minutes: reaching the vault within it gives a better vault; 0 = none
+ * @param minRoomCells       the fewest cells a fight room fills (big parties need room); 1 = any
+ * @param bossHealth         the boss's health multiplier on top of party scaling (a tougher boss for big parties)
+ * @param healthCap          the most an enemy's health is multiplied by (party and elite); 0 = the kit's
+ * @param maxDepth           the most cleared rooms that make fights bigger (long runs); 0 = no limit
  */
 public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
         double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
-        int maxEvents, double minutes, double par) {
+        int maxEvents, double minutes, double par, int minRoomCells, double bossHealth, double healthCap, int maxDepth) {
+
+    public RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
+            double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
+            int maxEvents, double minutes, double par, int minRoomCells, double bossHealth) {
+        this(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, tier, boss, enemiesPerExtraPlayer,
+                eventChance, maxEvents, minutes, par, minRoomCells, bossHealth, 0, 0);
+    }
+
+    public RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
+            double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
+            int maxEvents, double minutes, double par) {
+        this(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, tier, boss, enemiesPerExtraPlayer,
+                eventChance, maxEvents, minutes, par, 1, 1);
+    }
 
     public RunRules(int minPlayers, int maxPlayers, String keyPath, int lives, int mobLevel,
             double healthPerExtraPlayer, int tier, String boss, double enemiesPerExtraPlayer, double eventChance,
@@ -55,14 +73,14 @@ public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives
     /** The same rules at another tier (a harder difficulty). */
     public RunRules withTier(int t) {
         return new RunRules(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, t, boss,
-                enemiesPerExtraPlayer, eventChance, maxEvents, minutes, par);
+                enemiesPerExtraPlayer, eventChance, maxEvents, minutes, par, minRoomCells, bossHealth, healthCap, maxDepth);
     }
 
     /** The same rules played at a difficulty: its tier, and its run length when it gives one. */
     public RunRules with(Difficulty d) {
         return new RunRules(minPlayers, maxPlayers, keyPath, lives, mobLevel, healthPerExtraPlayer, d.tier(), boss,
                 enemiesPerExtraPlayer, eventChance, maxEvents, d.minutes() > 0 ? d.minutes() : minutes,
-                d.par() > 0 ? d.par() : par);
+                d.par() > 0 ? d.par() : par, minRoomCells, bossHealth, healthCap, maxDepth);
     }
 
     public RunRules {
@@ -82,8 +100,19 @@ public record RunRules(int minPlayers, int maxPlayers, String keyPath, int lives
         if (!(minutes >= 0) || Double.isInfinite(minutes) || !(par >= 0) || Double.isInfinite(par)) {
             throw new IllegalArgumentException("minutes and par must not be negative");
         }
+        if (minRoomCells < 1 || !(bossHealth > 0) || Double.isInfinite(bossHealth)) {
+            throw new IllegalArgumentException("min-room-cells must be at least 1 and boss-health above 0");
+        }
+        if (!(healthCap == 0 || healthCap >= 1) || Double.isInfinite(healthCap) || maxDepth < 0) {
+            throw new IllegalArgumentException("health-cap must be 0 (the kit's) or at least 1; max-depth not negative");
+        }
         keyPath = keyPath == null ? "" : keyPath.trim();
         boss = boss == null ? "" : boss.trim();
+    }
+
+    /** The fight depth a run uses after {@code cleared} rooms: no deeper than max-depth. */
+    public int depth(int cleared) {
+        return maxDepth > 0 ? Math.min(cleared, maxDepth) : cleared;
     }
 
     /** Mob health multiplier for a party of {@code players}. */

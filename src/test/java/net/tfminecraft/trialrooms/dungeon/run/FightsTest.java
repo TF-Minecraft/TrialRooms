@@ -433,6 +433,26 @@ class FightsTest {
   }
 
   @Test
+  void bigPartyRecipesHaveATougherBoss() {
+    useKit(fightKit(tuning(6, 0), warden()));
+    rules = new RunRules(1, 3, "", 1, 1, 0.5, 1, "warden", 0, 0, 0, 0, 0, 1, 2.5, 10, 0);
+    RunManager.ActiveRun ar = enter(player("Ann"), room(RoomType.COMBAT));
+    assertEquals(runs.fights().health(ar, 1) * 2.5, runs.fights().bossHealth(ar, 1), 1e-9);
+    assertEquals(8, runs.fights().health(ar, 8), 1e-9, "the recipe's cap (10) instead of the kit's (4)");
+    assertEquals(10, runs.fights().health(ar, 12), 1e-9);
+    // a boss scaled past the server's max health takes less damage instead
+    LivingEntity big = (LivingEntity) mob(at(middle(room(RoomType.COMBAT))), "Big");
+    when(big.getAttribute(Attribute.MAX_HEALTH).getBaseValue()).thenReturn(1000.0);
+    runs.fights().scale(big, 4);
+    assertEquals(2048 / 4000.0, runs.fights().incoming(ar, big), 1e-9);
+    runs.fights().scale(big, 1);
+    assertEquals(1, runs.fights().incoming(ar, big), 1e-9, "back within the limit");
+    runs.fights().scale(big, 4);
+    runs.fights().died(ar, big);
+    assertEquals(1, runs.fights().incoming(ar, big), 1e-9, "forgotten when it dies");
+  }
+
+  @Test
   void runsGetThisWeeksAffixes() {
     useKit(fightKit(tuning(6, 0), warden()));
     Affixes cfg = new Affixes(List.of(WeeklyAffix.FORTIFIED), Map.of(1, 1), 1.25, 1.3, 1.15, 0.3, 1.25, 0.1, 12);

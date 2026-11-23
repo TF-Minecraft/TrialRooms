@@ -119,7 +119,18 @@ cosmetics:
     - {recipe: delve_seithr, difficulty: normal, chance: 0.05, item: v.skeleton_skull, name: "Ice Golem Trophy"}
     - {recipe: delve_seithr, difficulty: hard, chance: 0.08, item: v.skeleton_skull, name: "Ice Golem Trophy (Hard)"}
     - {recipe: delve_seithr, difficulty: nightmare, chance: 0.12, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Nightmare)"}
+  # (the bigger parties' trophies, from the same boss for now)
+    - {recipe: dungeon_seithr, difficulty: normal, chance: 0.05, item: v.skeleton_skull, name: "Ice Golem Trophy"}
+    - {recipe: dungeon_seithr, difficulty: hard, chance: 0.08, item: v.skeleton_skull, name: "Ice Golem Trophy (Hard)"}
+    - {recipe: dungeon_seithr, difficulty: nightmare, chance: 0.12, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Nightmare)"}
+    - {recipe: warband_seithr, difficulty: normal, chance: 0.05, item: v.skeleton_skull, name: "Ice Golem Trophy"}
+    - {recipe: warband_seithr, difficulty: hard, chance: 0.08, item: v.skeleton_skull, name: "Ice Golem Trophy (Hard)"}
+    - {recipe: warband_seithr, difficulty: nightmare, chance: 0.12, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Nightmare)"}
   skins:
+    - {recipe: dungeon_seithr, difficulty: hard, chance: 0.03, permission: armourshop.dungeon.seithr_frost, name: "Seithr Frost"}
+    - {recipe: dungeon_seithr, difficulty: nightmare, chance: 0.05, permission: armourshop.dungeon.seithr_glacial, name: "Seithr Glacial"}
+    - {recipe: warband_seithr, difficulty: hard, chance: 0.03, permission: armourshop.dungeon.seithr_frost, name: "Seithr Frost"}
+    - {recipe: warband_seithr, difficulty: nightmare, chance: 0.05, permission: armourshop.dungeon.seithr_glacial, name: "Seithr Glacial"}
     - {recipe: delve_seithr, difficulty: hard, chance: 0.03, permission: armourshop.dungeon.seithr_frost, name: "Seithr Frost"}
     - {recipe: delve_seithr, difficulty: nightmare, chance: 0.05, permission: armourshop.dungeon.seithr_frost, name: "Seithr Frost"}
     - {recipe: delve_seithr, difficulty: nightmare, chance: 0.03, permission: armourshop.dungeon.seithr_glacial, name: "Seithr Glacial"}

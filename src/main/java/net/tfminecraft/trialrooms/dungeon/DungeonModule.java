@@ -254,6 +254,16 @@ public final class DungeonModule {
                 problems.add("recipe " + e.recipe().id() + ": unknown kit " + e.kit());
                 return true;
             }
+            var roomy = kit.catalog().roomy(e.rules().minRoomCells());
+            var needed = DungeonGenerator.neededTypes(e.recipe());
+            for (var type : java.util.List.of(net.tfminecraft.trialrooms.dungeon.template.RoomType.COMBAT,
+                    net.tfminecraft.trialrooms.dungeon.template.RoomType.ELITE)) {
+                if (e.rules().minRoomCells() > 1 && needed.contains(type) && roomy.ofType(type).isEmpty()) {
+                    problems.add("recipe " + e.recipe().id() + ": kit " + e.kit() + " has no " + type.name().toLowerCase()
+                            + " room of at least " + e.rules().minRoomCells() + " cells");
+                    return true;
+                }
+            }
             if (kit.fights() != null && kit.fights().boss(e.rules().boss()) == null) {
                 problems.add("recipe " + e.recipe().id() + ": kit " + e.kit() + " has no boss '" + e.rules().boss()
                         + "'; its boss room holds a strong pack instead");
@@ -325,7 +335,8 @@ public final class DungeonModule {
         if (entry == null) {
             throw new IllegalArgumentException("Unknown recipe: " + recipeId);
         }
-        return DungeonGenerator.generate(kits.get(entry.kit()).catalog(), entry.recipe(), seed);
+        return DungeonGenerator.generate(kits.get(entry.kit()).catalog().roomy(entry.rules().minRoomCells()),
+                entry.recipe(), seed);
     }
 
     /** Builds a layout in the next free slot; the future gives the arrival point. */

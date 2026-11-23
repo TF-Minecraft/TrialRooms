@@ -96,6 +96,19 @@ public final class RoomCatalog {
         return templates;
     }
 
+    /**
+     * The catalog without the fight rooms (combat, elite) that fill fewer than {@code minCells}
+     * cells: big parties need room to fight. Every other room stays.
+     */
+    public RoomCatalog roomy(int minCells) {
+        if (minCells <= 1) {
+            return this;
+        }
+        return new RoomCatalog(cellSize, cellHeight, maxRise, templates.stream()
+                .filter(t -> t.type() != RoomType.COMBAT && t.type() != RoomType.ELITE || t.cellList().size() >= minCells)
+                .toList());
+    }
+
     /** Templates of one type, in catalog order; empty when the kit has none. */
     public List<RoomTemplate> ofType(RoomType type) {
         return Collections.unmodifiableList(byType.getOrDefault(type, List.of()));

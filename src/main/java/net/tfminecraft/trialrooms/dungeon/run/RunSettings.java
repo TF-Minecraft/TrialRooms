@@ -29,11 +29,25 @@ import org.bukkit.configuration.ConfigurationSection;
  *                           the next hint waits twice as long
  * @param lobbySeconds       seconds the entrance room stays shut while the party gets ready (opens sooner once
  *                           everyone is ready); 0 = no lobby
+ * @param maxHealth          the most max health the server allows a mob (spigot.yml attribute maxHealth.max):
+ *                           health scaled past it is made up as damage reduction
  */
 public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSeconds, int bleedOutSeconds,
         int reviveSeconds, double reviveRadius, double gateRadius, int graceSeconds, int finishSeconds,
         List<String> blockedCommands, int holdSeconds, Set<String> harmfulAuras, Set<String> helpfulAuras,
-        int selfReviveSeconds, int aloneBleedOutSeconds, int hintSeconds, int lobbySeconds) {
+        int selfReviveSeconds, int aloneBleedOutSeconds, int hintSeconds, int lobbySeconds, double maxHealth) {
+
+    /** The server's usual limit (spigot.yml on Main and Dev). */
+    static final double DEFAULT_MAX_HEALTH = 2048;
+
+    public RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSeconds, int bleedOutSeconds,
+            int reviveSeconds, double reviveRadius, double gateRadius, int graceSeconds, int finishSeconds,
+            List<String> blockedCommands, int holdSeconds, Set<String> harmfulAuras, Set<String> helpfulAuras,
+            int selfReviveSeconds, int aloneBleedOutSeconds, int hintSeconds, int lobbySeconds) {
+        this(maxRuns, countdownSeconds, bossCountdownSeconds, bleedOutSeconds, reviveSeconds, reviveRadius, gateRadius,
+                graceSeconds, finishSeconds, blockedCommands, holdSeconds, harmfulAuras, helpfulAuras, selfReviveSeconds,
+                aloneBleedOutSeconds, hintSeconds, lobbySeconds, DEFAULT_MAX_HEALTH);
+    }
 
     static final List<String> DEFAULT_BLOCKED = List.of("home", "homes", "sethome", "spawn", "warp", "tpa",
             "tpahere", "tpaccept", "back", "rtp");
@@ -90,7 +104,8 @@ public record RunSettings(int maxRuns, int countdownSeconds, int bossCountdownSe
                 Math.max(10, s.getInt("queue-hold-seconds", d.holdSeconds())), Set.copyOf(harmful), Set.copyOf(helpful),
                 Math.max(1, s.getInt("self-revive-seconds", d.selfReviveSeconds())),
                 Math.max(1, s.getInt("alone-bleed-out-seconds", d.aloneBleedOutSeconds())),
-                Math.max(10, s.getInt("hint-seconds", d.hintSeconds())), lobby(s.getInt("lobby-seconds", DEFAULT_LOBBY)));
+                Math.max(10, s.getInt("hint-seconds", d.hintSeconds())), lobby(s.getInt("lobby-seconds", DEFAULT_LOBBY)),
+                Math.max(1, s.getDouble("max-health", DEFAULT_MAX_HEALTH)));
     }
 
     /** 0 or less: no lobby; otherwise at least 10 seconds. */
