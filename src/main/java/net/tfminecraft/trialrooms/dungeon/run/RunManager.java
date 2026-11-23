@@ -252,9 +252,13 @@ public final class RunManager {
 
     /** Tells every member playing the run in the dungeon world about a reward moment. */
     private void reward(ActiveRun ar, RunRewards.Moment moment) {
+        reward(ar, moment, false);
+    }
+
+    private void reward(ActiveRun ar, RunRewards.Moment moment, boolean underPar) {
         if (rewards != null) {
             forPlaying(ar, "the " + moment + " reward",
-                    p -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id()));
+                    p -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id(), underPar));
         }
     }
 
@@ -1464,7 +1468,13 @@ public final class RunManager {
         tell(ar, "§6The vault is yours. §7Right-click by the exit to leave; everyone is sent back in "
                 + settings().finishSeconds() + " seconds.");
         recordWin(ar);
-        reward(ar, RunRewards.Moment.VAULT);
+        long took = clock.getAsLong() - ar.openedMs;
+        boolean underPar = ar.rules.par() > 0 && took <= ar.rules.par() * 60_000;
+        if (ar.rules.par() > 0) {
+            tell(ar, underPar ? "§a✦ Under par (" + Records.time((long) (ar.rules.par() * 60_000))
+                    + ")! §7The vault favours you." : "§7Par was " + Records.time((long) (ar.rules.par() * 60_000)) + ".");
+        }
+        reward(ar, RunRewards.Moment.VAULT, underPar);
         feat(ar, RunRewards.Moment.VAULT);
         spoils(ar, true);
         record(ar);

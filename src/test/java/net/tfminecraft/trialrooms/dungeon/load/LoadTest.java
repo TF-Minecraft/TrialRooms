@@ -150,9 +150,10 @@ class LoadTest {
         laddered:
           trunk-pool: {combat: 1}
           minutes: 20
+          par: 12
           difficulties:
             normal: {name: Normal, tier: 1, advice: "for own gear"}
-            hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 25}
+            hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 25, par: 9}
         wrongorder:
           trunk-pool: {combat: 1}
           difficulties:
@@ -178,7 +179,7 @@ class LoadTest {
     var entry = recipes.get("laddered");
     assertEquals(2, entry.difficulties().size());
     var hard = entry.difficulty("HARD");
-    assertEquals(new net.tfminecraft.trialrooms.dungeon.run.Difficulty("hard", "Hard", 2, 1.5, 1.25, "normal", "", 25), hard);
+    assertEquals(new net.tfminecraft.trialrooms.dungeon.run.Difficulty("hard", "Hard", 2, 1.5, 1.25, "normal", "", 25, 9), hard);
     assertEquals("for own gear", entry.difficulty("normal").advice());
     assertNull(entry.difficulty("nightmare"));
     assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 0, 1, null, ""));
@@ -193,8 +194,14 @@ class LoadTest {
     assertEquals(25, rules.with(hard).minutes(), "a difficulty's own run length");
     assertEquals(2, rules.with(hard).tier());
     assertEquals(20, rules.with(entry.difficulty("normal")).minutes(), "else the recipe's");
-    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 1, 1, null, "", -1));
-    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 1, 1, null, "", Double.POSITIVE_INFINITY));
+    assertEquals(12, rules.par());
+    assertEquals(9, rules.with(hard).par());
+    assertEquals(12, rules.with(entry.difficulty("normal")).par());
+    assertEquals(12, rules.withTier(2).par());
+    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 1, 1, null, "", 0, -1));
+    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 1, 1, null, "", 0, Double.POSITIVE_INFINITY));
+    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 1, 1, null, "", -1, 0));
+    assertThrows(IllegalArgumentException.class, () -> new net.tfminecraft.trialrooms.dungeon.run.Difficulty("x", "X", 1, 1, 1, null, "", Double.POSITIVE_INFINITY, 0));
   }
 
   @Test

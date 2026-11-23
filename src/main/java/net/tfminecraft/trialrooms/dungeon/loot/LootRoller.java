@@ -48,7 +48,12 @@ public final class LootRoller {
      * likely (weight x (1 + luck) ^ step).
      */
     public static Rarity rarity(LootKit kit, int tier, Random rng) {
-        double luck = kit.tier(tier).luck();
+        return rarity(kit, tier, 0, rng);
+    }
+
+    /** A rarity at a tier with extra luck on top of the tier's (a run under par). */
+    public static Rarity rarity(LootKit kit, int tier, double extraLuck, Random rng) {
+        double luck = kit.tier(tier).luck() + extraLuck;
         List<Rarity> rs = kit.rarities();
         double[] w = new double[rs.size()];
         double sum = 0;

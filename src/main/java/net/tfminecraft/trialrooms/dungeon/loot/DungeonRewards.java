@@ -205,6 +205,13 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
 
     @Override
     public void reward(Player p, String recipe, int tier, Moment moment, UUID run) {
+        reward(p, recipe, tier, moment, run, false);
+    }
+
+    /** Under par, the vault pays extra marks (inside the weekly cap) and rolls with extra luck. */
+    @Override
+    public void reward(Player p, String recipe, int tier, Moment moment, UUID run, boolean underPar) {
+        boolean par = underPar && moment == Moment.VAULT; // (par only ever betters the vault)
         RewardRules r = rules.get();
         Locker l = lockers.locker(p);
         if (r == null || l == null) {
@@ -224,7 +231,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             }
             l.lastRun(run.toString(), rolls);
         }
-        int pay = Math.min(r.marks(moment), Math.max(0, r.weeklyMarks() - l.weekMarks()));
+        int pay = Math.min(r.marks(moment) + (par ? r.parMarks() : 0), Math.max(0, r.weeklyMarks() - l.weekMarks()));
         if (pay > 0) {
             l.marks(l.marks() + pay);
             l.weekMarks(l.weekMarks() + pay);
@@ -238,7 +245,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
                 l.pity(win ? 0 : l.pity() + r.pity());
             }
             if (win) {
-                found = drop(p, r, tier);
+                found = drop(p, r, tier, par ? r.parLuck() : 0);
             }
         }
         // The find, the marks and the counters go to disk in one write: none can be kept without the rest.
@@ -258,10 +265,10 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     }
 
     /** An item for the player's class, or a dungeon gem (always a gem when no item fits them). */
-    private ItemStack drop(Player p, RewardRules r, int tier) {
-        DungeonLoot.Rolled item = rng.nextDouble() < r.gemChance() ? null : loot.roll(p, tier, null, null);
+    private ItemStack drop(Player p, RewardRules r, int tier, double luck) {
+        DungeonLoot.Rolled item = rng.nextDouble() < r.gemChance() ? null : loot.roll(p, tier, luck, null, null);
         if (item == null || item.item() == null) {
-            item = loot.gem(tier, null, r.gemPool(), r.gemTemplate());
+            item = loot.gem(tier, luck, null, r.gemPool(), r.gemTemplate());
         }
         return item.item();
     }

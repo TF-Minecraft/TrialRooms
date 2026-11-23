@@ -43,11 +43,16 @@ public final class DungeonLoot {
      * item (staff tools); null leaves them to chance.
      */
     public Rolled roll(Player p, int tier, String rarityId, String baseId) {
+        return roll(p, tier, 0, rarityId, baseId);
+    }
+
+    /** An item rolled with extra luck for its rarity (a run under par). */
+    public Rolled roll(Player p, int tier, double luck, String rarityId, String baseId) {
         LootKit k = kit.get();
         if (k == null) {
             return new Rolled(null, "Dungeon loot is off: loot.yml has problems (see /tr dungeon reload).");
         }
-        Rarity rarity = rarityId == null ? LootRoller.rarity(k, tier, rng) : k.rarity(rarityId);
+        Rarity rarity = rarityId == null ? LootRoller.rarity(k, tier, luck, rng) : k.rarity(rarityId);
         if (rarity == null) {
             return new Rolled(null, "There is no rarity " + rarityId + ".");
         }
@@ -73,11 +78,16 @@ public final class DungeonLoot {
 
     /** A dungeon gem of a rarity (null: by chance at the tier) with one stat from a pool. */
     public Rolled gem(int tier, String rarityId, String pool, String template) {
+        return gem(tier, 0, rarityId, pool, template);
+    }
+
+    /** A dungeon gem rolled with extra luck for its rarity (a run under par). */
+    public Rolled gem(int tier, double luck, String rarityId, String pool, String template) {
         LootKit k = kit.get();
         if (k == null) {
             return new Rolled(null, "Dungeon loot is off: loot.yml has problems (see /tr dungeon reload).");
         }
-        Rarity rarity = rarityId == null ? LootRoller.rarity(k, tier, rng) : k.rarity(rarityId);
+        Rarity rarity = rarityId == null ? LootRoller.rarity(k, tier, luck, rng) : k.rarity(rarityId);
         if (rarity == null) {
             return new Rolled(null, "There is no rarity " + rarityId + ".");
         }

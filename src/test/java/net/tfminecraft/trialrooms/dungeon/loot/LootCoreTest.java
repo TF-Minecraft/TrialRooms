@@ -146,6 +146,12 @@ public class LootCoreTest {
     assertTrue(t1.get("uncommon") > 2000 && t1.get("legendary") < 150, t1.toString());
     assertTrue(t3.get("legendary") > 3 * t1.get("legendary"), t1 + " " + t3);
     assertEquals("legendary", LootRoller.rarity(k, 1, fixed(1.0)).id(), "the very top of the roll");
+    Map<String, Integer> lucky = new HashMap<>();
+    Random rng2 = new Random(3);
+    for (int i = 0; i < 4000; i++) {
+      lucky.merge(LootRoller.rarity(k, 1, 0.5, rng2).id(), 1, Integer::sum);
+    }
+    assertTrue(lucky.get("legendary") > t1.get("legendary"), "extra luck (a run under par): " + lucky);
     assertEquals("uncommon", LootRoller.rarity(k, 1, fixed(0)).id());
   }
 

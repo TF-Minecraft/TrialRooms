@@ -23,9 +23,17 @@ import net.tfminecraft.trialrooms.dungeon.run.RunRewards.Moment;
  * @param shopTier    the tier bought items are made at
  * @param gemTemplate the MMOItems gem template dungeon gems are made on (file.id)
  * @param gemPool     the bonus pool a gem's one stat comes from
+ * @param parMarks    extra marks for reaching the vault under par (inside the weekly cap)
+ * @param parLuck     extra luck for the vault's roll under par (added to the tier's)
  */
 public record RewardRules(Map<Moment, Double> chances, double gemChance, double pity, int weeklyRuns, int weeklyMarks,
-        Map<Moment, Integer> marks, Map<String, Integer> prices, int shopTier, String gemTemplate, String gemPool) {
+        Map<Moment, Integer> marks, Map<String, Integer> prices, int shopTier, String gemTemplate, String gemPool,
+        int parMarks, double parLuck) {
+
+    public RewardRules(Map<Moment, Double> chances, double gemChance, double pity, int weeklyRuns, int weeklyMarks,
+            Map<Moment, Integer> marks, Map<String, Integer> prices, int shopTier, String gemTemplate, String gemPool) {
+        this(chances, gemChance, pity, weeklyRuns, weeklyMarks, marks, prices, shopTier, gemTemplate, gemPool, 0, 0);
+    }
 
     public RewardRules {
         for (double c : chances.values()) {
@@ -34,6 +42,7 @@ public record RewardRules(Map<Moment, Double> chances, double gemChance, double 
             }
         }
         if (!(gemChance >= 0 && gemChance <= 1) || !(pity >= 0) || weeklyRuns < 0 || weeklyMarks < 0 || shopTier < 1
+                || parMarks < 0 || !(parLuck >= 0) || Double.isInfinite(parLuck)
                 || marks.values().stream().anyMatch(m -> m < 0) || prices.values().stream().anyMatch(p -> p <= 0)) {
             throw new IllegalArgumentException("rewards: numbers out of range");
         }
@@ -80,7 +89,8 @@ public record RewardRules(Map<Moment, Double> chances, double gemChance, double 
             }
             return new RewardRules(chances, r.getDouble("gem-chance", 0), r.getDouble("pity", 0),
                     r.getInt("weekly.runs", 3), r.getInt("weekly.marks", 100), marks, prices, r.getInt("shop-tier", 1),
-                    r.getString("gems.template", "gemstones.larimar"), pool);
+                    r.getString("gems.template", "gemstones.larimar"), pool, r.getInt("par.marks", 0),
+                    r.getDouble("par.luck", 0));
         } catch (RuntimeException e) {
             problems.add("loot.yml rewards: " + e.getMessage());
             return null;
