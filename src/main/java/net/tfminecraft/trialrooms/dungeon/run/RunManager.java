@@ -1488,8 +1488,9 @@ public final class RunManager {
         }
         boolean here = inDungeonWorld(p) && isPlayingMember(ar, p);
         if (here) { // (leaving before the boss falls is a run that failed, for them)
-            if (ar.run.member(p.getUniqueId()).status() == Status.DOWNED) {
-                fell(ar, p); // (leaving while down is a fall: it dodges no loss)
+            if (ar.run.member(p.getUniqueId()).status() == Status.DOWNED
+                    || ar.gearAtRisk && ar.run.activeRoom() >= 0) {
+                lose(ar, p); // (leaving while down, or mid-fight with gear at stake, dodges no loss)
             }
             payout(ar, p, ar.run.state() == DungeonRun.State.COMPLETE ? 1 : keep(ar), false);
         }
@@ -1634,6 +1635,12 @@ public final class RunManager {
      */
     private boolean fell(ActiveRun ar, Player p) {
         boolean back = ar.run.bleedOut(p.getUniqueId());
+        lose(ar, p);
+        return back;
+    }
+
+    /** What a fall costs (without spending a life): what they carry, and staked gear. */
+    private void lose(ActiveRun ar, Player p) {
         Held h = ar.held.get(p.getUniqueId());
         if (h != null && h.carried.any()) {
             h.carried.moments.clear();
@@ -1643,7 +1650,6 @@ public final class RunManager {
         if (ar.gearAtRisk && ar.run.state() == DungeonRun.State.RUNNING && lockers != null && lockers.forfeitWorn(p)) {
             p.sendMessage("§4Your worn dungeon gear is destroyed.");
         }
-        return back;
     }
 
     /** The chance each banked find comes home when a run fails. */

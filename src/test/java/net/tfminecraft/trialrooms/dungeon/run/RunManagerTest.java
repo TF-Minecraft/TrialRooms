@@ -850,9 +850,23 @@ class RunManagerTest {
     into(a, RoomType.COMBAT);
     into(b, RoomType.COMBAT);
     ticks(12);
+    int lives = only().run.lives();
     assertTrue(runs.down(b));
     runs.leave(b);
     verify(lockers, times(3)).forfeitWorn(b);
+    assertEquals(lives, only().run.lives(), "leaving while down costs the party no life");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // leaving alive in the middle of a fight, with gear at stake, is no way out either
+    runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "mythic");
+    into(a, RoomType.COMBAT);
+    into(b, RoomType.COMBAT);
+    ticks(12);
+    runs.leave(b);
+    verify(lockers, times(4)).forfeitWorn(b);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    runs.useGate(a, gates.add(main.getBlockAt(11, 69, 11), "delve"), "mythic");
+    runs.leave(b); // alive, and no fight going on: leaving costs nothing
+    verify(lockers, times(4)).forfeitWorn(b);
     runs.runs().forEach(r -> runs.end(r, false, null));
     difficulties = List.of();
   }

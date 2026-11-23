@@ -30,6 +30,7 @@ public class AffixesTest {
     Affixes a = shipped();
     assertEquals(5, a.pool().size());
     assertEquals(List.of(), a.of(46, 1), "Normal has none");
+    assertEquals(a.of(46, 3), a.of(46, 4), "a tier past the last configured one gets the last's");
     List<WeeklyAffix> hard = a.of(46, 2);
     List<WeeklyAffix> nightmare = a.of(46, 3);
     assertEquals(1, hard.size());
