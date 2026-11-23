@@ -631,6 +631,56 @@ class RunManagerTest {
   }
 
   @Test
+  void aHardcoreMemberAwayAtTheVaultGetsTheirFindsOnComingBack() {
+    List<String> got = new ArrayList<>();
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run) {
+      }
+
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run,
+          boolean underPar, boolean hardcore) {
+        if (moment == RunRewards.Moment.EVENT && p.getName().equals("Bo")) {
+          throw new IllegalStateException("a broken item"); // one failing roll never takes the rest
+        }
+        got.add(p.getName() + " " + moment);
+      }
+    });
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.startRun(a, "delve", 7, null, true);
+    RunManager.ActiveRun ar = only();
+    int combat = room(RoomType.COMBAT);
+    ar.planned = Map.of(combat, net.tfminecraft.trialrooms.dungeon.event.EventKind.ENDURE);
+    into(a, RoomType.COMBAT);
+    into(b, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    into(a, RoomType.BOSS);
+    into(b, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    runs.quit(b); // away (not downed): no fall
+    into(a, RoomType.VAULT);
+    ticks(2);
+    assertFalse(got.contains("Bo BOSS"), "away at the vault: nothing yet");
+    b.teleport(at(middle(room(RoomType.VAULT))));
+    runs.sweep(b);
+    assertTrue(got.contains("Bo BOSS"), "back during the finish: their finds are theirs " + got);
+    assertFalse(got.contains("Bo EVENT"));
+    assertTrue(nextMatching(b, "Your finds are secured."));
+    runs.sweep(b); // (nothing held any more)
+    runs.rewards(null);
+    runs.sweep(a);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
   void runsTellTheirRewardMoments() {
     List<String> told = new ArrayList<>();
     runs.rewards((p, recipe, tier, moment, run) -> told.add(p.getName() + " " + recipe + " " + tier + " " + moment));

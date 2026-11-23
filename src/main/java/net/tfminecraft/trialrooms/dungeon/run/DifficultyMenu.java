@@ -90,10 +90,14 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
             }
             inventory.setItem(slot(i), button(open ? ICONS[Math.min(i, ICONS.length - 1)] : Material.BARRIER, d.name(), lore));
         }
+        drawHardcore();
+        player.openInventory(inventory);
+    }
+
+    private void drawHardcore() {
         inventory.setItem(HARDCORE, button(hardcore ? Material.RED_DYE : Material.GRAY_DYE,
                 "Hardcore: " + (hardcore ? "on" : "off"), List.of("What you find is yours only once you reach the vault.",
                         "Fall, or leave, and it is lost; it pays more for the risk.", "Click to turn it " + (hardcore ? "off." : "on."))));
-        player.openInventory(inventory);
     }
 
     boolean hardcore() {
@@ -129,7 +133,7 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
     public void click(int slot, boolean shift) {
         if (slot == HARDCORE) {
             hardcore = !hardcore;
-            open(); // (redrawn in place)
+            drawHardcore(); // (in place: a screen is never reopened inside its own click)
             return;
         }
         List<Difficulty> ds = entry.difficulties();

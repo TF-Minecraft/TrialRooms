@@ -1414,6 +1414,9 @@ public final class RunManager {
             }
             ar.run.online(p.getUniqueId());
             respawned(p);
+            if (ar.run.state() == DungeonRun.State.COMPLETE) {
+                secure(ar, p); // away when the party reached the vault: their finds are theirs on coming back
+            }
             if (m.status() != Status.OUT) {
                 Location fight = wakePoint(ar);
                 if (ar.geo.roomAt(fight.getX(), fight.getZ()) != ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ())
@@ -1595,25 +1598,35 @@ public final class RunManager {
 
     /** A hardcore run reached the vault: each member still in it gets what they found, boosted for the risk. */
     private void secure(ActiveRun ar) {
+        forPlaying(ar, "the secured finds", p -> secure(ar, p));
+    }
+
+    /** One member's held finds, paid (each on its own, so one that fails never takes the rest with it). */
+    private void secure(ActiveRun ar, Player p) {
+        Unsecured u = rewards == null ? null : ar.unsecured.remove(p.getUniqueId());
+        if (u == null) {
+            return;
+        }
         String d = ar.difficulty == null ? "" : ar.difficulty.id();
         List<String> party = stayed(ar);
-        // (finds are only ever held while there are rewards, and a fall takes a member's away)
-        forPlaying(ar, "the secured finds", p -> {
-            Unsecured u = ar.unsecured.remove(p.getUniqueId());
-            if (u == null) {
-                return;
+        for (RunRewards.Moment m : u.moments) {
+            safely(p, "a secured " + m, () -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), m, ar.run.id(), false, true));
+            if (m == RunRewards.Moment.BOSS) {
+                safely(p, "a secured trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), party));
             }
-            for (RunRewards.Moment m : u.moments) {
-                rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), m, ar.run.id(), false, true);
-                if (m == RunRewards.Moment.BOSS) {
-                    rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), party);
-                }
-            }
-            if (u.hours > 0) {
-                rewards.spoils(p, ar.run.recipeId(), u.hours, ar.run.id());
-            }
-            p.sendMessage("§a✦ Your finds are secured.");
-        });
+        }
+        if (u.hours > 0) {
+            safely(p, "the secured spoils", () -> rewards.spoils(p, ar.run.recipeId(), u.hours, ar.run.id()));
+        }
+        p.sendMessage("§a✦ Your finds are secured.");
+    }
+
+    private void safely(Player p, String what, Runnable give) {
+        try {
+            give.run();
+        } catch (Exception | LinkageError e) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "[dungeons] " + what + " for " + p.getName() + " failed", e);
+        }
     }
 
     /** A party size as players read it. */
