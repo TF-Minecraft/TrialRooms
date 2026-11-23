@@ -22,6 +22,8 @@ import net.tfminecraft.trialrooms.dungeon.loot.LootKit.Tier;
 
 public class LootCoreTest {
 
+  static final String NL = String.valueOf((char) 10);
+
   /** The shipped loot.yml. */
   public static LootKit shipped() {
     YamlConfiguration y = YamlConfiguration.loadConfiguration(new InputStreamReader(
@@ -64,6 +66,19 @@ public class LootCoreTest {
     assertEquals(4, k.looks().get("legendary").get("heavy").size());
     assertEquals("heavy", k.base("heavy_boots").look());
     assertNull(k.base("sword").look());
+    assertEquals(List.of(65, 25, 7, 3), k.rarities().stream().map(Rarity::weight).toList());
+    // every bonus stat is worth the same: its range over one unit of it is bonus-worth everywhere
+    Map<String, Double> unit = Map.of("max_health", 0.25, "armor", 0.075, "physical_damage_reduction", 1.1,
+        "physical_damage", 2.1, "lifesteal", 1.05, "magic_damage", 2.1);
+    for (Map<String, Range> pool : k.pools().values()) {
+      pool.forEach((stat, range) -> {
+        if (unit.containsKey(stat)) {
+          assertEquals(2, range.min() / unit.get(stat), 1e-9, stat);
+          assertEquals(4, range.max() / unit.get(stat), 1e-9, stat);
+        }
+      });
+    }
+    assertEquals(0.5, k.pools().get("armour").get("max_health").min(), 1e-9);
   }
 
   @Test
@@ -71,17 +86,20 @@ public class LootCoreTest {
     List<String> problems = new ArrayList<>();
     assertNull(LootKit.load(new YamlConfiguration(), problems));
     assertTrue(problems.getFirst().contains("no rarities section"), problems.toString());
-    YamlConfiguration y = new YamlConfiguration();
-    y.loadFromString("""
-        rarities: {a: {weight: 1, colour: "#000000"}}
-        tiers: {1: {}}
-        bonus: {p: {hp: [1]}}
-        items: {}
-        looks: {}
-        """);
-    problems.clear();
-    assertNull(LootKit.load(y, problems));
-    assertTrue(problems.getFirst().contains("hp: give [min, max]"), problems.toString());
+    String head = "rarities: {a: {weight: 1, colour: \"#000000\"}}" + NL + "tiers: {1: {}}" + NL + "looks: {}" + NL;
+    String pool = "bonus-worth: [1, 2]" + NL + "worth: {hp: 1}" + NL;
+    for (String[] bad : List.of(new String[] {"bonus: {p: [hp]}", "bonus-worth: give [min, max]"},
+        new String[] {"bonus-worth: [1, 2]" + NL + "bonus: {p: [hp]}", "no worth section"},
+        new String[] {pool + "bonus: {p: [mana]}", "bonus pool p: no worth for mana"},
+        new String[] {pool + "bonus: {p: []}", "bonus pool p lists no stats"},
+        new String[] {pool + "bonus: {p: [hp]}" + NL + "items: {b: {slot: weapon, recipe: r, pool: p, stats: {hp: [1]}}}",
+            "hp: give [min, max]"})) {
+      YamlConfiguration y = new YamlConfiguration();
+      y.loadFromString(head + bad[0] + NL);
+      problems.clear();
+      assertNull(LootKit.load(y, problems), bad[0]);
+      assertTrue(problems.getFirst().contains(bad[1]), problems + " for " + bad[0]);
+    }
 
     Rarity r = new Rarity("a", "A", 1, 1, 0, 0, "#abcdef");
     Map<Integer, Tier> tiers = Map.of(1, new Tier(1, 0));
@@ -162,7 +180,7 @@ public class LootCoreTest {
 
     // jewellery rolls its own stats, and a bonus on a stat it already has adds to it
     LootRoller.Plan ring = LootRoller.plan(k, k.base("ring"), Map.of(), 1, k.rarity("rare"), fixed(0));
-    assertEquals(round(0.4 * 1.3 + 0.6 * 1.3), ring.stats().get("max_health"), ring.stats().toString());
+    assertEquals(round(0.4 * 1.3 + 0.5 * 1.3), ring.stats().get("max_health"), ring.stats().toString());
     assertEquals(2, ring.stats().size());
   }
 
@@ -171,7 +189,7 @@ public class LootCoreTest {
     LootKit k = shipped();
     LootRoller.GemPlan g = LootRoller.gem(k, "melee", 3, k.rarity("legendary"), fixed(1.0));
     assertEquals("physical_damage", g.stat(), "the first of the pool with a lowest pick");
-    assertEquals(round(6 * 1.55 * 1.75), g.value());
+    assertEquals(round(2.1 * 4 * 1.55 * 1.75), g.value(), "the top of 2-4 basic gems' worth");
     assertEquals("Rimebound Rimestone", g.name());
     assertEquals(3, g.tier());
     assertEquals("Legendary dungeon gem, tier 3", g.lore().getFirst());

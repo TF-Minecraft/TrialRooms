@@ -147,6 +147,12 @@ public final class RunManager {
         double damageFactor = 1;
         /** Enemy health multiplier from the difficulty, on top of the party's (capped) one. */
         double difficultyHealth = 1;
+        /** When the run's doors opened (the lobby ended): spoils never pay more than the time since. */
+        long openedMs;
+        /** Hours of play the run's spoils have paid so far. */
+        double spoilHours;
+        /** Hours of play the run's cleared rooms have earned so far (paid as real time allows). */
+        double dueHours;
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -216,6 +222,9 @@ public final class RunManager {
             end(ar, true, "§cThe dungeon fades as the world shifts. Your key is returned.");
         }
         bars.hideOlder(Long.MAX_VALUE); // no tick will take them down any more
+        if (lockers != null) {
+            lockers.flush();
+        }
     }
 
     public GateStore gates() {
@@ -238,17 +247,62 @@ public final class RunManager {
 
     /** Tells every member playing the run in the dungeon world about a reward moment. */
     private void reward(ActiveRun ar, RunRewards.Moment moment) {
-        if (rewards == null) {
+        if (rewards != null) {
+            forPlaying(ar, "the " + moment + " reward",
+                    p -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id()));
+        }
+    }
+
+    /**
+     * A cleared fight room's spoils: its share of what a proper party earns in the run's length
+     * (only fight rooms are cleared; a run given no length pays no spoils). A run never pays more
+     * than the time it has actually been played, so clearing faster than a proper party (or a room
+     * that spawned nothing) earns no more an hour. Members out of the fight (spectating) get none;
+     * the others are all in the room (its seal pulls them in and the fight holds them there).
+     */
+    private void spoils(ActiveRun ar, boolean won) {
+        if (rewards == null || !(ar.rules.minutes() > 0)) {
             return;
         }
+        long fights = ar.run.layout().rooms().stream().filter(r -> DungeonRun.isFight(r.node().type())).count();
+        double run = ar.rules.minutes() / 60.0;
+        // what the cleared rooms have earned (a won run all of it), never more than the time played:
+        // time saved in one room counts in the next, and a run played in its length pays all of it
+        ar.dueHours = won ? run : Math.min(run, ar.dueHours + run / fights);
+        double played = (clock.getAsLong() - ar.openedMs) / 3_600_000.0;
+        double hours = Math.min(ar.dueHours, played) - ar.spoilHours;
+        if (!(hours > 0)) {
+            return;
+        }
+        ar.spoilHours += hours;
+        forPlaying(ar, "the spoils", p -> {
+            if (ar.run.member(p.getUniqueId()).status() != Status.OUT) {
+                rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id());
+            }
+        });
+    }
+
+    /** Hands over what waits for a player outside a run (spoils, own items that found no room). */
+    public void claim(Player p) {
+        var l = lockers == null ? null : lockers.locker(p);
+        if (l == null || l.owed().isEmpty()) {
+            p.sendMessage("§7Nothing is waiting for you.");
+        } else if (inDungeonWorld(p)) {
+            p.sendMessage("§7What waits for you comes once you are out of the dungeon.");
+        } else {
+            sweep(p);
+        }
+    }
+
+    /** Hands something to each member still playing; one player's failure never stops the others' or the run. */
+    private void forPlaying(ActiveRun ar, String what, java.util.function.Consumer<Player> give) {
         for (Player p : online(ar)) {
             if (isPlayingMember(ar, p)) { // (the step counts anyone outside the dungeon world as away)
                 try {
-                    rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id());
+                    give.accept(p);
                 } catch (Exception | LinkageError e) {
-                    // one player's failed reward never stops the others' or the run
                     plugin.getLogger().log(java.util.logging.Level.WARNING,
-                            "[dungeons] the " + moment + " reward for " + p.getName() + " failed", e);
+                            "[dungeons] " + what + " for " + p.getName() + " failed", e);
                 }
             }
         }
@@ -423,7 +477,7 @@ public final class RunManager {
 
     private void begin(Player leader, List<Player> group, RecipeLoader.Entry entry, String recipeId, long seed,
             String keyPath, Difficulty difficulty) {
-        RunRules rules = difficulty == null ? entry.rules() : entry.rules().withTier(difficulty.tier());
+        RunRules rules = difficulty == null ? entry.rules() : entry.rules().with(difficulty);
         DungeonLayout layout;
         LayoutPlacer placer;
         try {
@@ -474,6 +528,7 @@ public final class RunManager {
                     setDoors(ar, i, true, true);
                 }
             }
+            ar.openedMs = clock.getAsLong();
             boolean lobby = settings().lobbySeconds() > 0;
             if (lobby) {
                 // the arrival is in the START room, never a fight room (the generator always starts there)
@@ -712,6 +767,7 @@ public final class RunManager {
     private void openLobby(ActiveRun ar) {
         setDoors(ar, ar.lobbyRoom, false, false);
         ar.lobbyRoom = -1;
+        ar.openedMs = clock.getAsLong();
         ar.ready.clear();
         for (Player p : online(ar)) {
             p.playSound(p.getLocation(), "minecraft:block.iron_door.open", 1f, 1f);
@@ -943,6 +999,7 @@ public final class RunManager {
         if (moment != null) {
             reward(ar, moment);
         }
+        spoils(ar, false);
     }
 
     /** What clearing a room of this type pays out: the boss, an elite room, or a finished event. */
@@ -1397,6 +1454,7 @@ public final class RunManager {
                 + settings().finishSeconds() + " seconds.");
         recordWin(ar);
         reward(ar, RunRewards.Moment.VAULT);
+        spoils(ar, true);
     }
 
     /** A won run at a difficulty: each member playing it has won it, and may open what it leads to. */

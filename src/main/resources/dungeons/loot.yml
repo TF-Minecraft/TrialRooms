@@ -15,10 +15,10 @@ standard:
 # stronger than the standard piece; bonus: extra stats from the item's pool; sockets: empty sockets
 # that take dungeon gems; colour: the name's colour.
 rarities:
-  uncommon: {name: Uncommon, weight: 60, power: 1.15, bonus: 1, sockets: 0, colour: "#5fd35f"}
-  rare: {name: Rare, weight: 28, power: 1.3, bonus: 2, sockets: 1, colour: "#4f9cff"}
-  epic: {name: Epic, weight: 10, power: 1.5, bonus: 3, sockets: 2, colour: "#b05cff"}
-  legendary: {name: Legendary, weight: 2, power: 1.75, bonus: 4, sockets: 3, colour: "#ff9c2a"}
+  uncommon: {name: Uncommon, weight: 65, power: 1.15, bonus: 1, sockets: 0, colour: "#5fd35f"}
+  rare: {name: Rare, weight: 25, power: 1.3, bonus: 2, sockets: 1, colour: "#4f9cff"}
+  epic: {name: Epic, weight: 7, power: 1.5, bonus: 3, sockets: 2, colour: "#b05cff"}
+  legendary: {name: Legendary, weight: 3, power: 1.75, bonus: 4, sockets: 3, colour: "#ff9c2a"}
 
 # Dungeon tiers (a recipe's tier). power multiplies with the rarity's; luck makes each step up the
 # rarity list (1 + luck) times as likely.
@@ -33,32 +33,30 @@ socket: Dungeon Gem
 # Stats rarity and tier never change: how a weapon handles, not how strong it is.
 unscaled: [movement_speed, attack_speed, arrow_velocity, entity_interaction_range, critical_strike_chance, blunt_power]
 
-# Bonus stat pools: stat: [min, max] at tier 1, before the rarity's power.
+# Bonus stats. Every pick is worth the same, so no roll is better than another: each bonus stat
+# gives bonus-worth [min, max] units at tier 1 (before the rarity's power), and worth says what one
+# unit of each stat is. The units follow GemInfusion's basic gems (a common basic gem of each stat,
+# mid-roll), the server's own measure of what stats are worth to each other.
+bonus-worth: [2, 4]
+worth:
+  max_health: 0.25
+  armor: 0.075
+  physical_damage_reduction: 1.1
+  projectile_damage_reduction: 1.1
+  magic_damage_reduction: 1.1
+  physical_damage: 2.1
+  projectile_damage: 2.1
+  magic_damage: 2.1
+  # lifesteal heals from damage dealt, which already grows with rarity and tier: half a gem's worth
+  lifesteal: 1.05
+
+# Bonus stat pools: the stats each kind of item can roll.
 bonus:
-  armour:
-    max_health: [0.6, 1.2]
-    armor: [0.3, 0.6]
-    physical_damage_reduction: [2, 4]
-    projectile_damage_reduction: [2, 4]
-    magic_damage_reduction: [2, 4]
-  melee:
-    physical_damage: [3, 6]
-    max_health: [0.5, 1.0]
-    lifesteal: [1, 2]
-    physical_damage_reduction: [1, 2]
-  ranged:
-    projectile_damage: [3, 6]
-    max_health: [0.5, 1.0]
-    lifesteal: [1, 2]
-    projectile_damage_reduction: [1, 2]
-  jewellery:
-    max_health: [0.6, 1.2]
-    physical_damage: [2, 4]
-    projectile_damage: [2, 4]
-    magic_damage: [2, 4]
-    physical_damage_reduction: [1.5, 3]
-    projectile_damage_reduction: [1.5, 3]
-    magic_damage_reduction: [1.5, 3]
+  armour: [max_health, armor, physical_damage_reduction, projectile_damage_reduction, magic_damage_reduction]
+  melee: [physical_damage, max_health, lifesteal, physical_damage_reduction]
+  ranged: [projectile_damage, max_health, lifesteal, projectile_damage_reduction]
+  jewellery: [max_health, physical_damage, projectile_damage, magic_damage, physical_damage_reduction,
+    projectile_damage_reduction, magic_damage_reduction]
 
 # What runs hand out. Personal loot: each player rolls their own, for their own class, straight into
 # their locker. chance: the chance of an item at each moment (vault, boss, elite room, room event);
@@ -76,6 +74,34 @@ rewards:
   prices: {rare: 30, epic: 80}
   shop-tier: 1
   gems: {template: gemstones.larimar, pool: jewellery}
+
+# Spoils: what leaves the dungeon with the player (never dungeon gear). A dungeon is a run source of
+# the act system (ACT-SYSTEM.md rule 5): an hour of proper play pays a full act budget and a full
+# rare budget, like an hour of mining or extreme infestations. Each cleared fight room pays its share
+# of the recipe's minutes; they wait in the locker and are the player's once back outside.
+# per-hour: item (TLibs path; gem = one gem pouch from gems; denars = coins) to how many a proper
+# player earns in an hour. Act 1 at the 1:40 step: Ignitium 18.9, iron ~1.15 per Ignitium, tin and
+# abyssalite fragment 18.9 / 40 each; rare items 69.1 IE: gem pouches in extreme infestations' mix,
+# dust at Ignitium / 40, ~85 denars. At each act change or step, move these with the act system.
+spoils:
+  per-hour:
+    - {item: m.materials.ignitium, amount: 18.9}
+    - {item: v.iron_ingot, amount: 21.7}
+    - {item: m.materials.raw_tin, amount: 0.47}
+    - {item: m.materials.abyssalite_fragment, amount: 0.47}
+    - {item: m.currency.enchanted_dust, amount: 0.47}
+    - {item: gem, amount: 21.2}
+    - {item: denars, amount: 85}
+  gems:
+    - {item: m.loot.basic_gemstone_pouch, weight: 60}
+    - {item: m.loot.polished_gemstone_pouch, weight: 23}
+    - {item: m.loot.radiant_gemstone_pouch, weight: 11}
+    - {item: m.loot.mythical_gemstone_pouch, weight: 6}
+  coins:
+    - {item: m.currency.pouch_of_coins, value: 100}
+    - {item: m.currency.stack_of_coins, value: 10}
+    - {item: m.currency.handful_of_coins, value: 5}
+    - {item: m.currency.gold_coin, value: 1}
 
 # What can drop. recipe: an AdvancedCrafting recipe; template: an MMOItems template (file.id) with
 # its own stats: [min, max]. %material% in the name is where a prefix goes.

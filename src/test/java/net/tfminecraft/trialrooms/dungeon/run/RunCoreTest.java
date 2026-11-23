@@ -333,6 +333,10 @@ public class RunCoreTest {
     assertEquals(1.0, party.enemyFactor(1));
     assertEquals(1.5, party.enemyFactor(3));
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", -0.1));
+    assertEquals(0, party.minutes(), "no run length: no spoils");
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, -1));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, Double.POSITIVE_INFINITY));
     assertEquals(5, d.selfReviveSeconds());
     assertEquals(10, d.aloneBleedOutSeconds());
     YamlConfiguration alone = new YamlConfiguration();

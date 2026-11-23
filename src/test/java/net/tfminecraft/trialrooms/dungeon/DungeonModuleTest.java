@@ -102,6 +102,8 @@ class DungeonModuleTest {
     assertNotNull(m.lootKit(), "the bundled loot.yml");
     assertEquals(30, m.lootKit().bases().size());
     assertNotNull(m.rewardRules(), "and its rewards");
+    assertEquals(18.9, m.spoils().perHour().get("m.materials.ignitium"), "and its spoils");
+    assertEquals(20, m.recipes().get("delve_seithr").rules().minutes());
     // a second start keeps edited files
     Files.writeString(data.resolve("dungeons/recipes.yml"), "x: 1\n");
     Files.delete(data.resolve("dungeons/kits/greybox/rooms/rest_camp.yml"));

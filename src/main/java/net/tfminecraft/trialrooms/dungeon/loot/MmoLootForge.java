@@ -99,6 +99,12 @@ public final class MmoLootForge implements LootForge {
         return stat.equals("max_item_damage") || stat.equals("durability");
     }
 
+    @Override
+    public ItemStack item(String path) {
+        ItemStack it = TLibs.getItemAPI().getCreator().getItemFromPath(path);
+        return it == null || it.getType().isAir() ? null : it;
+    }
+
     private static MMOItem template(String template) {
         ItemStack it = TLibs.getItemAPI().getCreator().getItemFromPath("m." + template);
         return it == null || it.getType().isAir() ? null : new LiveMMOItem(NBTItem.get(it));

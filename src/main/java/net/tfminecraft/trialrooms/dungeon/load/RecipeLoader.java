@@ -83,7 +83,7 @@ public final class RecipeLoader {
                 throw new IllegalArgumentException("difficulty " + id + " needs " + needs + ", which is not listed before it");
             }
             out.add(new Difficulty(id, d.getString("name", id), d.getInt("tier", 1), d.getDouble("health", 1),
-                    d.getDouble("damage", 1), needs, d.getString("advice", "")));
+                    d.getDouble("damage", 1), needs, d.getString("advice", ""), d.getDouble("minutes", 0)));
         }
         if (out.size() > 5) {
             throw new IllegalArgumentException("at most 5 difficulties (the gate's screen shows five)");
@@ -96,7 +96,7 @@ public final class RecipeLoader {
         return new RunRules(players[0], players[1], s.getString("key", "m.loot.trial_key"), s.getInt("lives", 3),
                 s.getInt("mob-level", 1), s.getDouble("health-per-extra-player", 0.5), s.getInt("tier", 1),
                 s.getString("boss", ""), s.getDouble("enemies-per-extra-player", 0.25), s.getDouble("event-chance", 0),
-                s.getInt("max-events", 2));
+                s.getInt("max-events", 2), s.getDouble("minutes", 0));
     }
 
     private static Map<RoomType, Integer> pool(ConfigurationSection s) {

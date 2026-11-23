@@ -186,6 +186,10 @@ class DungeonRunCommandsTest {
     verify(p).sendMessage("§aYou are ready.");
     c.run(console, new String[] {"ready"});
     verify(console).sendMessage(startsWith("§cThere is nothing to get ready for"));
+    c.run(p, new String[] {"claim"});
+    verify(runs).claim(p);
+    c.run(console, new String[] {"claim"});
+    verify(console).sendMessage("§cOnly players have things waiting for them.");
 
     c.run(p, new String[] {"locker"});
     verify(p).sendMessage("§cDungeon lockers are off.");

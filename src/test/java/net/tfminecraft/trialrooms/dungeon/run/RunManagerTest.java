@@ -329,6 +329,114 @@ class RunManagerTest {
   }
 
   @Test
+  void clearedFightRoomsPayTheirShareOfTheRunsSpoils() {
+    rules = new RunRules(1, 3, "m.key", 1, 1, 0.5, 1, "", 0, 0, 0, 30);
+    List<String> paid = new ArrayList<>();
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run) {
+      }
+
+      @Override
+      public void spoils(org.bukkit.entity.Player p, String recipe, double hours, java.util.UUID run) {
+        paid.add(p.getName() + " " + recipe + " " + hours);
+      }
+    });
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    PlayerMock c = player("Cy");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId(), c.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
+    long fights = layout.rooms().stream().filter(r -> DungeonRun.isFight(r.node().type())).count();
+    // cleared at once: no time played, so nothing (a run never pays more than its time)
+    into(a, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    assertEquals(List.of(), paid);
+    // an hour later the boss: its share, to each member still in the fight
+    ar.run.bleedOut(b.getUniqueId());
+    ar.run.bleedOut(b.getUniqueId()); // out of lives: out
+    now.addAndGet(3_600_000);
+    into(a, RoomType.BOSS);
+    into(c, RoomType.BOSS);
+    ticks(14);
+    into(b, RoomType.BOSS);
+    ticks(1);
+    killAll();
+    ticks(4);
+    assertEquals(2, fights);
+    assertEquals(List.of("Ann delve 0.5", "Cy delve 0.5"), paid,
+        "both rooms' half hour (time saved in the first counts here), to each member still in the fight (Bo is out)");
+    into(a, RoomType.VAULT);
+    ticks(2);
+    assertEquals(2, paid.size(), "all of the run's length is paid: the vault adds nothing");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // played at a proper party's pace: each room as time allows, the rest when the run is won
+    paid.clear();
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"));
+    now.addAndGet(600_000);
+    into(a, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    now.addAndGet(300_000);
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    now.addAndGet(900_000);
+    into(a, RoomType.VAULT);
+    ticks(2);
+    List<Double> hours = paid.stream().map(s -> Double.parseDouble(s.substring(s.lastIndexOf(' ') + 1))).toList();
+    assertEquals(3, hours.size(), paid.toString());
+    assertEquals(10 / 60.0, hours.get(0), 1e-9, "10 minutes played: 10 minutes paid");
+    assertEquals(5 / 60.0, hours.get(1), 1e-9, "15 minutes played: 5 more");
+    assertEquals(15 / 60.0, hours.get(2), 1e-9, "won at 30 minutes: the rest of the run's half hour");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a run given no length pays no spoils
+    rules = new RunRules(1, 3, "m.key", 1, 1, 0.5);
+    paid.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"));
+    into(a, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    assertEquals(List.of(), paid);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    RunRewards itemsOnly = (p, recipe, tier, moment, run) -> { };
+    itemsOnly.spoils(a, "delve", 1, null); // rewards without spoils pay none
+  }
+
+  @Test
+  void whatWaitsIsClaimedOutsideTheDungeon() {
+    PlayerMock a = player("Ann");
+    runs.claim(a);
+    assertEquals("§7Nothing is waiting for you.", a.nextMessage(), "no lockers");
+    var lockers = new net.tfminecraft.trialrooms.dungeon.locker.LockerService(plugin,
+        new net.tfminecraft.trialrooms.dungeon.locker.LockerStore(temp.resolve("lockers"), Logger.getLogger("t")),
+        new ListCodec(), chars::activeCharacterId, p -> { });
+    runs.lockers(lockers);
+    runs.claim(a);
+    assertEquals("§7Nothing is waiting for you.", a.nextMessage());
+    PlayerMock nobody = player("Nobody");
+    characterOf.remove("Nobody");
+    runs.claim(nobody);
+    assertEquals("§7Nothing is waiting for you.", nobody.nextMessage(), "no character, no locker");
+    lockers.owe(lockers.locker(a), new org.bukkit.inventory.ItemStack(org.bukkit.Material.GOLD_INGOT, 3));
+    a.teleport(new Location(dungeon, 0, 70, 0));
+    runs.claim(a);
+    assertEquals("§7What waits for you comes once you are out of the dungeon.", a.nextMessage());
+    a.teleport(new Location(main, 10, 70, 10));
+    runs.claim(a);
+    assertTrue(a.getInventory().contains(org.bukkit.Material.GOLD_INGOT, 3));
+    assertTrue(lockers.locker(a).owed().isEmpty());
+  }
+
+  @Test
   void runsTellTheirRewardMoments() {
     List<String> told = new ArrayList<>();
     runs.rewards((p, recipe, tier, moment, run) -> told.add(p.getName() + " " + recipe + " " + tier + " " + moment));

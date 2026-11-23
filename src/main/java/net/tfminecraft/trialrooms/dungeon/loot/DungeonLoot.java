@@ -101,6 +101,11 @@ public final class DungeonLoot {
         return forge.socket(p, item, gem);
     }
 
+    /** One of an ordinary item (a spoil) by its TLibs item path; null when it doesn't exist. */
+    public ItemStack item(String path) {
+        return forge.item(path);
+    }
+
     private Optional<Source> source(LootKit k, Base b, Map<String, Optional<Source>> cache) {
         return cache.computeIfAbsent(b.id(), id -> {
             if (b.template() != null) {

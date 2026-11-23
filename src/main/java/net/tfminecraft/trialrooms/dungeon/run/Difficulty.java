@@ -12,12 +12,20 @@ package net.tfminecraft.trialrooms.dungeon.run;
  * @param damage enemy damage multiplier
  * @param needs  the difficulty the leader must have won first, or null
  * @param advice what gear it is meant for
+ * @param minutes how long a proper party takes for a run at it (spoils are sized on it); 0 = the recipe's
  */
-public record Difficulty(String id, String name, int tier, double health, double damage, String needs, String advice) {
+public record Difficulty(String id, String name, int tier, double health, double damage, String needs, String advice,
+        double minutes) {
+
+    public Difficulty(String id, String name, int tier, double health, double damage, String needs, String advice) {
+        this(id, name, tier, health, damage, needs, advice, 0);
+    }
 
     public Difficulty {
-        if (tier < 1 || !(health > 0) || !(damage > 0) || Double.isInfinite(health) || Double.isInfinite(damage)) {
-            throw new IllegalArgumentException("difficulty " + id + ": tier at least 1, health and damage above 0");
+        if (tier < 1 || !(health > 0) || !(damage > 0) || Double.isInfinite(health) || Double.isInfinite(damage)
+                || !(minutes >= 0) || Double.isInfinite(minutes)) {
+            throw new IllegalArgumentException("difficulty " + id
+                    + ": tier at least 1, health and damage above 0, minutes not negative");
         }
     }
 }

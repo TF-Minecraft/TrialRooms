@@ -272,6 +272,58 @@ public class RewardsTest {
     assertEquals("§cThat gem or item is gone.", r.socket(ann, "g", "i"));
   }
 
+  /** An item mock whose clones keep the amount they are given. */
+  static ItemStack stackable(String name, int max) {
+    ItemStack it = mock(ItemStack.class);
+    when(it.getMaxStackSize()).thenReturn(max);
+    when(it.effectiveName()).thenReturn(Component.text(name));
+    when(it.clone()).thenAnswer(i -> {
+      ItemStack c = mock(ItemStack.class);
+      java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
+      doAnswer(a -> {
+        n.set(a.getArgument(0));
+        return null;
+      }).when(c).setAmount(anyInt());
+      when(c.getAmount()).thenAnswer(a -> n.get());
+      return c;
+    });
+    return it;
+  }
+
+  @Test
+  void spoilsWaitInTheLockerUntilThePlayerIsOutside() {
+    Spoils s = new Spoils(Map.of("m.materials.ignitium", 70.0, "v.nothing", 1.0), Map.of(), List.of());
+    ItemStack ignitium = stackable("Ignitium", 64);
+    when(loot.item("m.materials.ignitium")).thenReturn(ignitium);
+    java.util.logging.Logger log = mock(java.util.logging.Logger.class);
+    DungeonRewards r = new DungeonRewards(loot, lockers, () -> rules, doubles(0.5), now::get, ZoneId.of("UTC"),
+        () -> s, log);
+    r.spoils(ann, "d", 1, run);
+    var owed = org.mockito.ArgumentCaptor.forClass(ItemStack.class);
+    verify(lockers, times(2)).owe(eq(locker), owed.capture());
+    assertEquals(List.of(64, 6), owed.getAllValues().stream().map(ItemStack::getAmount).toList(), "in whole stacks");
+    verify(log).warning("[dungeons] spoils: no item v.nothing");
+    when(loot.item("v.nothing")).thenThrow(new IllegalStateException("a broken item plugin"));
+    verify(lockers).saveLocker(ann, locker);
+    verify(ann).sendMessage("§eSpoils: §f70 Ignitium §7(yours when you leave the dungeon)");
+    r.spoils(ann, "d", 1, run);
+    verify(log, times(2)).warning("[dungeons] spoils: no item v.nothing");
+    // nothing rolled: nothing saved or said
+    clearInvocations(lockers, ann);
+    r.spoils(ann, "d", 0, run);
+    verify(lockers, never()).saveLocker(any(), any());
+    // a failed save keeps them in memory for the next save that works, and says so
+    when(lockers.saveLocker(ann, locker)).thenReturn(false);
+    r.spoils(ann, "d", 1, run);
+    verify(ann).sendMessage("§cYour spoils could not be saved yet. Tell staff.");
+    // no spoils set up, or no locker: nothing
+    clearInvocations(lockers);
+    rewards(doubles(0.5)).spoils(ann, "d", 1, run);
+    when(lockers.locker(ann)).thenReturn(null);
+    r.spoils(ann, "d", 1, run);
+    verify(lockers, never()).owe(any(), any());
+  }
+
   @Test
   void weeksAreIsoWeeks() {
     assertEquals("2026-W39", DungeonRewards.week(1_790_000_000_000L, ZoneId.of("UTC")));
