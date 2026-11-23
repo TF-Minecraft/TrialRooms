@@ -30,9 +30,9 @@ public final class DungeonCommand {
             + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave | ready"
             + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks");
+            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim");
     /** What players without the staff permission may use. */
-    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker");
+    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim");
 
     private final DungeonModule module;
 
@@ -54,6 +54,7 @@ public final class DungeonCommand {
             case "gate" -> gate(sender, args);
             case "leave" -> leave(sender);
             case "ready" -> ready(sender);
+            case "claim" -> claim(sender);
             case "locker" -> locker(sender, args);
             case "loot" -> loot(sender, args);
             case "marks" -> marks(sender, args);
@@ -210,6 +211,14 @@ public final class DungeonCommand {
             p.sendMessage("§aYou are ready.");
         } else {
             sender.sendMessage("§cThere is nothing to get ready for: the doors are already open, or you are not in a dungeon.");
+        }
+    }
+
+    private void claim(CommandSender sender) {
+        if (sender instanceof Player p) {
+            module.runs().claim(p);
+        } else {
+            sender.sendMessage("§cOnly players have things waiting for them.");
         }
     }
 

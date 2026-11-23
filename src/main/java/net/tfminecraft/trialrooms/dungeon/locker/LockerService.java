@@ -58,6 +58,8 @@ public final class LockerService {
     private final NamespacedKey itemKey;
     private final NamespacedKey wornKey;
     private final Map<UUID, Open> open = new HashMap<>();
+    /** Lockers whose last save failed, by player/character: kept in memory until a save works. */
+    private final Map<String, Locker> unsaved = new HashMap<>();
 
     /**
      * @param characters the id of the character a player is playing, or null
@@ -100,6 +102,11 @@ public final class LockerService {
         if (o != null && o.character().equals(character)) {
             return o.locker();
         }
+        Locker kept = unsaved.get(p.getUniqueId() + "/" + character);
+        if (kept != null) { // newer than its file: what it owes or holds may not be on disk
+            open.put(p.getUniqueId(), new Open(character, kept));
+            return kept;
+        }
         try {
             Locker l = store.read(p.getUniqueId(), character);
             if (l.fromBackup && newerWear(p, character, l.revision())) {
@@ -121,13 +128,32 @@ public final class LockerService {
                 || held(p).stream().anyMatch(it -> isDungeonItem(it) && wornRevision(it) > revision);
     }
 
-    /** Forgets a player's cached locker (every change is already on disk). */
+    /**
+     * Forgets a player's cached locker. One whose last save failed is tried again, and kept in
+     * memory while it still fails (its file is behind: dropping it could lose or repeat what it owes).
+     */
     public void forget(Player p) {
-        open.remove(p.getUniqueId());
+        Open o = open.remove(p.getUniqueId());
+        String key = o == null ? null : p.getUniqueId() + "/" + o.character();
+        if (key != null && unsaved.containsKey(key)) {
+            if (store.write(p.getUniqueId(), o.character(), o.locker())) {
+                unsaved.remove(key);
+            } else {
+                log.severe("[dungeons] the locker of " + p.getName() + "/" + o.character()
+                        + " still can't be saved: kept in memory until it can");
+            }
+        }
     }
 
     private boolean save(Player p, Locker l) {
-        return store.write(p.getUniqueId(), characters.apply(p), l);
+        String character = characters.apply(p);
+        boolean ok = store.write(p.getUniqueId(), character, l);
+        if (ok) {
+            unsaved.remove(p.getUniqueId() + "/" + character);
+        } else {
+            unsaved.put(p.getUniqueId() + "/" + character, l);
+        }
+        return ok;
     }
 
     /** Saves a locker after a loadout change; tells the player when it failed. */
@@ -491,9 +517,12 @@ public final class LockerService {
         }
         l.clearOwed();
         still.forEach(l::owe);
+        saver.accept(p); // the player's file first: a crash now repeats a hand-over rather than losing it
         save(p, l);
         if (still.isEmpty()) {
             p.sendMessage("§aThe items waiting for you (spoils, or your own items that found no room) are in your inventory.");
+        } else {
+            p.sendMessage("§e" + still.size() + " stacks still wait for you: make room, then /tr dungeon claim.");
         }
     }
 
@@ -502,7 +531,25 @@ public final class LockerService {
      * waits in the locker, saved with it, and is handed over like owed own items, never lost for room.
      */
     public void owe(Locker l, ItemStack item) {
-        l.owe(codec.encode(item));
+        ItemStack left = item.clone();
+        List<byte[]> merged = new ArrayList<>();
+        for (byte[] data : l.owed()) {
+            ItemStack o = codec.decode(data);
+            int room = o.getMaxStackSize() - o.getAmount();
+            if (left.getAmount() > 0 && room > 0 && o.isSimilar(left)) { // tops up a stack of the same
+                int move = Math.min(room, left.getAmount());
+                o.setAmount(o.getAmount() + move);
+                left.setAmount(left.getAmount() - move);
+                merged.add(codec.encode(o));
+            } else {
+                merged.add(data);
+            }
+        }
+        if (left.getAmount() > 0) {
+            merged.add(codec.encode(left));
+        }
+        l.clearOwed();
+        merged.forEach(l::owe);
     }
 
     /** Whether the player carries the mark of a wear for their current character (for tests and staff). */

@@ -303,8 +303,11 @@ public class RewardsTest {
     verify(lockers, times(2)).owe(eq(locker), owed.capture());
     assertEquals(List.of(64, 6), owed.getAllValues().stream().map(ItemStack::getAmount).toList(), "in whole stacks");
     verify(log).warning("[dungeons] spoils: no item v.nothing");
+    when(loot.item("v.nothing")).thenThrow(new IllegalStateException("a broken item plugin"));
     verify(lockers).saveLocker(ann, locker);
     verify(ann).sendMessage("§eSpoils: §f70 Ignitium §7(yours when you leave the dungeon)");
+    r.spoils(ann, "d", 1, run);
+    verify(log, times(2)).warning("[dungeons] spoils: no item v.nothing");
     // nothing rolled: nothing saved or said
     clearInvocations(lockers, ann);
     r.spoils(ann, "d", 0, run);

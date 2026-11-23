@@ -79,7 +79,8 @@ public class SpoilsTest {
         "spoils: {per-hour: [{item: denars, amount: 1}], coins: [{item: c, value: 5}]}",
         "spoils: {per-hour: [{item: a, amount: -1}]}",
         "spoils: {per-hour: [{item: a, amount: 1}], coins: [{item: c, value: 0}]}",
-        "spoils: {per-hour: [{item: a, amount: 1}], gems: [{item: g}]}")) {
+        "spoils: {per-hour: [{item: a, amount: 1}], gems: [{item: g}]}",
+        "spoils: {per-hour: [{item: a, amount: 1}, {item: a, amount: 2}]}")) {
       problems.clear();
       YamlConfiguration y = new YamlConfiguration();
       y.loadFromString(bad);

@@ -197,6 +197,35 @@ class LockerServiceTest {
   }
 
   @Test
+  void owedItemsStackAndAnUnsavedLockerIsKeptUntilItSaves() throws Exception {
+    Locker l = lockers.locker(ann);
+    lockers.owe(l, new ItemStack(Material.STONE, 40));
+    lockers.owe(l, new ItemStack(Material.STONE, 40));
+    lockers.owe(l, named(Material.IRON_SWORD, "a"));
+    lockers.owe(l, named(Material.IRON_SWORD, "a"));
+    assertEquals(List.of(64, 16, 1, 1), l.owed().stream().map(codec::decode).map(ItemStack::getAmount).toList(),
+        "like items top each other up");
+    lockers.owe(l, new ItemStack(Material.STONE, 10));
+    assertEquals(List.of(64, 26, 1, 1), l.owed().stream().map(codec::decode).map(ItemStack::getAmount).toList(),
+        "all of it fits a stack already owed");
+    // a save that fails keeps the locker (and what it owes) in memory, even past forget
+    Path tmp = store.file(ann.getUniqueId(), "c1").resolveSibling("c1.locker.tmp");
+    Files.createDirectories(store.file(ann.getUniqueId(), "c1").getParent());
+    Files.createDirectories(tmp);
+    assertFalse(lockers.saveLocker(ann, l));
+    lockers.forget(ann);
+    assertSame(l, lockers.locker(ann), "still the one in memory");
+    lockers.forget(ann);
+    assertSame(l, lockers.locker(ann), "kept while it can't be saved");
+    Files.delete(tmp);
+    lockers.forget(ann); // saves it now
+    lockers.forget(ann); // (nothing open)
+    Locker read = lockers.locker(ann);
+    assertNotSame(l, read, "read from its file again");
+    assertEquals(4, read.owed().size());
+  }
+
+  @Test
   void ownItemsThatFindNoRoomComeBackLater() {
     kitted();
     ann.getInventory().setItem(0, named(Material.IRON_SWORD, "own sword"));
@@ -212,6 +241,7 @@ class LockerServiceTest {
     assertEquals(2, l.items().size(), "lost copies are still in the locker");
     lockers.settle(ann, false);
     assertEquals(1, l.owed().size(), "still no room");
+    assertTrue(ann.nextMessage().contains("1 stacks still wait for you"));
     ann.getInventory().setItem(3, null);
     lockers.settle(ann, false);
     assertTrue(l.owed().isEmpty());

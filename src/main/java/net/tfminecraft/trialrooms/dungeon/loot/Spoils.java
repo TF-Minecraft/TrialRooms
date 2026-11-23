@@ -115,7 +115,9 @@ public record Spoils(Map<String, Double> perHour, Map<String, Integer> gems, Lis
         try {
             Map<String, Double> perHour = new LinkedHashMap<>();
             for (Map<?, ?> m : s.getMapList("per-hour")) {
-                perHour.put(text(m, "item"), number(m, "amount"));
+                if (perHour.put(text(m, "item"), number(m, "amount")) != null) {
+                    throw new IllegalArgumentException(m.get("item") + " is listed twice");
+                }
             }
             if (perHour.isEmpty()) {
                 throw new IllegalArgumentException("no per-hour items");

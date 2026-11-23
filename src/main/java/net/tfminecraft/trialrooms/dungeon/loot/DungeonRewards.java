@@ -74,7 +74,12 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         }
         List<String> got = new java.util.ArrayList<>();
         for (Map.Entry<String, Integer> e : s.roll(hours, rng).entrySet()) {
-            ItemStack it = loot.item(e.getKey());
+            ItemStack it;
+            try {
+                it = loot.item(e.getKey());
+            } catch (RuntimeException | LinkageError ex) {
+                it = null; // one broken item never stops the rest
+            }
             if (it == null) {
                 log.warning("[dungeons] spoils: no item " + e.getKey());
                 continue;

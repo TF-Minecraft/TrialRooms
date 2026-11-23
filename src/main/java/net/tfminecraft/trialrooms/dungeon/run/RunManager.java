@@ -147,6 +147,10 @@ public final class RunManager {
         double damageFactor = 1;
         /** Enemy health multiplier from the difficulty, on top of the party's (capped) one. */
         double difficultyHealth = 1;
+        /** When the run's doors opened (the lobby ended): spoils never pay more than the time since. */
+        long openedMs;
+        /** Hours of play the run's spoils have paid so far. */
+        double spoilHours;
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -246,15 +250,39 @@ public final class RunManager {
 
     /**
      * A cleared fight room's spoils: its share of what a proper party earns in the run's length
-     * (only fight rooms are cleared; a run given no length pays no spoils).
+     * (only fight rooms are cleared; a run given no length pays no spoils). A run never pays more
+     * than the time it has actually been played, so clearing faster than a proper party (or a room
+     * that spawned nothing) earns no more an hour. Members out of the fight (spectating) get none;
+     * the others are all in the room (its seal pulls them in and the fight holds them there).
      */
     private void spoils(ActiveRun ar) {
         if (rewards == null || !(ar.rules.minutes() > 0)) {
             return;
         }
         long fights = ar.run.layout().rooms().stream().filter(r -> DungeonRun.isFight(r.node().type())).count();
-        double hours = ar.rules.minutes() / 60.0 / fights;
-        forPlaying(ar, "the spoils", p -> rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id()));
+        double played = (clock.getAsLong() - ar.openedMs) / 3_600_000.0;
+        double hours = Math.min(ar.rules.minutes() / 60.0 / fights, played - ar.spoilHours);
+        if (!(hours > 0)) {
+            return;
+        }
+        ar.spoilHours += hours;
+        forPlaying(ar, "the spoils", p -> {
+            if (ar.run.member(p.getUniqueId()).status() != Status.OUT) {
+                rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id());
+            }
+        });
+    }
+
+    /** Hands over what waits for a player outside a run (spoils, own items that found no room). */
+    public void claim(Player p) {
+        var l = lockers == null ? null : lockers.locker(p);
+        if (l == null || l.owed().isEmpty()) {
+            p.sendMessage("§7Nothing is waiting for you.");
+        } else if (inDungeonWorld(p)) {
+            p.sendMessage("§7What waits for you comes once you are out of the dungeon.");
+        } else {
+            sweep(p);
+        }
     }
 
     /** Hands something to each member still playing; one player's failure never stops the others' or the run. */
@@ -491,6 +519,7 @@ public final class RunManager {
                     setDoors(ar, i, true, true);
                 }
             }
+            ar.openedMs = clock.getAsLong();
             boolean lobby = settings().lobbySeconds() > 0;
             if (lobby) {
                 // the arrival is in the START room, never a fight room (the generator always starts there)
@@ -729,6 +758,7 @@ public final class RunManager {
     private void openLobby(ActiveRun ar) {
         setDoors(ar, ar.lobbyRoom, false, false);
         ar.lobbyRoom = -1;
+        ar.openedMs = clock.getAsLong();
         ar.ready.clear();
         for (Player p : online(ar)) {
             p.playSound(p.getLocation(), "minecraft:block.iron_door.open", 1f, 1f);

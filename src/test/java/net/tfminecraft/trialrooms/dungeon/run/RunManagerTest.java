@@ -343,13 +343,32 @@ class RunManagerTest {
       }
     });
     PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    PlayerMock c = player("Cy");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId(), c.getUniqueId()));
     runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
     long fights = layout.rooms().stream().filter(r -> DungeonRun.isFight(r.node().type())).count();
+    // cleared at once: no time played, so nothing (a run never pays more than its time)
     into(a, RoomType.COMBAT);
     ticks(12);
     killAll();
     ticks(4);
-    assertEquals(List.of("Ann delve " + (0.5 / fights)), paid, "half an hour over the run's fight rooms");
+    assertEquals(List.of(), paid);
+    // an hour later the boss: its share, to each member still in the fight
+    ar.run.bleedOut(b.getUniqueId());
+    ar.run.bleedOut(b.getUniqueId()); // out of lives: out
+    now.addAndGet(3_600_000);
+    into(a, RoomType.BOSS);
+    into(c, RoomType.BOSS);
+    ticks(14);
+    into(b, RoomType.BOSS);
+    ticks(1);
+    killAll();
+    ticks(4);
+    assertEquals(List.of("Ann delve " + (0.5 / fights), "Cy delve " + (0.5 / fights)), paid,
+        "half an hour over the run's fight rooms, to each member still in the fight (Bo is out)");
     runs.runs().forEach(r -> runs.end(r, false, null));
     // a run given no length pays no spoils
     rules = new RunRules(1, 3, "m.key", 1, 1, 0.5);
@@ -363,6 +382,31 @@ class RunManagerTest {
     runs.runs().forEach(r -> runs.end(r, false, null));
     RunRewards itemsOnly = (p, recipe, tier, moment, run) -> { };
     itemsOnly.spoils(a, "delve", 1, null); // rewards without spoils pay none
+  }
+
+  @Test
+  void whatWaitsIsClaimedOutsideTheDungeon() {
+    PlayerMock a = player("Ann");
+    runs.claim(a);
+    assertEquals("§7Nothing is waiting for you.", a.nextMessage(), "no lockers");
+    var lockers = new net.tfminecraft.trialrooms.dungeon.locker.LockerService(plugin,
+        new net.tfminecraft.trialrooms.dungeon.locker.LockerStore(temp.resolve("lockers"), Logger.getLogger("t")),
+        new ListCodec(), chars::activeCharacterId, p -> { });
+    runs.lockers(lockers);
+    runs.claim(a);
+    assertEquals("§7Nothing is waiting for you.", a.nextMessage());
+    PlayerMock nobody = player("Nobody");
+    characterOf.remove("Nobody");
+    runs.claim(nobody);
+    assertEquals("§7Nothing is waiting for you.", nobody.nextMessage(), "no character, no locker");
+    lockers.owe(lockers.locker(a), new org.bukkit.inventory.ItemStack(org.bukkit.Material.GOLD_INGOT, 3));
+    a.teleport(new Location(dungeon, 0, 70, 0));
+    runs.claim(a);
+    assertEquals("§7What waits for you comes once you are out of the dungeon.", a.nextMessage());
+    a.teleport(new Location(main, 10, 70, 10));
+    runs.claim(a);
+    assertTrue(a.getInventory().contains(org.bukkit.Material.GOLD_INGOT, 3));
+    assertTrue(lockers.locker(a).owed().isEmpty());
   }
 
   @Test
