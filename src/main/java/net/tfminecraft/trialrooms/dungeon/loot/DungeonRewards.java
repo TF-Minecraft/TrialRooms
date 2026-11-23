@@ -46,6 +46,14 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     private Supplier<Cosmetics> cosmetics = () -> null;
     private java.util.function.Predicate<String> console; // (only used once cosmetics are set)
 
+    private AccountLimits accounts;
+
+    /** Limits cosmetics per player account too (all their characters together), not only per character. */
+    public DungeonRewards accounts(AccountLimits accounts) {
+        this.accounts = accounts;
+        return this;
+    }
+
     /** Turns on cosmetics: what they are, and how a console command runs (skin unlocks). */
     public DungeonRewards cosmetics(Supplier<Cosmetics> cosmetics, java.util.function.Predicate<String> console) {
         this.cosmetics = cosmetics;
@@ -64,6 +72,11 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         Locker l = c == null ? null : lockers.locker(p);
         if (l == null || !l.lastRun().equals(run.toString()) || !l.lastRunRewarded()) {
             return;
+        }
+        RewardRules r = rules.get();
+        if (accounts != null && r != null && !accounts.cosmetics(p.getUniqueId(), recipe, run.toString(),
+                week(clock.getAsLong(), zone), r.weeklyRuns())) {
+            return; // (this player's characters together have had this week's cosmetic runs here)
         }
         if (moment == Moment.BOSS) {
             for (Cosmetics.Trophy t : c.trophies(recipe, difficulty)) {
