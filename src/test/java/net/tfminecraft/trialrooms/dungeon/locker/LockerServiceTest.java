@@ -217,12 +217,40 @@ class LockerServiceTest {
     assertSame(l, lockers.locker(ann), "still the one in memory");
     lockers.forget(ann);
     assertSame(l, lockers.locker(ann), "kept while it can't be saved");
+    characterOf.put("Ann", "c2");
+    assertNotSame(l, lockers.locker(ann), "another character");
+    lockers.forget(ann); // tries c1 again too: still failing
+    lockers.flush();
     Files.delete(tmp);
-    lockers.forget(ann); // saves it now
-    lockers.forget(ann); // (nothing open)
+    lockers.flush(); // (at shutdown) saves it now
+    characterOf.put("Ann", "c1");
+    lockers.forget(ann);
     Locker read = lockers.locker(ann);
     assertNotSame(l, read, "read from its file again");
     assertEquals(4, read.owed().size());
+  }
+
+  @Test
+  void aPartHandedOverIsSavedAndAFullInventoryWritesNothing() {
+    Locker l = lockers.locker(ann);
+    l.owe(new byte[] {1}); // an entry that can't be read any more
+    lockers.owe(l, new ItemStack(Material.STONE, 40));
+    assertEquals(2, l.owed().size(), "the unreadable entry is kept, the rest still owed");
+    l.clearOwed();
+    lockers.owe(l, new ItemStack(Material.STONE, 40));
+    for (int i = 0; i < ann.getInventory().getSize(); i++) {
+      ann.getInventory().setItem(i, new ItemStack(Material.COBBLESTONE, 64));
+    }
+    ann.getInventory().setItem(0, new ItemStack(Material.STONE, 50));
+    int before = saves;
+    lockers.settle(ann, false);
+    assertEquals(before + 1, saves, "a part went in: the player's file is saved");
+    assertEquals(64, ann.getInventory().getItem(0).getAmount());
+    assertEquals(26, codec.decode(l.owed().getFirst()).getAmount());
+    assertTrue(ann.nextMessage().contains("1 stacks still wait for you"));
+    lockers.settle(ann, false);
+    assertEquals(before + 1, saves, "nothing went in: nothing written");
+    assertTrue(ann.nextMessage().contains("1 stacks still wait for you"));
   }
 
   @Test

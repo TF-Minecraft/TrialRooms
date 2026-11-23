@@ -151,6 +151,8 @@ public final class RunManager {
         long openedMs;
         /** Hours of play the run's spoils have paid so far. */
         double spoilHours;
+        /** Hours of play the run's cleared rooms have earned so far (paid as real time allows). */
+        double dueHours;
 
         ActiveRun(DungeonRun run, RunGeometry geo, LayoutPlacer placer, DungeonKit kit, RunRules rules, UUID leader,
                 String keyPath, Location arrival) {
@@ -220,6 +222,9 @@ public final class RunManager {
             end(ar, true, "§cThe dungeon fades as the world shifts. Your key is returned.");
         }
         bars.hideOlder(Long.MAX_VALUE); // no tick will take them down any more
+        if (lockers != null) {
+            lockers.flush();
+        }
     }
 
     public GateStore gates() {
@@ -255,13 +260,17 @@ public final class RunManager {
      * that spawned nothing) earns no more an hour. Members out of the fight (spectating) get none;
      * the others are all in the room (its seal pulls them in and the fight holds them there).
      */
-    private void spoils(ActiveRun ar) {
+    private void spoils(ActiveRun ar, boolean won) {
         if (rewards == null || !(ar.rules.minutes() > 0)) {
             return;
         }
         long fights = ar.run.layout().rooms().stream().filter(r -> DungeonRun.isFight(r.node().type())).count();
+        double run = ar.rules.minutes() / 60.0;
+        // what the cleared rooms have earned (a won run all of it), never more than the time played:
+        // time saved in one room counts in the next, and a run played in its length pays all of it
+        ar.dueHours = won ? run : Math.min(run, ar.dueHours + run / fights);
         double played = (clock.getAsLong() - ar.openedMs) / 3_600_000.0;
-        double hours = Math.min(ar.rules.minutes() / 60.0 / fights, played - ar.spoilHours);
+        double hours = Math.min(ar.dueHours, played) - ar.spoilHours;
         if (!(hours > 0)) {
             return;
         }
@@ -990,7 +999,7 @@ public final class RunManager {
         if (moment != null) {
             reward(ar, moment);
         }
-        spoils(ar);
+        spoils(ar, false);
     }
 
     /** What clearing a room of this type pays out: the boss, an elite room, or a finished event. */
@@ -1445,6 +1454,7 @@ public final class RunManager {
                 + settings().finishSeconds() + " seconds.");
         recordWin(ar);
         reward(ar, RunRewards.Moment.VAULT);
+        spoils(ar, true);
     }
 
     /** A won run at a difficulty: each member playing it has won it, and may open what it leads to. */

@@ -367,8 +367,35 @@ class RunManagerTest {
     ticks(1);
     killAll();
     ticks(4);
-    assertEquals(List.of("Ann delve " + (0.5 / fights), "Cy delve " + (0.5 / fights)), paid,
-        "half an hour over the run's fight rooms, to each member still in the fight (Bo is out)");
+    assertEquals(2, fights);
+    assertEquals(List.of("Ann delve 0.5", "Cy delve 0.5"), paid,
+        "both rooms' half hour (time saved in the first counts here), to each member still in the fight (Bo is out)");
+    into(a, RoomType.VAULT);
+    ticks(2);
+    assertEquals(2, paid.size(), "all of the run's length is paid: the vault adds nothing");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // played at a proper party's pace: each room as time allows, the rest when the run is won
+    paid.clear();
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"));
+    now.addAndGet(600_000);
+    into(a, RoomType.COMBAT);
+    ticks(12);
+    killAll();
+    ticks(4);
+    now.addAndGet(300_000);
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    now.addAndGet(900_000);
+    into(a, RoomType.VAULT);
+    ticks(2);
+    List<Double> hours = paid.stream().map(s -> Double.parseDouble(s.substring(s.lastIndexOf(' ') + 1))).toList();
+    assertEquals(3, hours.size(), paid.toString());
+    assertEquals(10 / 60.0, hours.get(0), 1e-9, "10 minutes played: 10 minutes paid");
+    assertEquals(5 / 60.0, hours.get(1), 1e-9, "15 minutes played: 5 more");
+    assertEquals(15 / 60.0, hours.get(2), 1e-9, "won at 30 minutes: the rest of the run's half hour");
     runs.runs().forEach(r -> runs.end(r, false, null));
     // a run given no length pays no spoils
     rules = new RunRules(1, 3, "m.key", 1, 1, 0.5);

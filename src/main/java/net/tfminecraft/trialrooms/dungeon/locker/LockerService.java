@@ -133,14 +133,23 @@ public final class LockerService {
      * memory while it still fails (its file is behind: dropping it could lose or repeat what it owes).
      */
     public void forget(Player p) {
-        Open o = open.remove(p.getUniqueId());
-        String key = o == null ? null : p.getUniqueId() + "/" + o.character();
-        if (key != null && unsaved.containsKey(key)) {
-            if (store.write(p.getUniqueId(), o.character(), o.locker())) {
-                unsaved.remove(key);
+        open.remove(p.getUniqueId());
+        retry(p.getUniqueId() + "/");
+    }
+
+    /** Tries again to save every locker whose last save failed (at shutdown: after this they are gone). */
+    public void flush() {
+        retry("");
+    }
+
+    /** Retries the unsaved lockers whose player/character key starts with {@code prefix}. */
+    private void retry(String prefix) {
+        for (Map.Entry<String, Locker> e : unsaved.entrySet().stream().filter(x -> x.getKey().startsWith(prefix)).toList()) {
+            int cut = e.getKey().indexOf('/');
+            if (store.write(UUID.fromString(e.getKey().substring(0, cut)), e.getKey().substring(cut + 1), e.getValue())) {
+                unsaved.remove(e.getKey());
             } else {
-                log.severe("[dungeons] the locker of " + p.getName() + "/" + o.character()
-                        + " still can't be saved: kept in memory until it can");
+                log.severe("[dungeons] the locker " + e.getKey() + " still can't be saved: kept in memory until it can");
             }
         }
     }
@@ -509,16 +518,24 @@ public final class LockerService {
             return;
         }
         List<byte[]> still = new ArrayList<>();
+        boolean handed = false;
         for (byte[] data : l.owed()) {
             ItemStack own = codec.decode(data);
-            if (!Accessories.placeholder(own)) { // (an older version could owe a placeholder)
-                p.getInventory().addItem(own).values().forEach(left -> still.add(codec.encode(left)));
+            if (Accessories.placeholder(own)) { // (an older version could owe a placeholder)
+                handed = true;
+                continue;
             }
+            int amount = own.getAmount();
+            Map<Integer, ItemStack> left = p.getInventory().addItem(own);
+            handed |= left.isEmpty() || left.values().iterator().next().getAmount() < amount;
+            left.values().forEach(it -> still.add(codec.encode(it)));
         }
-        l.clearOwed();
-        still.forEach(l::owe);
-        saver.accept(p); // the player's file first: a crash now repeats a hand-over rather than losing it
-        save(p, l);
+        if (handed) { // (nothing handed over, nothing to write: a full inventory never costs a save)
+            l.clearOwed();
+            still.forEach(l::owe);
+            saver.accept(p); // the player's file first: a crash now repeats a hand-over rather than losing it
+            save(p, l);
+        }
         if (still.isEmpty()) {
             p.sendMessage("§aThe items waiting for you (spoils, or your own items that found no room) are in your inventory.");
         } else {
@@ -534,7 +551,13 @@ public final class LockerService {
         ItemStack left = item.clone();
         List<byte[]> merged = new ArrayList<>();
         for (byte[] data : l.owed()) {
-            ItemStack o = codec.decode(data);
+            ItemStack o;
+            try {
+                o = codec.decode(data);
+            } catch (RuntimeException e) {
+                merged.add(data); // kept as it is: an entry that can't be read never blocks the rest
+                continue;
+            }
             int room = o.getMaxStackSize() - o.getAmount();
             if (left.getAmount() > 0 && room > 0 && o.isSimilar(left)) { // tops up a stack of the same
                 int move = Math.min(room, left.getAmount());
