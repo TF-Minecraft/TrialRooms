@@ -69,7 +69,7 @@ public class LootCoreTest {
     assertEquals(List.of(65, 25, 7, 3), k.rarities().stream().map(Rarity::weight).toList());
     // every bonus stat is worth the same: its range over one unit of it is bonus-worth everywhere
     Map<String, Double> unit = Map.of("max_health", 0.25, "armor", 0.075, "physical_damage_reduction", 1.1,
-        "physical_damage", 2.1, "lifesteal", 2.1, "magic_damage", 2.1);
+        "physical_damage", 2.1, "lifesteal", 1.05, "magic_damage", 2.1);
     for (Map<String, Range> pool : k.pools().values()) {
       pool.forEach((stat, range) -> {
         if (unit.containsKey(stat)) {

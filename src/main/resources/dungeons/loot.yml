@@ -47,7 +47,8 @@ worth:
   physical_damage: 2.1
   projectile_damage: 2.1
   magic_damage: 2.1
-  lifesteal: 2.1
+  # lifesteal heals from damage dealt, which already grows with rarity and tier: half a gem's worth
+  lifesteal: 1.05
 
 # Bonus stat pools: the stats each kind of item can roll.
 bonus:
