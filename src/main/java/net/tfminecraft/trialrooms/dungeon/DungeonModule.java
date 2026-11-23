@@ -140,7 +140,9 @@ public final class DungeonModule {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
             rewards = new DungeonRewards(loot, lockers, this::rewardRules, new java.util.Random(),
                     System::currentTimeMillis, java.time.ZoneId.systemDefault(), this::spoils, plugin.getLogger())
-                    .cosmetics(this::cosmetics, net.tfminecraft.trialrooms.dungeon.loot.Cosmetics::runOnConsole);
+                    .cosmetics(this::cosmetics, net.tfminecraft.trialrooms.dungeon.loot.Cosmetics::runOnConsole)
+                    .accounts(new net.tfminecraft.trialrooms.dungeon.loot.AccountLimits(root.resolve("accounts.yml").toFile(),
+                            plugin.getLogger()));
             runs.rewards(rewards);
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
