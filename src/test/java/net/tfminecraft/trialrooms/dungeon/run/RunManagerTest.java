@@ -488,6 +488,17 @@ class RunManagerTest {
   }
 
   @Test
+  void affixesNeedASectionAndAKitWithFights() {
+    assertEquals(List.of(), runs.weeklyAffixes("delve", 1), "no affixes section: none");
+    when(module.affixes()).thenReturn(new Affixes(List.of(WeeklyAffix.FORTIFIED), Map.of(1, 1), 1.25, 1.3, 1.15, 0.3,
+        1.25, 0.1, 12));
+    assertEquals(List.of(), runs.weeklyAffixes("delve", 1), "this kit has no fight roster: nothing for them to change");
+    assertEquals(List.of(), runs.weeklyAffixes("nowhere", 1));
+    when(module.kits()).thenReturn(Map.of());
+    assertEquals(List.of(), runs.weeklyAffixes("delve", 1), "the recipe's kit is gone");
+  }
+
+  @Test
   void reachingTheVaultUnderParGivesABetterVault() {
     rules = new RunRules(1, 3, "m.key", 1, 1, 0.5, 1, "", 0, 0, 0, 0, 10);
     List<String> vaults = new ArrayList<>();
