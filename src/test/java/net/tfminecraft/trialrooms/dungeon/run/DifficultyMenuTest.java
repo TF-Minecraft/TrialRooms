@@ -106,6 +106,20 @@ class DifficultyMenuTest {
   }
 
   @Test
+  void theScreenShowsEachDifficultysRecords() {
+    Records records = mock(Records.class);
+    when(runs.records()).thenReturn(records);
+    when(records.best("delve", "normal")).thenReturn(new java.util.TreeMap<>(Map.of(
+        1, new Records.Clear(250_000, List.of("Ann"), 1), 3, new Records.Clear(200_000, List.of("A", "B", "C"), 1))));
+    when(records.best("delve", "hard")).thenReturn(Map.of());
+    DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(normal, hard)));
+    m.open();
+    String lore = String.valueOf(m.getInventory().getItem(m.slot(0)).getItemMeta().lore());
+    assertTrue(lore.contains("Records: 4:10 solo · 3:20 party of 3"), lore);
+    assertFalse(String.valueOf(m.getInventory().getItem(m.slot(1)).getItemMeta().lore()).contains("Records"));
+  }
+
+  @Test
   void manyDifficultiesShowTheFirstFive() {
     Difficulty[] six = new Difficulty[6];
     for (int i = 0; i < 6; i++) {

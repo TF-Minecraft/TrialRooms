@@ -325,6 +325,94 @@ public class RewardsTest {
   }
 
   @Test
+  void bossesMayDropTrophiesAndVaultsMayUnlockSkins() {
+    Cosmetics c = new Cosmetics("lp user {player} permission set {permission} true",
+        List.of(new Cosmetics.Trophy("d", "hard", 0.5, "v.skull", "Golem Trophy")),
+        List.of(new Cosmetics.Skin("d", "hard", 0.5, "skin.frost", "Frost"),
+            new Cosmetics.Skin("d", "hard", 0.5, "skin.glacial", "Glacial")));
+    ItemStack skull = stackable("Skull", 64);
+    when(loot.item("v.skull")).thenReturn(skull);
+    List<String> console = new ArrayList<>();
+    java.util.logging.Logger log = mock(java.util.logging.Logger.class);
+    Random rng = doubles(0.9, 0.1, 0.1);
+    DungeonRewards r = new DungeonRewards(loot, lockers, () -> rules, rng, now::get, ZoneId.of("UTC"), () -> null, log)
+        .cosmetics(() -> c, console::add);
+    when(ann.getName()).thenReturn("Ann");
+    // a run that doesn't roll items this week rolls no cosmetics either
+    locker.lastRun("another run", true);
+    r.feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann"));
+    locker.lastRun(run.toString(), false);
+    r.feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann"));
+    verify(lockers, never()).owe(any(), any());
+    locker.lastRun(run.toString(), true);
+    r.feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann")); // 0.9: no trophy
+    verify(lockers, never()).owe(any(), any());
+    r.feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann", "Bo")); // 0.1: a trophy
+    verify(lockers).owe(eq(locker), any());
+    verify(lockers).saveLocker(ann, locker);
+    verify(ann).sendMessage("§6✦ A trophy: Golem Trophy! §7It waits for you outside the dungeon.");
+    // the vault: a skin the player lacks (Frost is theirs already)
+    when(ann.hasPermission("skin.frost")).thenReturn(true);
+    r.feat(ann, "d", "hard", Moment.VAULT, run, List.of("Ann"));
+    assertEquals(List.of("lp user Ann permission set skin.glacial true"), console);
+    verify(ann).sendMessage("§d✦ You unlocked the Glacial skin! §7Use it on your own gear in /armourshop.");
+    new DungeonRewards(loot, lockers, () -> rules, doubles(0.9), now::get, ZoneId.of("UTC"), () -> null, log)
+        .cosmetics(() -> c, console::add).feat(ann, "d", "hard", Moment.VAULT, run, List.of("Ann"));
+    assertEquals(1, console.size(), "a roll that misses unlocks nothing");
+    new DungeonRewards(loot, lockers, () -> rules, doubles(0.1), now::get, ZoneId.of("UTC"), () -> null, log)
+        .cosmetics(() -> c, cmd -> false).feat(ann, "d", "hard", Moment.VAULT, run, List.of("Ann"));
+    verify(log).warning("[dungeons] the skin unlock failed: lp user Ann permission set skin.glacial true");
+    verify(ann).sendMessage("§cYou earned the Glacial skin, but it could not be unlocked. Tell staff.");
+    when(ann.hasPermission("skin.glacial")).thenReturn(true);
+    r.feat(ann, "d", "hard", Moment.VAULT, run, List.of("Ann"));
+    assertEquals(1, console.size(), "every skin is theirs: nothing more");
+    // a trophy whose item is missing, or broken, or that can't be saved
+    Random low = doubles(0.0);
+    DungeonRewards r2 = new DungeonRewards(loot, lockers, () -> rules, low, now::get, ZoneId.of("UTC"), () -> null, log)
+        .cosmetics(() -> c, console::add);
+    when(loot.item("v.skull")).thenReturn(null);
+    r2.feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann"));
+    when(loot.item("v.skull")).thenThrow(new IllegalStateException("broken"));
+    r2.feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann"));
+    verify(log, times(2)).warning("[dungeons] trophy: no item v.skull");
+    doReturn(skull).when(loot).item("v.skull");
+    when(lockers.saveLocker(ann, locker)).thenReturn(false);
+    r2.feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann"));
+    verify(ann).sendMessage("§cYour trophy could not be saved yet. Tell staff.");
+    // none set up, or no locker: nothing
+    rewards(doubles(0.0)).feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann"));
+    when(lockers.locker(ann)).thenReturn(null);
+    r2.feat(ann, "d", "hard", Moment.BOSS, run, List.of("Ann"));
+    verify(lockers, times(2)).owe(eq(locker), any());
+  }
+
+  @Test
+  void anAccountsCharactersShareTheirCosmeticRuns(@org.junit.jupiter.api.io.TempDir java.nio.file.Path temp) {
+    Cosmetics c = new Cosmetics("", List.of(new Cosmetics.Trophy("d", "hard", 1, "v.skull", "Trophy")), List.of());
+    ItemStack skull = stackable("Skull", 64);
+    when(loot.item("v.skull")).thenReturn(skull);
+    AccountLimits limits = new AccountLimits(temp.resolve("accounts.yml").toFile(), java.util.logging.Logger.getLogger("t"));
+    DungeonRewards r = new DungeonRewards(loot, lockers, () -> rules, doubles(0.0), now::get, ZoneId.of("UTC"), () -> null,
+        java.util.logging.Logger.getLogger("t")).cosmetics(() -> c, cmd -> true).accounts(limits);
+    UUID account = UUID.randomUUID();
+    when(ann.getUniqueId()).thenReturn(account);
+    for (int i = 0; i < 4; i++) { // four runs, as if on four characters (each counts for its own character)
+      UUID each = UUID.randomUUID();
+      locker.lastRun(each.toString(), true);
+      r.feat(ann, "d", "hard", Moment.BOSS, each, List.of("Ann"));
+      r.feat(ann, "d", "hard", Moment.BOSS, each, List.of("Ann")); // (the same run asks again)
+    }
+    verify(lockers, times(6)).owe(eq(locker), any()); // 3 runs x 2 asks: the fourth run rolls none
+    // without reward rules there is no weekly number to count against: no limit
+    DungeonRewards loose = new DungeonRewards(loot, lockers, () -> null, doubles(0.0), now::get, ZoneId.of("UTC"),
+        () -> null, java.util.logging.Logger.getLogger("t")).cosmetics(() -> c, cmd -> true).accounts(limits);
+    UUID fifth = UUID.randomUUID();
+    locker.lastRun(fifth.toString(), true);
+    loose.feat(ann, "d", "hard", Moment.BOSS, fifth, List.of("Ann"));
+    verify(lockers, times(7)).owe(eq(locker), any());
+  }
+
+  @Test
   void weeksAreIsoWeeks() {
     assertEquals("2026-W39", DungeonRewards.week(1_790_000_000_000L, ZoneId.of("UTC")));
     assertEquals("2026-W53", DungeonRewards.week(1_798_761_600_000L, ZoneId.of("UTC")), "2027-01-01 is still in 2026's week 53");

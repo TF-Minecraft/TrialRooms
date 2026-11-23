@@ -103,6 +103,24 @@ spoils:
     - {item: m.currency.handful_of_coins, value: 5}
     - {item: m.currency.gold_coin, value: 1}
 
+# Cosmetics that leave dungeons (bragging, not strength). They roll only on runs that still roll
+# items this week (the weekly limit), on the run's difficulty. trophies: the boss may drop one, an
+# item (TLibs path; meant to be ItemsAdder trophy furniture) named for the feat, with the date and
+# the party; it waits in the locker like spoils. skins: the vault may unlock an ArmourShop set the
+# player doesn't have yet, by running unlock-command ({player}, {permission}) on the console.
+# The items and permissions below are placeholders until the trophy furniture and the dungeon skin
+# sets exist.
+cosmetics:
+  unlock-command: "lp user {player} permission set {permission} true"
+  trophies:
+    - {recipe: delve_seithr, difficulty: normal, chance: 0.05, item: v.skeleton_skull, name: "Ice Golem Trophy"}
+    - {recipe: delve_seithr, difficulty: hard, chance: 0.08, item: v.skeleton_skull, name: "Ice Golem Trophy (Hard)"}
+    - {recipe: delve_seithr, difficulty: nightmare, chance: 0.12, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Nightmare)"}
+  skins:
+    - {recipe: delve_seithr, difficulty: hard, chance: 0.03, permission: armourshop.dungeon.seithr_frost, name: "Seithr Frost"}
+    - {recipe: delve_seithr, difficulty: nightmare, chance: 0.05, permission: armourshop.dungeon.seithr_frost, name: "Seithr Frost"}
+    - {recipe: delve_seithr, difficulty: nightmare, chance: 0.03, permission: armourshop.dungeon.seithr_glacial, name: "Seithr Glacial"}
+
 # What can drop. recipe: an AdvancedCrafting recipe; template: an MMOItems template (file.id) with
 # its own stats: [min, max]. %material% in the name is where a prefix goes.
 items:
