@@ -313,7 +313,7 @@ class DungeonModuleTest {
     server.getScheduler().performTicks(5);
     verify(console).sendMessage(startsWith("§cPreview failed: "));
     c.run(console, new String[] {"reload"});
-    verify(console).sendMessage(startsWith("§aDungeons reloaded: 2 kits, 2 recipes, 0 problems."));
+    verify(console).sendMessage(startsWith("§aDungeons reloaded: 2 kits, 4 recipes, 0 problems."));
     try {
       Files.writeString(data.resolve("dungeons/recipes.yml"), "bad:\n  trunk: x\n");
     } catch (IOException e) {
