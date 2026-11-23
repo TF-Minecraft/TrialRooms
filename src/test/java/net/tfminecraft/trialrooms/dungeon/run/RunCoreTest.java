@@ -357,6 +357,12 @@ public class RunCoreTest {
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 1, Double.POSITIVE_INFINITY, 0));
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 1, 0, -1));
+    assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 1, 1, 0.5, 0),
+        "a cap below 1 would shrink every enemy");
+    assertEquals(2048, RunSettings.defaults().maxHealth());
+    YamlConfiguration hp = new YamlConfiguration();
+    hp.set("max-health", 1024);
+    assertEquals(1024, RunSettings.from(hp).maxHealth());
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, -1));
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, Double.POSITIVE_INFINITY));

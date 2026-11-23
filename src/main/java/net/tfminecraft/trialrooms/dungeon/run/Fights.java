@@ -240,8 +240,19 @@ final class Fights {
             max.addTransientModifier(new AttributeModifier(scaleKey, factor - 1,
                     AttributeModifier.Operation.MULTIPLY_SCALAR_1));
         }
+        // the server caps max health: what it can't hold, the mob takes as less damage instead
+        double intended = max.getBaseValue() * factor;
+        double limit = runs.settings().maxHealth();
+        if (intended > limit) {
+            tough.put(mob.getUniqueId(), limit / intended);
+        } else {
+            tough.remove(mob.getUniqueId());
+        }
         living.setHealth(max.getValue());
     }
+
+    /** Mobs scaled past the server's max health, and the share of each hit they take for it. */
+    private final Map<UUID, Double> tough = new HashMap<>();
 
     // ------------------------------------------------------------------ starting
 
@@ -916,15 +927,16 @@ final class Fights {
     /** How much of a hit a run mob takes: none from a boss between phases, less from a shielded elite. */
     double incoming(ActiveRun ar, Entity mob) {
         long now = clock.getAsLong();
+        double share = tough.getOrDefault(mob.getUniqueId(), 1.0);
         for (Encounter enc : ar.encounters.values()) {
             if (mob.equals(enc.bossMob) && enc.boss.immune(now)) {
                 return 0;
             }
             if (enc.elites.get(mob.getUniqueId()) == Affix.SHIELDED && shieldUp(enc, mob)) {
-                return 1 - ar.kit.fights().tuning().shieldReduction();
+                return (1 - ar.kit.fights().tuning().shieldReduction()) * share;
             }
         }
-        return 1;
+        return share;
     }
 
     /** Most damage a hit may deal to a boss: no lower than its next phase's start. Infinite for other mobs. */
@@ -948,6 +960,7 @@ final class Fights {
 
     /** A run mob died: a volatile elite's remains start to burst. */
     void died(ActiveRun ar, Entity mob) {
+        tough.remove(mob.getUniqueId());
         for (Encounter enc : ar.encounters.values()) {
             boolean ours = enc.alive.contains(mob) || enc.adds.contains(mob);
             if (ours && ar.has(WeeklyAffix.BOLSTERING)) {

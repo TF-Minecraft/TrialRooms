@@ -126,7 +126,7 @@ class DungeonModuleTest {
     assertEquals(2.5, m.recipes().get("warband_seithr").rules().bossHealth());
     assertEquals(6, m.recipes().get("warband_seithr").rules().minPlayers());
     assertEquals(10, m.recipes().get("warband_seithr").rules().healthCap());
-    assertEquals(8, m.recipes().get("warband_seithr").rules().maxDepth());
+    assertEquals(5, m.recipes().get("warband_seithr").rules().maxDepth());
     assertEquals(1, m.cosmetics().trophies("warband_seithr", "nightmare").size(), "the bigger parties have trophies too");
     assertEquals(1, m.cosmetics().skins("dungeon_seithr", "hard").size());
     assertSame(world, m.world());
