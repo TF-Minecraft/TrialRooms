@@ -211,12 +211,12 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     /** Under par, the vault pays extra marks (inside the weekly cap) and rolls with extra luck. */
     @Override
     public void reward(Player p, String recipe, int tier, Moment moment, UUID run, boolean underPar) {
-        reward(p, recipe, tier, moment, run, underPar, false);
+        reward(p, recipe, tier, moment, run, underPar, 1);
     }
 
-    /** A hardcore run's rewards, secured at the vault, have their item chance and marks boosted. */
+    /** A riskier difficulty's rewards have their item chance and marks multiplied by {@code boost}. */
     @Override
-    public void reward(Player p, String recipe, int tier, Moment moment, UUID run, boolean underPar, boolean hardcore) {
+    public void reward(Player p, String recipe, int tier, Moment moment, UUID run, boolean underPar, double boost) {
         boolean par = underPar && moment == Moment.VAULT; // (par only ever betters the vault)
         RewardRules r = rules.get();
         Locker l = lockers.locker(p);
@@ -237,7 +237,6 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             }
             l.lastRun(run.toString(), rolls);
         }
-        double boost = hardcore ? r.hardcoreBoost() : 1;
         int pay = Math.min((int) Math.round(r.marks(moment) * boost) + (par ? r.parMarks() : 0),
                 Math.max(0, r.weeklyMarks() - l.weekMarks()));
         if (pay > 0) {

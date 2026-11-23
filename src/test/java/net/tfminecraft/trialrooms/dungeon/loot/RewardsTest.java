@@ -90,18 +90,13 @@ public class RewardsTest {
     assertEquals(Map.of("rare", 30, "epic", 80), rules.prices());
     assertEquals("gemstones.larimar", rules.gemTemplate());
     assertEquals(5, rules.parMarks());
-    assertEquals(1.5, rules.hardcoreBoost());
-    assertThrows(IllegalArgumentException.class,
-        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, 0, 0.5));
-    assertThrows(IllegalArgumentException.class,
-        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, 0, Double.POSITIVE_INFINITY));
     assertEquals(0.5, rules.parLuck());
     assertThrows(IllegalArgumentException.class,
-        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", -1, 0, 1));
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", -1, 0));
     assertThrows(IllegalArgumentException.class,
-        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, Double.POSITIVE_INFINITY, 1));
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, Double.POSITIVE_INFINITY));
     assertThrows(IllegalArgumentException.class,
-        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, -0.5, 1));
+        () -> new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p", 0, -0.5));
     assertEquals(0.0, new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p").chance(Moment.BOSS));
     assertEquals(0, new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p").marks(Moment.BOSS));
   }
@@ -150,8 +145,8 @@ public class RewardsTest {
   }
 
   @Test
-  void hardcoreFindsPayMoreForTheRisk() {
-    rewards(doubles(0.5)).reward(ann, "delve_seithr", 1, Moment.BOSS, run, false, true);
+  void aRiskierDifficultyPaysMore() {
+    rewards(doubles(0.5)).reward(ann, "delve_seithr", 1, Moment.BOSS, run, false, 1.5);
     assertEquals(8, locker.marks(), "the boss's 5 marks x1.5, rounded");
     verify(lockers).file(eq(locker), any()); // 0.5 < 0.35 x 1.5: a find a normal run would have missed
   }

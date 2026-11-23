@@ -27,9 +27,9 @@ public interface RunRewards {
         reward(player, recipe, tier, moment, run);
     }
 
-    /** A reward of a hardcore run, secured at the vault: it pays more for the risk. */
+    /** A reward of a run whose difficulty pays more for its risk: item chances and marks times {@code boost}. */
     default void reward(Player player, String recipe, int tier, Moment moment, UUID run, boolean underPar,
-            boolean hardcore) {
+            double boost) {
         reward(player, recipe, tier, moment, run, underPar);
     }
 

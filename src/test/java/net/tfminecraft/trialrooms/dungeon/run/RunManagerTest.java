@@ -550,19 +550,20 @@ class RunManagerTest {
     assertTrue(lockers.locker(a).owed().isEmpty());
   }
 
-  @Test
-  void hardcoreFindsAreSecuredAtTheVaultOrLostOnAFall() {
-    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
-    List<String> got = new ArrayList<>();
-    runs.rewards(new RunRewards() {
+  /** Rewards that write down what is paid, to whom, and how. */
+  RunRewards recording(List<String> got) {
+    return new RunRewards() {
       @Override
       public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run) {
       }
 
       @Override
       public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run,
-          boolean underPar, boolean hardcore) {
-        got.add(p.getName() + " " + moment + (hardcore ? " hardcore" : ""));
+          boolean underPar, double boost) {
+        if (moment == RunRewards.Moment.EVENT && p.getName().equals("Cy")) {
+          throw new IllegalStateException("a broken item"); // one failing roll never takes the rest
+        }
+        got.add(p.getName() + " " + moment + (boost > 1 ? " x" + boost : ""));
       }
 
       @Override
@@ -575,109 +576,235 @@ class RunManagerTest {
           java.util.UUID run, List<String> party) {
         got.add(p.getName() + " feat " + moment);
       }
-    });
+    };
+  }
+
+  /** Clears the run's one combat room (with a room event, so it is an EVENT moment). */
+  void clearCombat(RunManager.ActiveRun ar, PlayerMock... ps) {
+    int combat = room(RoomType.COMBAT);
+    ar.planned = Map.of(combat, net.tfminecraft.trialrooms.dungeon.event.EventKind.ENDURE);
+    now.addAndGet(300_000);
+    for (PlayerMock p : ps) {
+      into(p, RoomType.COMBAT);
+    }
+    ticks(12);
+    killAll();
+    ticks(4);
+  }
+
+  @Test
+  void normalBanksAtSavePointsAndAFailedRunKeepsWhatWasBanked() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(1, true, 1),
+        false, 1));
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal");
+    RunManager.ActiveRun ar = only();
+    assertTrue(nextMatching(a, "What you find is banked every 1 cleared fight rooms and at the rest room."));
+    clearCombat(ar, a);
+    assertEquals(List.of(), got, "carried, then banked: nothing paid yet");
+    assertTrue(nextMatching(a, "Saved:"));
+    runs.end(ar, false, null); // the run fails
+    assertEquals(List.of("Ann EVENT", "Ann spoils"), got, "Normal keeps all it banked");
+    assertTrue(nextMatching(a, "Your finds come home."));
+    // the rest room banks too; leaving keeps what was banked
+    got.clear();
+    difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(0, true, 1),
+        false, 1));
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "normal");
+    ar = only();
+    clearCombat(ar, a);
+    into(a, RoomType.REST);
+    ticks(2);
+    assertTrue(nextMatching(a, "Saved:"));
+    runs.leave(a);
+    assertEquals(List.of("Ann EVENT", "Ann spoils"), got);
+    difficulties = List.of();
+  }
+
+  @Test
+  void hardKeepsAShareOfWhatWasBankedWhenTheRunFails() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(new Difficulty("hard", "Hard", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(0, true, 0.5),
+        false, 1));
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "hard");
+    assertTrue(nextMatching(a, "each banked find has a 50% chance to come home"));
+    RunManager.ActiveRun ar = only();
+    clearCombat(ar, a);
+    into(a, RoomType.REST);
+    ticks(2);
+    runs.keepRoll = () -> 0.8; // over 50%: this one stays behind
+    runs.end(ar, false, null);
+    assertEquals(List.of("Ann spoils"), got, "the find stayed behind; the banked spoils come home at half");
+    assertTrue(nextMatching(a, "0 of 1 banked finds come home."));
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "hard");
+    ar = only();
+    clearCombat(ar, a);
+    into(a, RoomType.REST);
+    ticks(2);
+    runs.keepRoll = () -> 0.2;
+    runs.end(ar, false, null);
+    assertEquals(List.of("Ann EVENT", "Ann spoils"), got);
+    // a stop (a fault) loses nothing: banked and carried both come home
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "hard");
+    ar = only();
+    clearCombat(ar, a);
+    runs.end(ar, true, "§cThe dungeon fades.");
+    assertEquals(List.of("Ann EVENT", "Ann spoils"), got, "carried, but not the players' fault");
+    // failed before the rest room: nothing banked, so nothing comes home
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "hard");
+    ar = only();
+    clearCombat(ar, a);
+    runs.end(ar, false, null);
+    assertEquals(List.of(), got);
+    difficulties = List.of();
+  }
+
+  @Test
+  void nightmarePaysOnlyWhenTheBossFallsAndAFallLosesWhatIsCarried() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(new Difficulty("nightmare", "Nightmare", 1, 1, 1, null, "", 0, 0,
+        new Difficulty.Banking(0, false, 0), false, 2));
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
     PlayerMock a = player("Ann");
     PlayerMock b = player("Bo");
     PlayerMock c = player("Cy");
     when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
     when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId(), c.getUniqueId()));
-    runs.startRun(a, "delve", 7, null, true);
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "nightmare");
     RunManager.ActiveRun ar = only();
-    assertTrue(ar.hardcore);
-    for (int i = 0; i < 4; i++) {
-      ar.run.bleedOut(c.getUniqueId()); // Cy is out before anything is found: nothing to hold for him
-    }
-    assertTrue(nextMatching(a, "Hardcore:"));
-    int combat = room(RoomType.COMBAT);
-    ar.planned = Map.of(combat, net.tfminecraft.trialrooms.dungeon.event.EventKind.ENDURE);
-    now.addAndGet(600_000);
-    into(a, RoomType.COMBAT);
-    into(b, RoomType.COMBAT);
-    ticks(12);
-    killAll();
-    ticks(4);
-    assertEquals(List.of(), got, "nothing is handed out before the vault");
-    assertTrue(nextMatching(a, "Unsecured find"));
+    assertTrue(nextMatching(a, "What you find comes home only if the boss falls."));
+    assertTrue(nextMatching(b, "Item chances and marks x2 for the risk."));
+    clearCombat(ar, a, b, c);
+    assertTrue(nextMatching(a, "You carry a find"));
+    into(a, RoomType.REST);
+    ticks(2);
+    assertFalse(nextMatching(a, "Saved:"), "no save points on Nightmare");
+    // Bo falls: what he carries is lost (a life brings him back)
+    assertTrue(runs.down(b));
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    assertTrue(nextMatching(b, "You fell: what you carried is lost."));
     into(a, RoomType.BOSS);
     into(b, RoomType.BOSS);
+    into(c, RoomType.BOSS);
     ticks(14);
     killAll();
     ticks(4);
     assertEquals(List.of(), got);
-    // Bo falls after the boss (Cy used up the lives, so he is out): everything he found is lost
-    assertTrue(runs.down(b));
-    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
-    ticks(1);
-    assertTrue(nextMatching(b, "You fell: what you found this hardcore run is lost."));
     into(a, RoomType.VAULT);
     ticks(2);
-    assertEquals(List.of("Ann EVENT hardcore", "Ann BOSS hardcore", "Ann feat BOSS", "Ann spoils",
-        "Ann VAULT hardcore", "Ann feat VAULT", "Ann spoils"), got,
-        "Ann's finds (boosted), then her vault; Bo and Cy fell, so nothing of this run is theirs");
-    assertTrue(nextMatching(a, "Your finds are secured."));
-    assertFalse(nextMatching(b, "Your finds are secured."));
-    assertFalse(nextMatching(c, "Unsecured find"));
+    assertTrue(got.containsAll(List.of("Ann EVENT x2.0", "Ann BOSS x2.0", "Ann feat BOSS", "Bo BOSS x2.0",
+        "Cy BOSS x2.0", "Ann VAULT x2.0", "Bo VAULT x2.0")), got.toString());
+    assertFalse(got.contains("Bo EVENT x2.0"), "Bo fell carrying it");
+    assertTrue(nextMatching(c, "Some of your finds could not be paid. Tell staff."), "Cy's event roll failed");
     runs.runs().forEach(r -> runs.end(r, false, null));
-    // a gate run at a difficulty can be hardcore too; a run with no spoils holds only rewards
-    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5);
-    difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, ""));
-    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId()));
-    got.clear();
-    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal", true);
-    assertTrue(only().hardcore);
-    win(a, 60_000);
-    assertTrue(got.contains("Ann BOSS hardcore") && !got.contains("Ann spoils"), got.toString());
     difficulties = List.of();
   }
 
   @Test
-  void aHardcoreMemberAwayAtTheVaultGetsTheirFindsOnComingBack() {
+  void outMembersFindNothingAndAFailedRunBeforeAnySaveKeepsNothing() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5); // (no spoils)
+    difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(2, false, 1),
+        false, 1));
     List<String> got = new ArrayList<>();
-    runs.rewards(new RunRewards() {
-      @Override
-      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run) {
-      }
-
-      @Override
-      public void reward(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment, java.util.UUID run,
-          boolean underPar, boolean hardcore) {
-        if (moment == RunRewards.Moment.EVENT && p.getName().equals("Bo")) {
-          throw new IllegalStateException("a broken item"); // one failing roll never takes the rest
-        }
-        got.add(p.getName() + " " + moment);
-      }
-    });
+    runs.rewards(recording(got));
     PlayerMock a = player("Ann");
-    PlayerMock b = player("Bo");
+    PlayerMock c = player("Cy");
     when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
-    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
-    runs.startRun(a, "delve", 7, null, true);
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), c.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal");
     RunManager.ActiveRun ar = only();
-    int combat = room(RoomType.COMBAT);
-    ar.planned = Map.of(combat, net.tfminecraft.trialrooms.dungeon.event.EventKind.ENDURE);
-    into(a, RoomType.COMBAT);
-    into(b, RoomType.COMBAT);
-    ticks(12);
-    killAll();
-    ticks(4);
+    for (int i = 0; i < 4; i++) {
+      ar.run.bleedOut(c.getUniqueId()); // Cy is out: nothing to find, and no vault
+    }
+    clearCombat(ar, a, c);
+    assertFalse(nextMatching(a, "Saved:"), "a save point every 2 fight rooms: not yet");
+    assertFalse(nextMatching(c, "You carry a find"));
+    runs.end(ar, false, null);
+    assertEquals(List.of(), got, "nothing was banked, and what was carried stays behind");
+    // the same rules, won: the second fight (the boss) banks, then everything comes home
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "normal");
+    ar = only();
+    for (int i = 0; i < 4; i++) {
+      ar.run.bleedOut(c.getUniqueId());
+    }
+    clearCombat(ar, a, c);
     into(a, RoomType.BOSS);
-    into(b, RoomType.BOSS);
+    into(c, RoomType.BOSS);
     ticks(14);
     killAll();
     ticks(4);
-    runs.quit(b); // away (not downed): no fall
+    assertTrue(nextMatching(a, "Saved:"));
     into(a, RoomType.VAULT);
     ticks(2);
-    assertFalse(got.contains("Bo BOSS"), "away at the vault: nothing yet");
-    b.teleport(at(middle(room(RoomType.VAULT))));
-    runs.sweep(b);
-    assertTrue(got.contains("Bo BOSS"), "back during the finish: their finds are theirs " + got);
-    assertFalse(got.contains("Bo EVENT"));
-    assertTrue(nextMatching(b, "Some of your finds could not be paid. Tell staff."), "his event roll failed");
-    runs.sweep(b); // (nothing held any more)
-    runs.rewards(null);
-    runs.sweep(a);
+    assertTrue(got.contains("Ann VAULT") && !got.contains("Cy VAULT"), got.toString());
     runs.runs().forEach(r -> runs.end(r, false, null));
+    // a fall after a save loses nothing; with half kept and no rewards to pay with, nothing is paid
+    got.clear();
+    difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(1, true, 0.5),
+        false, 1));
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "normal");
+    ar = only();
+    clearCombat(ar, a);
+    into(a, RoomType.REST);
+    ticks(2);
+    assertTrue(runs.down(a));
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    assertFalse(nextMatching(a, "You fell: what you carried is lost."), "it was all banked");
+    runs.end(ar, false, null); // (a real roll: one of one, or none)
+    assertTrue(nextMatching(a, "of 1 banked finds come home."));
+    runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "normal");
+    ar = only();
+    clearCombat(ar, a);
+    runs.rewards(null);
+    runs.end(ar, false, null);
+    difficulties = List.of();
+  }
+
+  @Test
+  void mythicDestroysTheWornGearOfAPlayerWhoFalls() {
+    difficulties = List.of(new Difficulty("mythic", "Mythic", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(0, false, 0),
+        true, 2));
+    var lockers = mock(net.tfminecraft.trialrooms.dungeon.locker.LockerService.class);
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    PlayerMock c = player("Cy");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId(), c.getUniqueId()));
+    when(lockers.forfeitWorn(b)).thenReturn(true);
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "mythic");
+    assertTrue(nextMatching(a, "Your worn dungeon gear is at stake"));
+    into(a, RoomType.COMBAT);
+    into(b, RoomType.COMBAT);
+    into(c, RoomType.COMBAT);
+    ticks(12);
+    assertTrue(runs.down(c)); // no lockers yet: nothing to destroy
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    runs.lockers(lockers);
+    assertTrue(runs.down(b));
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    verify(lockers).forfeitWorn(b);
+    assertTrue(nextMatching(b, "Your worn dungeon gear is destroyed."));
+    assertTrue(runs.down(a));
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    assertFalse(nextMatching(a, "is destroyed"), "nothing worn: nothing destroyed");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    difficulties = List.of();
   }
 
   @Test

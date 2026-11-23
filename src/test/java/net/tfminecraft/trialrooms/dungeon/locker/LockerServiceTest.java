@@ -100,6 +100,27 @@ class LockerServiceTest {
   }
 
   @Test
+  void aWornLoadoutCanBeForfeited() throws Exception {
+    Locker l = kitted();
+    assertFalse(lockers.forfeitWorn(ann), "nothing worn");
+    ann.getInventory().setItem(0, named(Material.IRON_SWORD, "own sword"));
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    assertTrue(lockers.forfeitWorn(ann));
+    assertTrue(l.items().isEmpty(), "the worn pieces are gone from the locker");
+    assertEquals("own sword", name(ann.getInventory().getItem(0)), "own items come back");
+    // a take-off that can't be saved destroys nothing
+    Locker l2 = kitted();
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    Path tmp = store.file(ann.getUniqueId(), "c1").resolveSibling("c1.locker.tmp");
+    Files.createDirectories(tmp);
+    assertFalse(lockers.forfeitWorn(ann));
+    assertEquals(2, l2.items().size());
+    Files.delete(tmp);
+    assertNull(new LockerService(plugin, store, codec, p -> null, p -> { }).locker(ann));
+    assertFalse(new LockerService(plugin, store, codec, p -> null, p -> { }).forfeitWorn(ann), "no character");
+  }
+
+  @Test
   void aLoadoutGoesOnAndComesOffWithTheOwnItemsBack() {
     ann.getInventory().setHelmet(named(Material.IRON_HELMET, "own helm"));
     ann.getInventory().setItem(0, named(Material.IRON_SWORD, "own sword"));

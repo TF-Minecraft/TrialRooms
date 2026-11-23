@@ -57,7 +57,7 @@ class DifficultyMenuTest {
     assertFalse(m.stillAtGate(), "the gate was removed");
     m.click(m.slot(0), false);
     server.getScheduler().performOneTick();
-    verify(runs, never()).useGate(any(), any(), any(), anyBoolean());
+    verify(runs, never()).useGate(any(), any(), any());
     assertEquals("§cYou are no longer at the gate.", ann.nextMessage());
     when(gates.at(any())).thenReturn(gate);
     ann.teleport(new org.bukkit.Location(server.addSimpleWorld("other"), 2, 2, 5));
@@ -69,7 +69,7 @@ class DifficultyMenuTest {
     assertFalse(m.stillAtGate(), "offline");
     m.click(m.slot(0), false);
     server.getScheduler().performOneTick();
-    verify(runs, never()).useGate(any(), any(), any(), anyBoolean());
+    verify(runs, never()).useGate(any(), any(), any());
   }
 
   @AfterEach
@@ -100,25 +100,20 @@ class DifficultyMenuTest {
     assertEquals("§cHard is not open for you yet.", ann.nextMessage());
     m.click(4, false); // nothing there
     m.click(11, false);
-    verify(runs, never()).useGate(any(), any(), any(), anyBoolean());
+    verify(runs, never()).useGate(any(), any(), any());
     server.getScheduler().performOneTick();
-    verify(runs).useGate(ann, gate, "normal", false);
+    verify(runs).useGate(ann, gate, "normal");
   }
 
   @Test
-  void hardcoreIsAToggleOnTheScreen() {
-    DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(normal)));
+  void theScreenShowsEachDifficultysLootRules() {
+    Difficulty mythic = new Difficulty("mythic", "Mythic", 4, 3, 2, null, "", 0, 0, new Difficulty.Banking(0, false, 0),
+        true, 2);
+    DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(mythic)));
+    when(runs.unlocked(ann, "delve", mythic)).thenReturn(true);
     m.open();
-    assertEquals(Material.GRAY_DYE, m.getInventory().getItem(DifficultyMenu.HARDCORE).getType());
-    assertFalse(m.hardcore());
-    m.click(DifficultyMenu.HARDCORE, false);
-    assertTrue(m.hardcore());
-    assertEquals(Material.RED_DYE, m.getInventory().getItem(DifficultyMenu.HARDCORE).getType());
-    m.click(m.slot(0), false);
-    server.getScheduler().performOneTick();
-    verify(runs).useGate(ann, gate, "normal", true);
-    m.click(DifficultyMenu.HARDCORE, false);
-    assertFalse(m.hardcore(), "and off again");
+    String lore = String.valueOf(m.getInventory().getItem(m.slot(0)).getItemMeta().lore());
+    assertTrue(lore.contains("comes home only if the boss falls") && lore.contains("Your worn dungeon gear is at stake"), lore);
   }
 
   @Test
@@ -172,6 +167,6 @@ class DifficultyMenuTest {
     m.click(26, false); // past the five buttons
     m.click(17, false);
     server.getScheduler().performOneTick();
-    verify(runs).useGate(ann, gate, "d4", false);
+    verify(runs).useGate(ann, gate, "d4");
   }
 }

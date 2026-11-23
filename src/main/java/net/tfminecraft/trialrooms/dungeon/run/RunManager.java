@@ -100,10 +100,27 @@ public final class RunManager {
     }
 
     /** A run with what it needs in the world. */
-    /** What a member found in a hardcore run before the vault: the reward moments, and hours of spoils. */
-    static final class Unsecured {
+    /** Finds not yet paid: the reward moments, and hours of spoils. */
+    static final class Finds {
         final List<RunRewards.Moment> moments = new ArrayList<>();
         double hours;
+
+        boolean any() {
+            return moments.size() + hours > 0;
+        }
+
+        void take(Finds other) {
+            moments.addAll(other.moments);
+            hours += other.hours;
+            other.moments.clear();
+            other.hours = 0;
+        }
+    }
+
+    /** A member's finds in a run that banks them: what they carry, and what a save point banked. */
+    static final class Held {
+        final Finds carried = new Finds();
+        final Finds banked = new Finds();
     }
 
     public static final class ActiveRun {
@@ -169,12 +186,17 @@ public final class RunManager {
         Affixes affixConfig;
         /** Enemies made stronger by nearby deaths (Bolstering): how many times. */
         final Map<UUID, Integer> bolstered = new HashMap<>();
-        /** A hardcore run: what members find is theirs only once they reach the vault. */
-        boolean hardcore;
-        /** A hardcore run's unsecured finds, per member. */
-        final Map<UUID, Unsecured> unsecured = new HashMap<>();
-        /** Whether finds are still held (a hardcore run until its vault; after it, finds are paid at once). */
+        /** How the run's difficulty banks finds (null: paid at once), and whether worn gear is at stake. */
+        Difficulty.Banking banking;
+        boolean gearAtRisk;
+        /** What item chances and marks are multiplied by (the difficulty's, for the risk). */
+        double boost = 1;
+        /** Members' finds not yet paid. */
+        final Map<UUID, Held> held = new HashMap<>();
+        /** Whether finds are still held (a banking run until its vault; after it, finds are paid at once). */
         boolean holding;
+        /** Fight rooms cleared (save points come every so many). */
+        int fightsCleared;
         /** Who was in the run when it reached the vault (named on trophies secured later). */
         List<String> securedParty = List.of();
 
@@ -280,19 +302,19 @@ public final class RunManager {
 
     private void reward(ActiveRun ar, RunRewards.Moment moment, boolean underPar) {
         if (rewards != null && ar.holding) { // (holding ends as the vault is reached)
-            // unsecured until the vault: kept as moments, rolled there (or lost on a fall)
-            forPlaying(ar, "the unsecured " + moment, p -> {
+            // carried: rolled once it comes home (or lost on a fall)
+            forPlaying(ar, "the carried " + moment, p -> {
                 if (ar.run.member(p.getUniqueId()).status() != Status.OUT) { // (out of the fight: nothing to find)
-                    held(ar, p).moments.add(moment);
-                    p.sendMessage("§6Unsecured find §7(" + moment.name().toLowerCase() + "): yours once you reach the vault.");
+                    held(ar, p).carried.moments.add(moment);
+                    p.sendMessage("§6You carry a find §7(" + moment.name().toLowerCase() + "): bank it or win to bring it home.");
                 }
             });
             return;
         }
         if (rewards != null) {
             forPlaying(ar, "the " + moment + " reward", p -> {
-                if (!(ar.hardcore && ar.run.member(p.getUniqueId()).status() == Status.OUT)) { // (in hardcore, the fallen lose it)
-                    rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id(), underPar, ar.hardcore);
+                if (!(ar.banking != null && ar.run.member(p.getUniqueId()).status() == Status.OUT)) { // (the fallen lose it)
+                    rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id(), underPar, ar.boost);
                 }
             });
         }
@@ -325,7 +347,7 @@ public final class RunManager {
                 return;
             }
             if (ar.holding) {
-                held(ar, p).hours += hours;
+                held(ar, p).carried.hours += hours;
             } else {
                 rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id());
             }
@@ -428,13 +450,8 @@ public final class RunManager {
 
     /** A player opens a gate at a difficulty (null: the first, or none). */
     public void useGate(Player p, GateStore.Gate gate, String difficulty) {
-        useGate(p, gate, difficulty, false);
-    }
-
-    /** As {@link #useGate(Player, GateStore.Gate, String)}, hardcore or not. */
-    public void useGate(Player p, GateStore.Gate gate, String difficulty, boolean hardcore) {
         Location at = new Location(p.getWorld(), gate.x() + 0.5, gate.y() + 0.5, gate.z() + 0.5);
-        open(p, gate.recipe(), at, ThreadLocalRandom.current().nextLong(), true, difficulty, true, hardcore);
+        open(p, gate.recipe(), at, ThreadLocalRandom.current().nextLong(), true, difficulty, true);
     }
 
     /** A staff member starts a run for themselves and their nearby party, without a key. */
@@ -444,12 +461,7 @@ public final class RunManager {
 
     /** As {@link #startRun(Player, String, long)}, at a difficulty (staff need not have opened it). */
     public void startRun(Player p, String recipeId, long seed, String difficulty) {
-        startRun(p, recipeId, seed, difficulty, false);
-    }
-
-    /** As {@link #startRun(Player, String, long, String)}, hardcore or not. */
-    public void startRun(Player p, String recipeId, long seed, String difficulty, boolean hardcore) {
-        open(p, recipeId, p.getLocation(), seed, false, difficulty, false, hardcore);
+        open(p, recipeId, p.getLocation(), seed, false, difficulty, false);
     }
 
     /** Whether a player may open a dungeon at a difficulty: it needs none, or they have won the one it needs. */
@@ -462,7 +474,7 @@ public final class RunManager {
     }
 
     private void open(Player p, String recipeId, Location at, long seed, boolean useKey, String difficultyId,
-            boolean checkOpen, boolean hardcore) {
+            boolean checkOpen) {
         RecipeLoader.Entry entry = module.recipes().get(recipeId);
         if (entry == null) {
             p.sendMessage("§cThis gate leads nowhere (unknown dungeon " + recipeId + ").");
@@ -515,7 +527,7 @@ public final class RunManager {
             enqueue(p, recipeId);
             return;
         }
-        begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "", difficulty, useKey, hardcore);
+        begin(p, group, entry, recipeId, seed, needsKey ? rules.keyPath() : "", difficulty, useKey);
     }
 
     /** The opener and every party member near the gate who can enter. */
@@ -536,7 +548,7 @@ public final class RunManager {
     }
 
     private void begin(Player leader, List<Player> group, RecipeLoader.Entry entry, String recipeId, long seed,
-            String keyPath, Difficulty difficulty, boolean ranked, boolean hardcore) {
+            String keyPath, Difficulty difficulty, boolean ranked) {
         RunRules rules = difficulty == null ? entry.rules() : entry.rules().with(difficulty);
         DungeonLayout layout;
         LayoutPlacer placer;
@@ -578,8 +590,10 @@ public final class RunManager {
             ActiveRun ar = new ActiveRun(run, geo, placer, kit, rules, leader.getUniqueId(), keyPath, arrival);
             ar.difficulty = difficulty;
             ar.ranked = ranked;
-            ar.hardcore = hardcore;
-            ar.holding = hardcore;
+            ar.banking = difficulty == null ? null : difficulty.banking();
+            ar.gearAtRisk = difficulty != null && difficulty.gearAtRisk();
+            ar.boost = difficulty == null ? 1 : difficulty.boost();
+            ar.holding = ar.banking != null;
             ar.affixConfig = module.affixes();
             ar.affixes = weeklyAffixes(recipeId, rules.tier());
             ar.damageFactor = difficulty == null ? 1 : difficulty.damage();
@@ -627,9 +641,8 @@ public final class RunManager {
                 if (difficulty != null) {
                     m.sendMessage("§7Difficulty: §f" + difficulty.name() + "§7 (tier " + difficulty.tier() + ").");
                 }
-                if (hardcore) {
-                    m.sendMessage("§4Hardcore: §7what you find is yours only once you reach the vault. Fall, or leave,"
-                            + " and it is lost. It pays more for the risk.");
+                for (String rule : difficulty == null ? List.<String>of() : difficulty.lootRules()) {
+                    m.sendMessage((rule.startsWith("Your worn") ? "§4" : "§7") + rule);
                 }
                 for (WeeklyAffix a : ar.affixes) {
                     m.sendMessage("§5This week: " + a.title() + " §7(" + a.hint() + ")");
@@ -876,6 +889,9 @@ public final class RunManager {
         if (type == RoomType.REST && ar.run.checkpoint() != room) {
             ar.run.checkpoint(room);
             tell(ar, "§aA quiet room. Anyone who falls will wake here.");
+            if (ar.holding && ar.banking.rest()) {
+                bank(ar);
+            }
         } else if (type == RoomType.VAULT && ar.run.bossDefeated() && ar.run.state() == DungeonRun.State.RUNNING) {
             complete(ar);
         }
@@ -1077,6 +1093,10 @@ public final class RunManager {
             feat(ar, moment);
         }
         spoils(ar, false);
+        ar.fightsCleared++;
+        if (ar.holding && ar.banking.every() > 0 && ar.fightsCleared % ar.banking.every() == 0) {
+            bank(ar);
+        }
     }
 
     /** What clearing a room of this type pays out: the boss, an elite room, or a finished event. */
@@ -1419,9 +1439,6 @@ public final class RunManager {
             }
             ar.run.online(p.getUniqueId());
             respawned(p);
-            if (ar.run.state() == DungeonRun.State.COMPLETE) {
-                secure(ar, p); // away when the party reached the vault: their finds are theirs on coming back
-            }
             if (m.status() != Status.OUT) {
                 Location fight = wakePoint(ar);
                 if (ar.geo.roomAt(fight.getX(), fight.getZ()) != ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ())
@@ -1468,6 +1485,9 @@ public final class RunManager {
             return false;
         }
         boolean here = inDungeonWorld(p) && isPlayingMember(ar, p);
+        if (here) { // (leaving before the boss falls is a run that failed, for them)
+            payout(ar, p, ar.run.state() == DungeonRun.State.COMPLETE ? 1 : keep(ar), false);
+        }
         ar.run.leave(p.getUniqueId());
         fights.left(ar, p);
         events.left(ar, p);
@@ -1535,9 +1555,8 @@ public final class RunManager {
         recordWin(ar);
         ar.securedParty = stayed(ar);
         ar.holding = false; // (what is found from now on is paid at once)
-        if (ar.hardcore) {
-            secure(ar);
-        }
+        // the boss fell: what each member here carries and banked comes home
+        forPlaying(ar, "the finds", p -> payout(ar, p, 1, true));
         long took = clock.getAsLong() - ar.openedMs;
         boolean underPar = ar.rules.par() > 0 && took <= ar.rules.par() * 60_000;
         if (ar.rules.par() > 0) {
@@ -1545,7 +1564,6 @@ public final class RunManager {
                     + ")! §7The vault favours you." : "§7Par was " + Records.time((long) (ar.rules.par() * 60_000)) + ".");
         }
         reward(ar, RunRewards.Moment.VAULT, underPar);
-        // (a hardcore vault's own reward is boosted too, through reward's hardcore flag)
         feat(ar, RunRewards.Moment.VAULT);
         spoils(ar, true);
         record(ar);
@@ -1554,7 +1572,7 @@ public final class RunManager {
     /** A feat for each member still playing: trophies and wardrobe skins may come of it. */
     private void feat(ActiveRun ar, RunRewards.Moment moment) {
         if (rewards != null && ar.holding) { // (holding ends as the vault is reached)
-            return; // (a hardcore boss's trophy roll comes with its unsecured reward at the vault)
+            return; // (a carried boss's trophy roll comes with its reward when it comes home)
         }
         if (rewards != null) {
             String d = ar.difficulty == null ? "" : ar.difficulty.id();
@@ -1589,45 +1607,89 @@ public final class RunManager {
                 .map(Map.Entry::getValue).toList();
     }
 
-    /** A member falls (a bleed-out): a hardcore run's unsecured finds are lost. True when a life brought them back. */
-    /** A member's unsecured finds in a hardcore run (started on their first find). */
-    private static Unsecured held(ActiveRun ar, Player p) {
-        return ar.unsecured.computeIfAbsent(p.getUniqueId(), k -> new Unsecured());
+    /** A member's finds in a banking run (started on their first find). */
+    private static Held held(ActiveRun ar, Player p) {
+        return ar.held.computeIfAbsent(p.getUniqueId(), k -> new Held());
     }
 
+    /** A save point: what each member carries is banked. */
+    private void bank(ActiveRun ar) {
+        for (Map.Entry<UUID, Held> e : ar.held.entrySet()) {
+            if (e.getValue().carried.any()) {
+                e.getValue().banked.take(e.getValue().carried);
+                java.util.Optional.ofNullable(Bukkit.getPlayer(e.getKey()))
+                        .ifPresent(p -> p.sendMessage("§a✦ Saved: §7what you carried is banked."));
+            }
+        }
+    }
+
+    /**
+     * A member falls (a bleed-out): what they carry is lost (banked finds stay), and where gear is
+     * at stake, the dungeon gear they wear is destroyed. True when a life brought them back.
+     */
     private boolean fell(ActiveRun ar, Player p) {
         boolean back = ar.run.bleedOut(p.getUniqueId());
-        if (ar.unsecured.remove(p.getUniqueId()) != null) {
-            p.sendMessage("§cYou fell: what you found this hardcore run is lost.");
+        Held h = ar.held.get(p.getUniqueId());
+        if (h != null && h.carried.any()) {
+            h.carried.moments.clear();
+            h.carried.hours = 0;
+            p.sendMessage("§cYou fell: what you carried is lost. §7Banked finds are safe.");
+        }
+        if (ar.gearAtRisk && lockers != null && lockers.forfeitWorn(p)) {
+            p.sendMessage("§4Your worn dungeon gear is destroyed.");
         }
         return back;
     }
 
-    /** A hardcore run reached the vault: each member still in it gets what they found, boosted for the risk. */
-    private void secure(ActiveRun ar) {
-        forPlaying(ar, "the secured finds", p -> secure(ar, p));
+    /** The chance each banked find comes home when a run fails. */
+    private static double keep(ActiveRun ar) {
+        return ar.banking == null ? 1 : ar.banking.keep();
     }
 
-    /** One member's held finds, paid (each on its own, so one that fails never takes the rest with it). */
-    private void secure(ActiveRun ar, Player p) {
-        Unsecured u = rewards == null ? null : ar.unsecured.remove(p.getUniqueId());
-        if (u == null) {
+    /** Rolls whether a banked find comes home when a run fails. */
+    java.util.function.DoubleSupplier keepRoll = () -> ThreadLocalRandom.current().nextDouble();
+
+    /**
+     * Pays what a member found: their banked finds (each kept with the chance {@code keep}), and,
+     * with {@code carried}, what they carry too. Each is paid on its own, so one that fails never
+     * takes the rest with it.
+     */
+    private void payout(ActiveRun ar, Player p, double keep, boolean carried) {
+        Held h = ar.held.remove(p.getUniqueId());
+        if (h == null || rewards == null) {
             return;
         }
-        String d = ar.difficulty == null ? "" : ar.difficulty.id();
-        List<String> party = ar.securedParty;
-        boolean ok = true;
-        for (RunRewards.Moment m : u.moments) {
-            ok &= safely(p, "a secured " + m,
-                    () -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), m, ar.run.id(), false, true));
-            if (m == RunRewards.Moment.BOSS) {
-                ok &= safely(p, "a secured trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), party));
+        Finds pay = new Finds();
+        int banked = h.banked.moments.size();
+        for (RunRewards.Moment m : h.banked.moments) {
+            if (keep >= 1 || keepRoll.getAsDouble() < keep) {
+                pay.moments.add(m);
             }
         }
-        if (u.hours > 0) {
-            ok &= safely(p, "the secured spoils", () -> rewards.spoils(p, ar.run.recipeId(), u.hours, ar.run.id()));
+        pay.hours = h.banked.hours * keep;
+        if (carried) {
+            pay.take(h.carried);
         }
-        p.sendMessage(ok ? "§a✦ Your finds are secured." : "§cSome of your finds could not be paid. Tell staff.");
+        String d = ar.difficulty.id(); // (only a difficulty banks finds)
+        boolean ok = true;
+        for (RunRewards.Moment m : pay.moments) {
+            ok &= safely(p, "a found " + m,
+                    () -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), m, ar.run.id(), false, ar.boost));
+            if (m == RunRewards.Moment.BOSS) {
+                ok &= safely(p, "a trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), ar.securedParty));
+            }
+        }
+        if (pay.hours > 0) {
+            double hours = pay.hours;
+            ok &= safely(p, "the spoils", () -> rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id()));
+        }
+        if (!ok) {
+            p.sendMessage("§cSome of your finds could not be paid. Tell staff.");
+        } else if (keep < 1 && banked > 0) {
+            p.sendMessage("§e" + pay.moments.size() + " of " + banked + " banked finds come home.");
+        } else if (pay.any()) {
+            p.sendMessage("§a✦ Your finds come home.");
+        }
     }
 
     private boolean safely(Player p, String what, Runnable give) {
@@ -1707,6 +1769,8 @@ public final class RunManager {
                 if (reason != null) {
                     p.sendMessage(reason);
                 }
+                // what they banked comes home by the difficulty's rules; a fault (a stop) loses nothing
+                payout(ar, p, outcome == DungeonRun.State.COMPLETE || fault ? 1 : keep(ar), fault);
                 ar.downedAt.remove(m.id());
                 sendBack(p, m.characterId());
             }

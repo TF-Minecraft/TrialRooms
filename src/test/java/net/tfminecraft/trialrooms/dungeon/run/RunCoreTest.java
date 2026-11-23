@@ -338,6 +338,28 @@ public class RunCoreTest {
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, Double.POSITIVE_INFINITY));
     assertEquals(0, party.par(), "no par time");
+    // a difficulty's loot rules, as players read them
+    Difficulty.Banking b = new Difficulty.Banking(2, true, 1);
+    assertEquals(List.of("What you find is banked every 2 cleared fight rooms and at the rest room.",
+        "If the run fails, you keep all you banked.", "Fall, and what you carry is lost."),
+        new Difficulty("n", "N", 1, 1, 1, null, "", 0, 0, b, false, 1).lootRules());
+    assertEquals("What you find is banked every 3 cleared fight rooms.",
+        new Difficulty("n", "N", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(3, false, 0), false, 1).lootRules().get(0));
+    assertEquals("If the run fails, what you banked is lost too.",
+        new Difficulty("n", "N", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(3, false, 0), false, 1).lootRules().get(1));
+    assertEquals("What you find is banked at the rest room.",
+        new Difficulty("h", "H", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(0, true, 0.5), false, 1).lootRules().get(0));
+    assertEquals(List.of("Item chances and marks x1.5 for the risk."),
+        new Difficulty("x", "X", 1, 1, 1, null, "", 0, 0, null, false, 1.5).lootRules());
+    assertEquals(List.of(), new Difficulty("x", "X", 1, 1, 1, null, "").lootRules(), "paid at once, nothing at stake");
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(-1, false, 0));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(0, false, -0.1));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(0, false, 1.1));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty("x", "X", 1, 1, 1, null, "", 0, 0, null, false, 0.5));
+    assertThrows(IllegalArgumentException.class,
+        () -> new Difficulty("x", "X", 1, 1, 1, null, "", 0, 0, null, false, Double.POSITIVE_INFINITY));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty("x", "X", 1, 1, 1, null, "", Double.NaN, 0));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty("x", "X", 1, 1, 1, null, "", 0, Double.NaN));
     assertEquals(1, party.minRoomCells(), "any fight room");
     assertEquals(1, party.bossHealth());
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 0, 1));

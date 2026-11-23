@@ -575,6 +575,24 @@ public final class LockerService {
         merged.forEach(l::owe);
     }
 
+    /**
+     * Destroys the loadout a player wears (a fall where gear is at stake): it comes off as at a
+     * take-off, own items back, and its dungeon items leave the locker. False when nothing was
+     * worn or the take-off didn't go through (then nothing is destroyed).
+     */
+    public boolean forfeitWorn(Player p) {
+        Locker l = locker(p);
+        if (l == null || l.worn() < 0) {
+            return false;
+        }
+        List<String> ids = new ArrayList<>(l.loadout(l.worn()).values());
+        if (takeOff(p) != Result.DONE) {
+            return false;
+        }
+        ids.forEach(l::remove);
+        return saveLocker(p, l);
+    }
+
     /** Whether the player carries the mark of a wear for their current character (for tests and staff). */
     boolean marked(Player p) {
         String character = characters.apply(p);
