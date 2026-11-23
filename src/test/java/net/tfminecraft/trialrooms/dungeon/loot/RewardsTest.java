@@ -149,6 +149,8 @@ public class RewardsTest {
     rewards(doubles(0.9)).reward(ann, "delve_seithr", 1, Moment.VAULT, run, true);
     assertEquals(15, locker.marks(), "10 for the vault, 5 for par");
     verify(loot).roll(ann, 1, 0.5, null, null);
+    rewards(doubles(0.9)).reward(ann, "delve_seithr", 1, Moment.BOSS, run, true);
+    assertEquals(20, locker.marks(), "par never betters another moment: the boss's 5 only");
   }
 
   @Test

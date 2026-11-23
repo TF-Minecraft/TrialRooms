@@ -198,6 +198,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     /** Under par, the vault pays extra marks (inside the weekly cap) and rolls with extra luck. */
     @Override
     public void reward(Player p, String recipe, int tier, Moment moment, UUID run, boolean underPar) {
+        boolean par = underPar && moment == Moment.VAULT; // (par only ever betters the vault)
         RewardRules r = rules.get();
         Locker l = lockers.locker(p);
         if (r == null || l == null) {
@@ -217,7 +218,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             }
             l.lastRun(run.toString(), rolls);
         }
-        int pay = Math.min(r.marks(moment) + (underPar ? r.parMarks() : 0), Math.max(0, r.weeklyMarks() - l.weekMarks()));
+        int pay = Math.min(r.marks(moment) + (par ? r.parMarks() : 0), Math.max(0, r.weeklyMarks() - l.weekMarks()));
         if (pay > 0) {
             l.marks(l.marks() + pay);
             l.weekMarks(l.weekMarks() + pay);
@@ -231,7 +232,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
                 l.pity(win ? 0 : l.pity() + r.pity());
             }
             if (win) {
-                found = drop(p, r, tier, underPar ? r.parLuck() : 0);
+                found = drop(p, r, tier, par ? r.parLuck() : 0);
             }
         }
         // The find, the marks and the counters go to disk in one write: none can be kept without the rest.
