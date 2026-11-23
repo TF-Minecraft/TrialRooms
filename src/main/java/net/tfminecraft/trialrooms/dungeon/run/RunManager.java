@@ -269,7 +269,7 @@ public final class RunManager {
             task.cancel();
         }
         for (ActiveRun ar : new ArrayList<>(runs.values())) {
-            end(ar, true, "§cThe dungeon fades as the world shifts. Your key is returned.");
+            end(ar, true, true, "§cThe dungeon fades as the world shifts. Your key is returned.");
         }
         bars.hideOlder(Long.MAX_VALUE); // no tick will take them down any more
         if (lockers != null) {
@@ -779,7 +779,9 @@ public final class RunManager {
             int room = ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ());
             if (room != m.room()) {
                 m.room(room);
-                entered(ar, p, room);
+                if (m.status() != Status.OUT) { // (a spectator flying about sets no checkpoint and banks nothing)
+                    entered(ar, p, room);
+                }
             }
             if (room >= 0 && ar.visited.add(room)) {
                 ar.progressMs = now;
@@ -1486,6 +1488,9 @@ public final class RunManager {
         }
         boolean here = inDungeonWorld(p) && isPlayingMember(ar, p);
         if (here) { // (leaving before the boss falls is a run that failed, for them)
+            if (ar.run.member(p.getUniqueId()).status() == Status.DOWNED) {
+                fell(ar, p); // (leaving while down is a fall: it dodges no loss)
+            }
             payout(ar, p, ar.run.state() == DungeonRun.State.COMPLETE ? 1 : keep(ar), false);
         }
         ar.run.leave(p.getUniqueId());
@@ -1635,7 +1640,7 @@ public final class RunManager {
             h.carried.hours = 0;
             p.sendMessage("§cYou fell: what you carried is lost. §7Banked finds are safe.");
         }
-        if (ar.gearAtRisk && lockers != null && lockers.forfeitWorn(p)) {
+        if (ar.gearAtRisk && ar.run.state() == DungeonRun.State.RUNNING && lockers != null && lockers.forfeitWorn(p)) {
             p.sendMessage("§4Your worn dungeon gear is destroyed.");
         }
         return back;
@@ -1676,7 +1681,8 @@ public final class RunManager {
             ok &= safely(p, "a found " + m,
                     () -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), m, ar.run.id(), false, ar.boost));
             if (m == RunRewards.Moment.BOSS) {
-                ok &= safely(p, "a trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), ar.securedParty));
+                List<String> party = ar.securedParty.isEmpty() ? stayed(ar) : ar.securedParty;
+                ok &= safely(p, "a trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, m, ar.run.id(), party));
             }
         }
         if (pay.hours > 0) {
@@ -1752,6 +1758,12 @@ public final class RunManager {
     }
 
     private void fail(ActiveRun ar) {
+        for (Player p : online(ar)) { // the ones still down when the party wipes fall too
+            if (ar.run.member(p.getUniqueId()).status() == Status.DOWNED) {
+                clearDowned(ar, p);
+                fell(ar, p);
+            }
+        }
         ar.run.state(DungeonRun.State.FAILED);
         ar.finishAtMs = clock.getAsLong() + 5000L;
         tell(ar, "§cYour party has fallen. The dungeon casts you out.");
@@ -1759,6 +1771,14 @@ public final class RunManager {
 
     /** Ends a run now, sending everyone inside back. With {@code fault}, the key is refunded. */
     public void end(ActiveRun ar, boolean fault, String reason) {
+        end(ar, fault, false, reason);
+    }
+
+    /**
+     * As {@link #end(ActiveRun, boolean, String)}; {@code stop} is a server stop: then nobody loses
+     * what they found (not their fault), where any other end that isn't a win counts as a failed run.
+     */
+    public void end(ActiveRun ar, boolean fault, boolean stop, String reason) {
         DungeonRun.State outcome = ar.run.state();
         ar.run.state(DungeonRun.State.ENDED);
         runs.remove(ar.run.id());
@@ -1770,7 +1790,7 @@ public final class RunManager {
                     p.sendMessage(reason);
                 }
                 // what they banked comes home by the difficulty's rules; a fault (a stop) loses nothing
-                payout(ar, p, outcome == DungeonRun.State.COMPLETE || fault ? 1 : keep(ar), fault);
+                payout(ar, p, outcome == DungeonRun.State.COMPLETE || stop ? 1 : keep(ar), stop);
                 ar.downedAt.remove(m.id());
                 sendBack(p, m.characterId());
             }

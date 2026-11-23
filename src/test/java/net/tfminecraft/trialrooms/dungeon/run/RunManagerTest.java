@@ -656,8 +656,15 @@ class RunManagerTest {
     runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "hard");
     ar = only();
     clearCombat(ar, a);
-    runs.end(ar, true, "§cThe dungeon fades.");
-    assertEquals(List.of("Ann EVENT", "Ann spoils"), got, "carried, but not the players' fault");
+    runs.end(ar, true, true, "§cThe dungeon fades.");
+    assertEquals(List.of("Ann EVENT", "Ann spoils"), got, "a server stop: carried, but not the players' fault");
+    // a staff end is a failed run: what was carried stays behind
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(18, 69, 10), "delve"), "hard");
+    ar = only();
+    clearCombat(ar, a);
+    runs.end(ar, true, "§cA keeper of the dungeons has closed this run.");
+    assertEquals(List.of(), got);
     // failed before the rest room: nothing banked, so nothing comes home
     got.clear();
     runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "hard");
@@ -749,6 +756,18 @@ class RunManagerTest {
     ticks(2);
     assertTrue(got.contains("Ann VAULT") && !got.contains("Cy VAULT"), got.toString());
     runs.runs().forEach(r -> runs.end(r, false, null));
+    // banked at the boss, then failed before the vault: the trophy names the party all the same
+    got.clear();
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(13, 69, 10), "delve"), "normal");
+    ar = only();
+    clearCombat(ar, a);
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    runs.end(ar, false, null);
+    assertTrue(got.contains("Ann feat BOSS"), got.toString());
     // a fall after a save loses nothing; with half kept and no rewards to pay with, nothing is paid
     got.clear();
     difficulties = List.of(new Difficulty("normal", "Normal", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(1, true, 0.5),
@@ -799,10 +818,41 @@ class RunManagerTest {
     ticks(1);
     verify(lockers).forfeitWorn(b);
     assertTrue(nextMatching(b, "Your worn dungeon gear is destroyed."));
+    RunManager.ActiveRun ar = only();
     assertTrue(runs.down(a));
     now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
     ticks(1);
     assertFalse(nextMatching(a, "is destroyed"), "nothing worn: nothing destroyed");
+    ar.run.state(DungeonRun.State.COMPLETE); // after the win, a death destroys nothing
+    runs.died(b);
+    verify(lockers, times(1)).forfeitWorn(b);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a wipe: whoever is still down falls with it; leaving while down is a fall too
+    rules = new RunRules(1, 3, "m.key", 0, 1, 0.5);
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "mythic");
+    into(a, RoomType.COMBAT);
+    into(b, RoomType.COMBAT);
+    ticks(12);
+    assertTrue(runs.down(a));
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1); // no lives: Ann is out
+    assertTrue(runs.down(b));
+    b.setSneaking(true); // alone, Bo gets himself up once in this room
+    ticks(settings.selfReviveSeconds() * 2 + 2);
+    b.setSneaking(false);
+    assertFalse(runs.isDowned(b));
+    assertTrue(runs.down(b));
+    ticks(1); // everyone down or out, and no more getting up: the party wipes
+    verify(lockers, times(2)).forfeitWorn(b);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "mythic");
+    into(a, RoomType.COMBAT);
+    into(b, RoomType.COMBAT);
+    ticks(12);
+    assertTrue(runs.down(b));
+    runs.leave(b);
+    verify(lockers, times(3)).forfeitWorn(b);
     runs.runs().forEach(r -> runs.end(r, false, null));
     difficulties = List.of();
   }
