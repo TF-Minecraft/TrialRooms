@@ -338,6 +338,28 @@ public class RunCoreTest {
     assertThrows(IllegalArgumentException.class,
         () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, Double.POSITIVE_INFINITY));
     assertEquals(0, party.par(), "no par time");
+    // a difficulty's loot rules, as players read them
+    Difficulty.Banking b = new Difficulty.Banking(2, true, 1);
+    assertEquals(List.of("What you find is banked every 2 cleared fight rooms and at the rest room.",
+        "If the run fails, you keep all you banked.", "Fall, and what you carry is lost."),
+        new Difficulty("n", "N", 1, 1, 1, null, "", 0, 0, b, false, 1).lootRules());
+    assertEquals("What you find is banked every 3 cleared fight rooms.",
+        new Difficulty("n", "N", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(3, false, 0), false, 1).lootRules().get(0));
+    assertEquals("If the run fails, what you banked is lost too.",
+        new Difficulty("n", "N", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(3, false, 0), false, 1).lootRules().get(1));
+    assertEquals("What you find is banked at the rest room.",
+        new Difficulty("h", "H", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(0, true, 0.5), false, 1).lootRules().get(0));
+    assertEquals(List.of("Item chances and marks x1.5 for the risk."),
+        new Difficulty("x", "X", 1, 1, 1, null, "", 0, 0, null, false, 1.5).lootRules());
+    assertEquals(List.of(), new Difficulty("x", "X", 1, 1, 1, null, "").lootRules(), "paid at once, nothing at stake");
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(-1, false, 0));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(0, false, -0.1));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(0, false, 1.1));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty("x", "X", 1, 1, 1, null, "", 0, 0, null, false, 0.5));
+    assertThrows(IllegalArgumentException.class,
+        () -> new Difficulty("x", "X", 1, 1, 1, null, "", 0, 0, null, false, Double.POSITIVE_INFINITY));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty("x", "X", 1, 1, 1, null, "", Double.NaN, 0));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty("x", "X", 1, 1, 1, null, "", 0, Double.NaN));
     assertEquals(1, party.minRoomCells(), "any fight room");
     assertEquals(1, party.bossHealth());
     assertThrows(IllegalArgumentException.class, () -> new RunRules(1, 1, "", 1, 1, 0, 1, "", 0, 0, 0, 0, 0, 0, 1));
@@ -409,5 +431,44 @@ public class RunCoreTest {
     } finally {
       org.mockbukkit.mockbukkit.MockBukkit.unmock();
     }
+  }
+
+  @Test
+  void treasureRoomsAndWaysOutAreInTheLootRules() {
+    List<String> rules = new Difficulty("n", "N", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(2, true, 1, true, 0.5),
+        false, 1).lootRules();
+    assertEquals("What you find is banked every 2 cleared fight rooms, in treasure rooms and at the rest room.", rules.get(0));
+    assertTrue(rules.get(3).startsWith("Some treasure rooms hold a way out"), rules.toString());
+    assertEquals("What you find is banked in treasure rooms.",
+        new Difficulty("h", "H", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(0, false, 0.5, true, 0), false, 1)
+            .lootRules().get(0));
+    assertEquals(3, new Difficulty("h", "H", 1, 1, 1, null, "", 0, 0, new Difficulty.Banking(0, false, 0.5, true, 0),
+        false, 1).lootRules().size(), "no way out: no line for it");
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(0, false, 0, false, -0.1));
+    assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(0, false, 0, false, 1.1));
+    RunFinds.Offer o = new RunFinds.Offer(List.of(), List.of(RunRewards.Find.of(RunRewards.Moment.EVENT)), 1);
+    assertFalse(o.allows(List.of(0, 0)), "each once");
+    assertFalse(o.allows(List.of(1)), "not there");
+    assertFalse(o.allows(List.of(-1)));
+    assertTrue(o.allows(List.of(0)), "a find without a value weighs 1");
+  }
+
+  @Test
+  void rewardsThatDontRollAheadRollFindsAtHandOver() {
+    List<String> got = new java.util.ArrayList<>();
+    RunRewards r = (p, recipe, tier, m, run) -> got.add(m.name());
+    UUID run = UUID.randomUUID();
+    assertEquals(RunRewards.Find.of(RunRewards.Moment.BOSS).label(),
+        r.find(null, "d", 1, RunRewards.Moment.BOSS, run, 1).label());
+    assertEquals(2.0, r.spoilsFind(null, "d", 2, run).hours());
+    r.deliver(null, r.find(null, "d", 1, RunRewards.Moment.BOSS, run, 1), "d", 1, run, 1, false);
+    assertEquals(List.of("BOSS"), got);
+    r.deliver(null, new RunRewards.Find(RunRewards.Moment.BOSS, 0, "x", 1, 1, true, List.of(), List.of(), true), "d", 1,
+        run, 1, false);
+    assertEquals(List.of("BOSS"), got, "a rolled find is not this rewards' to hand over");
+    assertEquals(0, r.value(null));
+    assertEquals(-1, r.marks(null));
+    assertFalse(r.spend(null, 1));
+    assertEquals(7, r.insurance(7));
   }
 }

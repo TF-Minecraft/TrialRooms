@@ -77,10 +77,18 @@ delve_seithr:
   # Chosen at the gate. tier: the run's tier (bigger fights, harder boss mechanics, loot of that
   # tier); health and damage: enemy multipliers on top of the party's; needs: the difficulty the
   # leader must have won here first. Normal is made for this act's roleplay gear.
+  # bank: what players find is carried; a save point banks it (every: after every so many cleared
+  # fight rooms; rest: on reaching the rest room); falling loses what is carried. If the boss falls
+  # everything comes home; if the run fails each banked find comes home with the chance keep.
+  # treasure: reaching a treasure room (a detour on a branch) banks too. exit: the chance each
+  # treasure room holds a way out, where each player may leave alone with finds worth up to half of what
+  # they would lose (or their best find). No bank section: finds are paid at once. gear-at-risk: falling destroys the dungeon gear worn.
+  # boost: item chances and marks multiplied for the risk.
   difficulties:
-    normal: {name: Normal, tier: 1, advice: "Made for this act's roleplay gear."}
-    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 25, par: 20, advice: "Made for rare dungeon gear."}
-    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 30, par: 25, advice: "Made for epic and legendary dungeon gear."}
+    normal: {name: Normal, tier: 1, bank: {every: 2, rest: true, keep: 1.0, treasure: true, exit: 0.5}, advice: "Made for this act's roleplay gear."}
+    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, bank: {rest: true, keep: 0.5, treasure: true, exit: 0.5}, minutes: 25, par: 20, advice: "Made for rare dungeon gear."}
+    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, bank: {keep: 0, exit: 0.5}, minutes: 30, par: 25, advice: "Made for epic and legendary dungeon gear."}
+    mythic: {name: Mythic, tier: 4, health: 3.0, damage: 2.0, needs: nightmare, bank: {keep: 0, exit: 0.5}, gear-at-risk: true, boost: 2.0, minutes: 36, par: 30, advice: "For the best-geared: your worn dungeon gear is at stake."}
 
 # The Seithr dungeon for a full party (3-5): longer, only roomier fight rooms (min-room-cells: the
 # fewest cells a fight room fills) and a tougher boss (boss-health: its health on top of the party's).
@@ -120,9 +128,10 @@ dungeon_seithr:
   minutes: 35
   par: 26
   difficulties:
-    normal: {name: Normal, tier: 1, advice: "Made for this act's roleplay gear."}
-    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 45, par: 34, advice: "Made for rare dungeon gear."}
-    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 55, par: 42, advice: "Made for epic and legendary dungeon gear."}
+    normal: {name: Normal, tier: 1, bank: {every: 2, rest: true, keep: 1.0, treasure: true, exit: 0.5}, advice: "Made for this act's roleplay gear."}
+    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, bank: {rest: true, keep: 0.5, treasure: true, exit: 0.5}, minutes: 45, par: 34, advice: "Made for rare dungeon gear."}
+    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, bank: {keep: 0, exit: 0.5}, minutes: 55, par: 42, advice: "Made for epic and legendary dungeon gear."}
+    mythic: {name: Mythic, tier: 4, health: 3.0, damage: 2.0, needs: nightmare, bank: {keep: 0, exit: 0.5}, gear-at-risk: true, boost: 2.0, minutes: 66, par: 50, advice: "For the best-geared: your worn dungeon gear is at stake."}
 
 # The Seithr warband (6-10): the longest run, only the big halls, and the toughest boss.
 warband_seithr:
@@ -158,6 +167,7 @@ warband_seithr:
   minutes: 50
   par: 38
   difficulties:
-    normal: {name: Normal, tier: 1, advice: "Made for this act's roleplay gear."}
-    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, minutes: 62, par: 47, advice: "Made for rare dungeon gear."}
-    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, minutes: 75, par: 57, advice: "Made for epic and legendary dungeon gear."}
+    normal: {name: Normal, tier: 1, bank: {every: 2, rest: true, keep: 1.0, treasure: true, exit: 0.5}, advice: "Made for this act's roleplay gear."}
+    hard: {name: Hard, tier: 2, health: 1.5, damage: 1.25, needs: normal, bank: {rest: true, keep: 0.5, treasure: true, exit: 0.5}, minutes: 62, par: 47, advice: "Made for rare dungeon gear."}
+    nightmare: {name: Nightmare, tier: 3, health: 2.2, damage: 1.6, needs: hard, bank: {keep: 0, exit: 0.5}, minutes: 75, par: 57, advice: "Made for epic and legendary dungeon gear."}
+    mythic: {name: Mythic, tier: 4, health: 3.0, damage: 2.0, needs: nightmare, bank: {keep: 0, exit: 0.5}, gear-at-risk: true, boost: 2.0, minutes: 90, par: 68, advice: "For the best-geared: your worn dungeon gear is at stake."}

@@ -254,7 +254,8 @@ public final class RunListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        runs.quit(event.getPlayer());
+        // (before RPCharacters saves the character at HIGHEST: what a logout costs is in that save)
+        runs.quit(event.getPlayer(), event.getReason().name());
     }
 
     @EventHandler

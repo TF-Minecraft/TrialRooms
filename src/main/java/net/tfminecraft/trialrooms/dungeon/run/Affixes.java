@@ -62,7 +62,9 @@ public record Affixes(List<WeeklyAffix> pool, Map<Integer, Integer> byTier, doub
      */
     public List<WeeklyAffix> of(long week, int tier) {
         int n = pool.size();
-        int count = byTier.getOrDefault(tier, 0);
+        // (a tier past the last configured one gets the last's count: a new top difficulty is never easier)
+        var floor = new java.util.TreeMap<>(byTier).floorEntry(tier);
+        int count = floor == null ? 0 : floor.getValue();
         if (count == 0) {
             return List.of();
         }

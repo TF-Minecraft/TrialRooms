@@ -100,6 +100,27 @@ class LockerServiceTest {
   }
 
   @Test
+  void aWornLoadoutCanBeForfeited() throws Exception {
+    Locker l = kitted();
+    assertFalse(lockers.forfeitWorn(ann), "nothing worn");
+    ann.getInventory().setItem(0, named(Material.IRON_SWORD, "own sword"));
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    assertTrue(lockers.forfeitWorn(ann));
+    assertTrue(l.items().isEmpty(), "the worn pieces are gone from the locker");
+    assertEquals("own sword", name(ann.getInventory().getItem(0)), "own items come back");
+    // a take-off that can't be saved destroys nothing
+    Locker l2 = kitted();
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    Path tmp = store.file(ann.getUniqueId(), "c1").resolveSibling("c1.locker.tmp");
+    Files.createDirectories(tmp);
+    assertFalse(lockers.forfeitWorn(ann));
+    assertEquals(2, l2.items().size());
+    Files.delete(tmp);
+    assertNull(new LockerService(plugin, store, codec, p -> null, p -> { }).locker(ann));
+    assertFalse(new LockerService(plugin, store, codec, p -> null, p -> { }).forfeitWorn(ann), "no character");
+  }
+
+  @Test
   void aLoadoutGoesOnAndComesOffWithTheOwnItemsBack() {
     ann.getInventory().setHelmet(named(Material.IRON_HELMET, "own helm"));
     ann.getInventory().setItem(0, named(Material.IRON_SWORD, "own sword"));
@@ -681,5 +702,31 @@ class LockerServiceTest {
     lockers.settle(ann, false);
     assertEquals(1, lockers.locker(ann).owed().size());
     assertNull(ann.getInventory().getItem(0));
+  }
+
+  @Test
+  void anInsuredPieceIsSparedAndGearGivenBackLandsInTheLocker() throws Exception {
+    Locker l = kitted();
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    String helm = l.loadout(0).get(39);
+    assertTrue(lockers.wears(ann, helm));
+    assertFalse(lockers.wears(ann, "ghost"));
+    assertFalse(new LockerService(plugin, store, codec, p -> null, p -> { }).wears(ann, helm), "no character");
+    l.restoreSlot(0, 1, "ghost"); // a loadout naming a piece the locker no longer has
+    List<byte[]> gone = lockers.forfeitWorn(ann, helm);
+    assertEquals(1, gone.size(), "the sword; the helmet is spared and the ghost is nothing");
+    assertTrue(l.items().containsKey(helm));
+    assertEquals(1, l.items().size());
+    Path tmp = store.file(ann.getUniqueId(), "c1").resolveSibling("c1.locker.tmp");
+    Files.createDirectories(tmp);
+    assertFalse(lockers.restore(ann, gone), "a save that fails");
+    assertEquals(1, l.items().size(), "takes them back out: never given twice");
+    Files.delete(tmp);
+    assertTrue(lockers.restore(ann, gone));
+    assertEquals(2, l.items().size(), "given back");
+    assertFalse(new LockerService(plugin, store, codec, p -> null, p -> { }).restore(ann, gone), "no character");
+    assertEquals(List.of(), lockers.forfeitWorn(ann, null), "nothing worn");
+    ItemStack it = named(Material.STICK, "a stick");
+    assertEquals("a stick", name(lockers.decode(lockers.encode(it))));
   }
 }

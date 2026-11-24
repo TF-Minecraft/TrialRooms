@@ -575,6 +575,68 @@ public final class LockerService {
         merged.forEach(l::owe);
     }
 
+    /**
+     * Destroys the loadout a player wears (a fall where gear is at stake): it comes off as at a
+     * take-off, own items back, and its dungeon items leave the locker, all but {@code spare} (an
+     * insured piece, or null). Returns what was destroyed, as it was worn (for the loss log); empty
+     * when nothing was worn or the take-off didn't go through (then nothing is destroyed).
+     */
+    public List<byte[]> forfeitWorn(Player p, String spare) {
+        Locker l = locker(p);
+        if (l == null || l.worn() < 0) {
+            return List.of();
+        }
+        List<String> ids = new ArrayList<>(l.loadout(l.worn()).values());
+        ids.remove(spare);
+        if (takeOff(p) != Result.DONE) {
+            return List.of();
+        }
+        List<byte[]> gone = new ArrayList<>();
+        for (String id : ids) {
+            if (l.item(id) != null) {
+                gone.add(l.item(id));
+                l.remove(id);
+            }
+        }
+        saveLocker(p, l);
+        return gone;
+    }
+
+    /** As {@link #forfeitWorn(Player, String)} with nothing spared; true when anything was destroyed. */
+    public boolean forfeitWorn(Player p) {
+        return !forfeitWorn(p, null).isEmpty();
+    }
+
+    /** Whether a player wears a locker item now (false when their locker can't be read). */
+    public boolean wears(Player p, String id) {
+        Locker l = locker(p);
+        return l != null && l.wornSlots().containsValue(id);
+    }
+
+    /** Puts dungeon items (given back by staff) in a player's locker; false when it can't be saved. */
+    public boolean restore(Player p, List<byte[]> items) {
+        Locker l = locker(p);
+        if (l == null) {
+            return false;
+        }
+        List<String> ids = new ArrayList<>();
+        items.forEach(b -> ids.add(file(l, codec.decode(b))));
+        if (!saveLocker(p, l)) {
+            ids.forEach(l::remove); // (they wait to be given back again: never twice)
+            return false;
+        }
+        return true;
+    }
+
+    /** An item as bytes (the server's own format). */
+    public byte[] encode(ItemStack item) {
+        return codec.encode(item);
+    }
+
+    public ItemStack decode(byte[] data) {
+        return codec.decode(data);
+    }
+
     /** Whether the player carries the mark of a wear for their current character (for tests and staff). */
     boolean marked(Player p) {
         String character = characters.apply(p);

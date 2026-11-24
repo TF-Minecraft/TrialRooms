@@ -84,7 +84,8 @@ public final class RecipeLoader {
             }
             out.add(new Difficulty(id, d.getString("name", id), d.getInt("tier", 1), d.getDouble("health", 1),
                     d.getDouble("damage", 1), needs, d.getString("advice", ""), d.getDouble("minutes", 0),
-                    d.getDouble("par", 0)));
+                    d.getDouble("par", 0), banking(d.getConfigurationSection("bank")), d.getBoolean("gear-at-risk", false),
+                    d.getDouble("boost", 1)));
         }
         if (out.size() > 5) {
             throw new IllegalArgumentException("at most 5 difficulties (the gate's screen shows five)");
@@ -126,5 +127,11 @@ public final class RecipeLoader {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("bad " + what + ": " + text, e);
         }
+    }
+
+    /** A difficulty's bank section: save points and what a failed run keeps (none: finds are paid at once). */
+    private static net.tfminecraft.trialrooms.dungeon.run.Difficulty.Banking banking(ConfigurationSection s) {
+        return s == null ? null : new net.tfminecraft.trialrooms.dungeon.run.Difficulty.Banking(s.getInt("every", 0),
+                s.getBoolean("rest", false), s.getDouble("keep", 0), s.getBoolean("treasure", false), s.getDouble("exit", 0));
     }
 }

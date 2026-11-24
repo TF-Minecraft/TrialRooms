@@ -99,6 +99,9 @@ public final class RunManager {
     record Waiting(UUID leader, String recipe) {
     }
 
+    /** What players find in banking runs, the ways out of treasure rooms, and insurance. */
+    final RunFinds finds = new RunFinds(this);
+
     /** A run with what it needs in the world. */
     public static final class ActiveRun {
         final DungeonRun run;
@@ -163,6 +166,27 @@ public final class RunManager {
         Affixes affixConfig;
         /** Enemies made stronger by nearby deaths (Bolstering): how many times. */
         final Map<UUID, Integer> bolstered = new HashMap<>();
+        /** How the run's difficulty banks finds (null: paid at once), and whether worn gear is at stake. */
+        Difficulty.Banking banking;
+        boolean gearAtRisk;
+        /** What item chances and marks are multiplied by (the difficulty's, for the risk). */
+        double boost = 1;
+        /** Members' finds not yet paid. */
+        final Map<UUID, RunFinds.Held> held = new HashMap<>();
+        /** The worn piece each member insured (spared if they fall), and the marks they paid. */
+        final Map<UUID, String> insured = new HashMap<>();
+        final Map<UUID, Integer> insurePaid = new HashMap<>();
+        /** Treasure rooms holding a way out, and those already shown (their prop placed). */
+        final Set<Integer> exits = new HashSet<>();
+        final Set<Integer> exitsShown = new HashSet<>();
+        /** Treasure rooms that have banked (each banks once). */
+        final Set<Integer> treasureBanked = new HashSet<>();
+        /** Whether finds are still held (a banking run until its vault; after it, finds are paid at once). */
+        boolean holding;
+        /** Fight rooms cleared (save points come every so many). */
+        int fightsCleared;
+        /** Who was in the run when it reached the vault (named on trophies secured later). */
+        List<String> securedParty = List.of();
 
         boolean has(WeeklyAffix a) {
             return affixes.contains(a);
@@ -220,9 +244,14 @@ public final class RunManager {
     }
 
     public void start() {
+        Set<UUID> cutOff = files.activeRuns();
         int recovered = files.recoverActive();
         if (recovered > 0) {
-            plugin.getLogger().warning("[dungeons] " + recovered + " run(s) were cut off by a stop; keys refunded");
+            plugin.getLogger().warning("[dungeons] " + recovered + " run(s) were cut off by a stop (keys refunded where paid)");
+        }
+        int pouches = finds.store() == null ? 0 : finds.store().recover(cutOff);
+        if (pouches > 0) {
+            plugin.getLogger().warning("[dungeons] finds of " + pouches + " player(s) from runs a stop cut off will come home");
         }
         task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 10L, 10L);
     }
@@ -233,7 +262,7 @@ public final class RunManager {
             task.cancel();
         }
         for (ActiveRun ar : new ArrayList<>(runs.values())) {
-            end(ar, true, "§cThe dungeon fades as the world shifts. Your key is returned.");
+            end(ar, true, true, "§cThe dungeon fades as the world shifts. Your key is returned.");
         }
         bars.hideOlder(Long.MAX_VALUE); // no tick will take them down any more
         if (lockers != null) {
@@ -259,15 +288,43 @@ public final class RunManager {
         this.rewards = rewards;
     }
 
+    RunRewards rewards() {
+        return rewards;
+    }
+
+    /** Keeps finds on disk: what players hold in runs, what is owed to them, and what they lost. */
+    public void findStore(FindStore store) {
+        finds.store(store);
+    }
+
+    long now() {
+        return clock.getAsLong();
+    }
+
     /** Tells every member playing the run in the dungeon world about a reward moment. */
     private void reward(ActiveRun ar, RunRewards.Moment moment) {
         reward(ar, moment, false);
     }
 
     private void reward(ActiveRun ar, RunRewards.Moment moment, boolean underPar) {
+        if (rewards != null && ar.holding) { // (holding ends as the vault is reached)
+            // carried: rolled once it comes home (or lost on a fall)
+            forPlaying(ar, "the carried " + moment, p -> {
+                if (ar.run.member(p.getUniqueId()).status() != Status.OUT) { // (out of the fight: nothing to find)
+                    RunRewards.Find f = rewards.find(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id(), ar.boost);
+                    if (f != null) {
+                        finds.carry(ar, p, f);
+                    }
+                }
+            });
+            return;
+        }
         if (rewards != null) {
-            forPlaying(ar, "the " + moment + " reward",
-                    p -> rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id(), underPar));
+            forPlaying(ar, "the " + moment + " reward", p -> {
+                if (!(ar.banking != null && ar.run.member(p.getUniqueId()).status() == Status.OUT)) { // (the fallen lose it)
+                    rewards.reward(p, ar.run.recipeId(), ar.rules.tier(), moment, ar.run.id(), underPar, ar.boost);
+                }
+            });
         }
     }
 
@@ -294,7 +351,15 @@ public final class RunManager {
         }
         ar.spoilHours += hours;
         forPlaying(ar, "the spoils", p -> {
-            if (ar.run.member(p.getUniqueId()).status() != Status.OUT) {
+            if (ar.run.member(p.getUniqueId()).status() == Status.OUT) {
+                return;
+            }
+            if (ar.holding) {
+                RunRewards.Find f = rewards.spoilsFind(p, ar.run.recipeId(), hours, ar.run.id());
+                if (f != null) {
+                    finds.carry(ar, p, f);
+                }
+            } else {
                 rewards.spoils(p, ar.run.recipeId(), hours, ar.run.id());
             }
         });
@@ -313,7 +378,7 @@ public final class RunManager {
     }
 
     /** Hands something to each member still playing; one player's failure never stops the others' or the run. */
-    private void forPlaying(ActiveRun ar, String what, java.util.function.Consumer<Player> give) {
+    void forPlaying(ActiveRun ar, String what, java.util.function.Consumer<Player> give) {
         for (Player p : online(ar)) {
             if (isPlayingMember(ar, p)) { // (the step counts anyone outside the dungeon world as away)
                 try {
@@ -536,14 +601,22 @@ public final class RunManager {
             ActiveRun ar = new ActiveRun(run, geo, placer, kit, rules, leader.getUniqueId(), keyPath, arrival);
             ar.difficulty = difficulty;
             ar.ranked = ranked;
+            ar.banking = difficulty == null ? null : difficulty.banking();
+            ar.gearAtRisk = difficulty != null && difficulty.gearAtRisk();
+            ar.boost = difficulty == null ? 1 : difficulty.boost();
+            ar.holding = ar.banking != null;
             ar.affixConfig = module.affixes();
             ar.affixes = weeklyAffixes(recipeId, rules.tier());
             ar.damageFactor = difficulty == null ? 1 : difficulty.damage();
             ar.planned = EventPlanner.plan(layout, kit.events(), rules.eventChance(), rules.maxEvents());
-            runs.put(run.id(), ar);
-            if (!keyPath.isBlank()) {
-                files.saveActive(run.id(), leader.getUniqueId(), keyPath);
+            for (int i = 0; ar.banking != null && i < layout.rooms().size(); i++) {
+                if (layout.rooms().get(i).node().type() == RoomType.TREASURE && exitRoll.getAsDouble() < ar.banking.exit()) {
+                    ar.exits.add(i);
+                }
             }
+            runs.put(run.id(), ar);
+            // (every run, keyed or not: a crash pays the finds of the runs it cut off, and only those)
+            files.saveActive(run.id(), leader.getUniqueId(), keyPath);
             for (int i = 0; i < layout.rooms().size(); i++) {
                 if (DungeonRun.isFight(layout.rooms().get(i).node().type())) {
                     setDoors(ar, i, true, true);
@@ -583,11 +656,18 @@ public final class RunManager {
                 if (difficulty != null) {
                     m.sendMessage("§7Difficulty: §f" + difficulty.name() + "§7 (tier " + difficulty.tier() + ").");
                 }
+                for (String rule : difficulty == null ? List.<String>of() : difficulty.lootRules()) {
+                    m.sendMessage((rule.startsWith("Your worn") ? "§4" : "§7") + rule);
+                }
                 for (WeeklyAffix a : ar.affixes) {
                     m.sendMessage("§5This week: " + a.title() + " §7(" + a.hint() + ")");
                 }
                 if (lobby) {
-                    m.sendMessage(lobbyButtons());
+                    m.sendMessage(ar.gearAtRisk ? lobbyButtons().append(Component.text(" "))
+                            .append(Component.text("[Insure a piece]", NamedTextColor.AQUA)
+                                    .clickEvent(ClickEvent.runCommand("/tr dungeon insure"))
+                                    .hoverEvent(HoverEvent.showText(Component.text(
+                                            "Pay marks so one worn piece is spared if you fall")))) : lobbyButtons());
                 }
             }
             ar.healthFactor = rules.healthFactor(n);
@@ -703,6 +783,12 @@ public final class RunManager {
         for (Member m : run.present()) {
             if (!m.online()) {
                 if (now - m.offlineSinceMs() >= settings().graceSeconds() * 1000L) {
+                    // away too long: as if they had left (what they banked comes home by the rules)
+                    if (ar.lobbyRoom >= 0) {
+                        finds.refund(ar, m.id());
+                    }
+                    finds.settleAway(ar, m, keepNow(ar), false,
+                            "you were away too long and left the run");
                     run.leave(m.id());
                     byPlayer.remove(m.id());
                 }
@@ -718,7 +804,9 @@ public final class RunManager {
             int room = ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ());
             if (room != m.room()) {
                 m.room(room);
-                entered(ar, p, room);
+                if (m.status() != Status.OUT) { // (a spectator flying about sets no checkpoint and banks nothing)
+                    entered(ar, p, room);
+                }
             }
             if (room >= 0 && ar.visited.add(room)) {
                 ar.progressMs = now;
@@ -759,7 +847,7 @@ public final class RunManager {
 
     // ------------------------------------------------------------------ the lobby
 
-    private static Component lobbyButtons() {
+    static Component lobbyButtons() {
         return Component.text("Get ready in this room: ", NamedTextColor.GRAY)
                 .append(Component.text("[Locker]", NamedTextColor.GOLD)
                         .clickEvent(ClickEvent.runCommand("/tr dungeon locker"))
@@ -791,6 +879,7 @@ public final class RunManager {
     }
 
     private void openLobby(ActiveRun ar) {
+        finds.doorsOpen(ar, online(ar).stream().filter(p -> isPlayingMember(ar, p)).toList());
         setDoors(ar, ar.lobbyRoom, false, false);
         ar.lobbyRoom = -1;
         ar.openedMs = clock.getAsLong();
@@ -828,6 +917,17 @@ public final class RunManager {
         if (type == RoomType.REST && ar.run.checkpoint() != room) {
             ar.run.checkpoint(room);
             tell(ar, "§aA quiet room. Anyone who falls will wake here.");
+            if (ar.holding && ar.banking.rest()) {
+                finds.bank(ar);
+            }
+        } else if (type == RoomType.TREASURE) {
+            if (ar.holding && ar.banking.treasure() && ar.treasureBanked.add(room)) {
+                tell(ar, "§aA treasure room: its cache keeps what you carry safe.");
+                finds.bank(ar);
+            }
+            if (ar.holding && ar.exits.contains(room) && ar.exitsShown.add(room)) {
+                showExit(ar, room);
+            }
         } else if (type == RoomType.VAULT && ar.run.bossDefeated() && ar.run.state() == DungeonRun.State.RUNNING) {
             complete(ar);
         }
@@ -1029,6 +1129,10 @@ public final class RunManager {
             feat(ar, moment);
         }
         spoils(ar, false);
+        ar.fightsCleared++;
+        if (ar.holding && ar.banking.every() > 0 && ar.fightsCleared % ar.banking.every() == 0) {
+            finds.bank(ar);
+        }
     }
 
     /** What clearing a room of this type pays out: the boss, an elite room, or a finished event. */
@@ -1238,7 +1342,7 @@ public final class RunManager {
     }
 
     private void bleedOut(ActiveRun ar, Player p) {
-        boolean back = ar.run.bleedOut(p.getUniqueId());
+        boolean back = fell(ar, p, "fell", situation(ar, p));
         event(ar, p.getName() + (back ? " bled out and spent a life" : " bled out with no lives left"));
         clearDowned(ar, p);
         p.teleport(wakePoint(ar));
@@ -1289,8 +1393,8 @@ public final class RunManager {
         if (ar != null && ar.run.state() != DungeonRun.State.FAILED && isPlayingMember(ar, p)) {
             diedInRun.add(p.getUniqueId());
             ar.downedAt.remove(p.getUniqueId());
-            ar.run.bleedOut(p.getUniqueId());
             var cause = p.getLastDamageCause();
+            fell(ar, p, "died outright", "of " + (cause == null ? "an unknown cause" : cause.getCause()));
             event(ar, p.getName() + " died outright (" + (cause == null ? "unknown cause" : cause.getCause()) + ")");
         }
     }
@@ -1309,6 +1413,11 @@ public final class RunManager {
     public Location rescuePoint(Player p) {
         ActiveRun ar = byPlayer.get(p.getUniqueId());
         return ar == null || !inDungeonWorld(p) || !isPlayingMember(ar, p) ? null : wakePoint(ar);
+    }
+
+    /** Whether the player is in the dungeon world, in this run on the character that entered it. */
+    boolean here(ActiveRun ar, Player p) {
+        return inDungeonWorld(p) && isPlayingMember(ar, p);
     }
 
     /** Whether the player is in this run on the character that entered it. */
@@ -1333,17 +1442,41 @@ public final class RunManager {
     // ------------------------------------------------------------------ leaving and coming back
 
     public void quit(Player p) {
+        quit(p, "DISCONNECTED");
+    }
+
+    /**
+     * A player logs out ({@code reason}: how, as the server tells it). Logging out dodges nothing:
+     * while down it is a fall, and in the middle of a fight it costs what a fall would (what they
+     * carry, and staked gear). Each such loss is logged with how they quit and the fight they left,
+     * so staff can give it back when it was a real connection problem.
+     */
+    public void quit(Player p, String reason) {
         unqueue(p);
         ActiveRun ar = byPlayer.get(p.getUniqueId());
         if (ar == null) {
             return;
         }
         Member m = ar.run.member(p.getUniqueId());
+        String detail = "logged out (" + reason + ") " + situation(ar, p);
         if (m.status() == Status.DOWNED) {
             clearDowned(ar, p);
-            ar.run.bleedOut(p.getUniqueId());
+            fell(ar, p, "logged out while down", detail);
+        } else if (fightInProgress(ar) && here(ar, p)) {
+            // (someone out of the fight lost it all as they fell; after the win no gear is at stake)
+            finds.lose(ar, p, "logged out in the middle of a fight", detail);
         }
         ar.run.offline(p.getUniqueId(), clock.getAsLong());
+    }
+
+    /** Where a player stands in their run, for the loss log: their health, the room, the fight. */
+    private String situation(ActiveRun ar, Player p) {
+        int active = ar.run.activeRoom();
+        int room = ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ());
+        return String.format(java.util.Locale.ROOT, "with %.0f/%.0f health in %s%s", p.getHealth(),
+                p.getAttribute(Attribute.MAX_HEALTH).getValue(),
+                room < 0 ? "between rooms" : ar.run.layout().rooms().get(room).node().type().name().toLowerCase(java.util.Locale.ROOT),
+                active < 0 ? ", no fight on" : ", " + ar.roomMobs.getOrDefault(active, Set.of()).size() + " enemies left in the fight");
     }
 
     /**
@@ -1381,6 +1514,12 @@ public final class RunManager {
             return;
         }
         if (m != null) {
+            // back on another character: they leave the run, by the leaving rules
+            if (ar.lobbyRoom >= 0) {
+                finds.refund(ar, p.getUniqueId());
+            }
+            finds.settleAway(ar, m, keepNow(ar), false,
+                    "you came back on another character");
             ar.run.leave(p.getUniqueId());
             byPlayer.remove(p.getUniqueId());
         }
@@ -1388,6 +1527,9 @@ public final class RunManager {
             sendBack(p, charId);
         } else if (p.getPersistentDataContainer().has(spectatorKey, PersistentDataType.BYTE)) {
             unspectate(p);
+        }
+        if (!inDungeonWorld(p) && finds.deliverPending(p, charId) && lockers != null) {
+            lockers.settle(p, false); // (spoils among them are handed over now)
         }
     }
 
@@ -1416,7 +1558,31 @@ public final class RunManager {
         if (ar == null) {
             return false;
         }
-        boolean here = inDungeonWorld(p) && isPlayingMember(ar, p);
+        boolean here = here(ar, p);
+        if (ar.lobbyRoom >= 0) {
+            finds.refund(ar, p.getUniqueId()); // (left before the doors opened: insurance is given back)
+        }
+        if (!here) { // (away from the dungeon: the leaving rules, handed over later)
+            finds.settleAway(ar, ar.run.member(p.getUniqueId()), keepNow(ar),
+                    false, "you left the run while away from it");
+        }
+        if (here) { // (leaving before the boss falls is a run that failed, for them)
+            boolean down = ar.run.member(p.getUniqueId()).status() == Status.DOWNED;
+            if (down || ar.gearAtRisk && ar.run.activeRoom() >= 0) {
+                // (leaving while down, or mid-fight with gear at stake, dodges no loss)
+                finds.lose(ar, p, down ? "left while down" : "left in the middle of a fight", situation(ar, p));
+            }
+            finds.payout(ar, p, keepNow(ar), false, "left the run");
+        }
+        depart(ar, p, here);
+        if (!inDungeonWorld(p)) {
+            sweep(p); // (outside: what came home is handed over now)
+        }
+        return true;
+    }
+
+    /** A member goes: out of the run, back outside, the party told. */
+    private void depart(ActiveRun ar, Player p, boolean here) {
         ar.run.leave(p.getUniqueId());
         fights.left(ar, p);
         events.left(ar, p);
@@ -1427,14 +1593,171 @@ public final class RunManager {
             unspectate(p);
         }
         tell(ar, "§7" + p.getName() + " has left the dungeon.");
-        return true;
     }
 
     /** A player right-clicked inside the dungeon world: at the vault's exit, they leave. */
     /** A right-click on a block: true when it was a room event's prop (the click is used up). */
     public boolean propClick(Player p, org.bukkit.block.Block b) {
         ActiveRun ar = byPlayer.get(p.getUniqueId());
+        if (ar != null && exitAt(ar, b.getX(), b.getY(), b.getZ()) >= 0) {
+            openExit(p);
+            return true;
+        }
         return ar != null && events.click(ar, p, b.getX(), b.getY(), b.getZ());
+    }
+
+    // ------------------------------------------------------------------ ways out, finds, insurance
+
+    /** Where a treasure room's way out stands: on its cache spot. */
+    private int[] exitBlock(ActiveRun ar, int room) {
+        double[] c = ar.geo.markers(room, "chest").get(0); // (the kit loader makes sure every treasure room has one)
+        return new int[] {(int) Math.floor(c[0]), (int) Math.floor(c[1]), (int) Math.floor(c[2])};
+    }
+
+    private void showExit(ActiveRun ar, int room) {
+        int[] b = exitBlock(ar, room);
+        world().getBlockAt(b[0], b[1], b[2]).setType(org.bukkit.Material.CRYING_OBSIDIAN, false);
+        tell(ar, "§5A way out glimmers in the treasure room. §7Right-click it to leave alone, taking some of your finds.");
+    }
+
+    /** The treasure room whose way out is at a block, or -1. */
+    private int exitAt(ActiveRun ar, int x, int y, int z) {
+        for (int room : ar.exitsShown) {
+            int[] b = exitBlock(ar, room);
+            if (b[0] == x && b[1] == y && b[2] == z) {
+                return room;
+            }
+        }
+        return -1;
+    }
+
+    /** Why a player can't take a way out now, or null when they can. */
+    private String exitProblem(ActiveRun ar, Player p) {
+        // (finds stop being held at the win; in a wipe nobody is on their feet)
+        if (ar == null || !ar.holding || !here(ar, p)) {
+            return "§cThere is no way out for you here.";
+        }
+        if (ar.run.member(p.getUniqueId()).status() != Status.ALIVE) {
+            return "§cOnly someone on their feet can take the way out.";
+        }
+        if (!ar.exitsShown.contains(ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ()))) {
+            return "§cStand by a way out in a treasure room to take it.";
+        }
+        return null;
+    }
+
+    /** Opens the way-out screen: pick the finds to take home. */
+    public void openExit(Player p) {
+        String no = exitProblem(byPlayer.get(p.getUniqueId()), p);
+        if (no != null) {
+            p.sendMessage(no);
+            return;
+        }
+        new FindsMenu(this, plugin, p, FindsMenu.Mode.EXIT).open();
+    }
+
+    /** What a way out would let a player take, or null when they can't take one. */
+    RunFinds.Offer exitOffer(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        return exitProblem(ar, p) != null ? null : finds.offer(ar, p);
+    }
+
+    /**
+     * Leaves through a way out with the picked finds (indexes into the offer's finds at risk).
+     * Returns what went wrong, or null when they left.
+     */
+    String exitWith(Player p, List<Integer> picks) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        String no = exitProblem(ar, p);
+        if (no != null) {
+            return no;
+        }
+        if (!finds.exit(ar, p, picks)) {
+            return "§cThose finds are worth more than the way out lets you take.";
+        }
+        byPlayer.remove(p.getUniqueId());
+        p.sendMessage("§5You take the way out.");
+        depart(ar, p, true);
+        return null;
+    }
+
+    /** What a player holds in a banking run (carried and banked), or null when they are in none. */
+    RunFinds.Held heldBy(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        return ar == null || !ar.holding || !here(ar, p) ? null
+                : ar.held.getOrDefault(p.getUniqueId(), new RunFinds.Held());
+    }
+
+    /** The loot rules of a player's run (for the finds screen). */
+    List<String> lootRules(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        return ar == null || ar.difficulty == null ? List.of() : ar.difficulty.lootRules();
+    }
+
+    /** How a find shows on the finds screens. */
+    org.bukkit.inventory.ItemStack icon(RunRewards.Find f) {
+        return rewards == null ? new org.bukkit.inventory.ItemStack(org.bukkit.Material.PAPER) : rewards.icon(f);
+    }
+
+    /** Opens the finds screen: what a player carries and what is banked. */
+    public void openFinds(Player p) {
+        if (heldBy(p) == null) {
+            p.sendMessage("§7You hold no finds: only runs that bank finds keep them until they come home.");
+            return;
+        }
+        new FindsMenu(this, plugin, p, FindsMenu.Mode.VIEW).open();
+    }
+
+    /** Opens insurance: in the lobby of a run where worn gear is at stake. */
+    public void openInsurance(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        if (ar == null || !ar.gearAtRisk || !inLobby(p)) {
+            p.sendMessage("§cInsurance is bought in the lobby of a run where your worn gear is at stake.");
+            return;
+        }
+        new FindsMenu(this, plugin, p, FindsMenu.Mode.INSURE).open();
+    }
+
+    List<RunFinds.Insurable> insurable(Player p) {
+        return finds.insurable(p);
+    }
+
+    /** The worn piece a player insured in their run, or null. */
+    String insured(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        return ar == null ? null : ar.insured.get(p.getUniqueId());
+    }
+
+    /** Insures a worn piece (picked again: cancels); returns what to tell the player. */
+    String insure(Player p, String id) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        if (ar == null || !ar.gearAtRisk || !inLobby(p)) {
+            return "§cInsurance is bought in the lobby of a run where your worn gear is at stake.";
+        }
+        return finds.insure(ar, p, id);
+    }
+
+    /** A player's dungeon marks, or -1. */
+    int marksOf(Player p) {
+        return rewards == null ? -1 : rewards.marks(p);
+    }
+
+    /** What a player lost in runs, oldest first (for staff looking into a ticket). */
+    public List<FindStore.Loss> losses(UUID player) {
+        return finds.store() == null ? List.of() : finds.store().losses(player);
+    }
+
+    /**
+     * Gives a loss back: it waits for the character that lost it, handed over at once when they are
+     * online outside a run. Null when there is no such loss or it was given back already.
+     */
+    public FindStore.Loss restoreLoss(UUID player, int id) {
+        FindStore.Loss l = finds.store() == null ? null : finds.store().restore(player, id);
+        Player p = Bukkit.getPlayer(player);
+        if (l != null && p != null && !inDungeonWorld(p)) {
+            sweep(p);
+        }
+        return l;
     }
 
     public boolean tryExit(Player p) {
@@ -1482,6 +1805,10 @@ public final class RunManager {
         tell(ar, "§6The vault is yours. §7Right-click by the exit to leave; everyone is sent back in "
                 + settings().finishSeconds() + " seconds.");
         recordWin(ar);
+        ar.securedParty = stayed(ar);
+        ar.holding = false; // (what is found from now on is paid at once)
+        // the boss fell: what each member here carries and banked comes home
+        forPlaying(ar, "the finds", p -> finds.payout(ar, p, 1, true, ""));
         long took = clock.getAsLong() - ar.openedMs;
         boolean underPar = ar.rules.par() > 0 && took <= ar.rules.par() * 60_000;
         if (ar.rules.par() > 0) {
@@ -1496,6 +1823,9 @@ public final class RunManager {
 
     /** A feat for each member still playing: trophies and wardrobe skins may come of it. */
     private void feat(ActiveRun ar, RunRewards.Moment moment) {
+        if (rewards != null && ar.holding) { // (holding ends as the vault is reached)
+            return; // (a carried boss's trophy roll comes with its reward when it comes home)
+        }
         if (rewards != null) {
             String d = ar.difficulty == null ? "" : ar.difficulty.id();
             List<String> party = stayed(ar);
@@ -1524,9 +1854,46 @@ public final class RunManager {
     }
 
     /** Who entered the run and has not left it, by display name. */
-    private static List<String> stayed(ActiveRun ar) {
+    static List<String> stayed(ActiveRun ar) {
         return ar.party.entrySet().stream().filter(e -> ar.run.member(e.getKey()).status() != Status.LEFT)
                 .map(Map.Entry::getValue).toList();
+    }
+
+    /**
+     * A member falls (a bleed-out, or logging out while down): what they carry is lost (banked
+     * finds stay), and where gear is at stake, the dungeon gear they wear is destroyed. True when a
+     * life brought them back.
+     */
+    private boolean fell(ActiveRun ar, Player p, String why, String detail) {
+        boolean back = ar.run.bleedOut(p.getUniqueId());
+        finds.lose(ar, p, why, detail);
+        return back;
+    }
+
+    /** The chance each banked find comes home when a run fails. */
+    private static double keep(ActiveRun ar) {
+        return ar.banking == null ? 1 : ar.banking.keep();
+    }
+
+    /** What a member leaving now keeps of what they banked: all once the boss has fallen, else the difficulty's share. */
+    private static double keepNow(ActiveRun ar) {
+        return ar.run.state() == DungeonRun.State.COMPLETE ? 1 : keep(ar);
+    }
+
+    /** Rolls whether a banked find comes home when a run fails. */
+    java.util.function.DoubleSupplier keepRoll = () -> ThreadLocalRandom.current().nextDouble();
+
+    /** Rolls whether a treasure room holds a way out. */
+    java.util.function.DoubleSupplier exitRoll = () -> ThreadLocalRandom.current().nextDouble();
+
+    boolean safely(Player p, String what, Runnable give) {
+        try {
+            give.run();
+            return true;
+        } catch (Exception | LinkageError e) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "[dungeons] " + what + " for " + p.getName() + " failed", e);
+            return false;
+        }
     }
 
     /** A party size as players read it. */
@@ -1579,6 +1946,13 @@ public final class RunManager {
     }
 
     private void fail(ActiveRun ar) {
+        for (Player p : online(ar)) { // the ones still down when the party wipes fall too
+            if (ar.run.member(p.getUniqueId()).status() == Status.DOWNED) {
+                String detail = situation(ar, p);
+                clearDowned(ar, p);
+                fell(ar, p, "fell as the party was wiped out", detail);
+            }
+        }
         ar.run.state(DungeonRun.State.FAILED);
         ar.finishAtMs = clock.getAsLong() + 5000L;
         tell(ar, "§cYour party has fallen. The dungeon casts you out.");
@@ -1586,18 +1960,42 @@ public final class RunManager {
 
     /** Ends a run now, sending everyone inside back. With {@code fault}, the key is refunded. */
     public void end(ActiveRun ar, boolean fault, String reason) {
+        end(ar, fault, false, reason);
+    }
+
+    /**
+     * As {@link #end(ActiveRun, boolean, String)}; {@code stop} is a server stop: then nobody loses
+     * what they found (not their fault), where any other end that isn't a win counts as a failed run.
+     */
+    public void end(ActiveRun ar, boolean fault, boolean stop, String reason) {
         DungeonRun.State outcome = ar.run.state();
         ar.run.state(DungeonRun.State.ENDED);
         runs.remove(ar.run.id());
+        double keep = outcome == DungeonRun.State.COMPLETE || stop ? 1 : keep(ar);
+        String why = stop ? "a stop cut your run short" : outcome == DungeonRun.State.COMPLETE ? ""
+                : outcome == DungeonRun.State.FAILED ? "the run failed" : "the run was ended";
+        if (ar.lobbyRoom >= 0) {
+            new ArrayList<>(ar.insurePaid.keySet()).forEach(id -> finds.refund(ar, id)); // (the doors never opened)
+        }
         for (Member m : ar.run.members()) {
             byPlayer.remove(m.id(), ar);
             Player p = Bukkit.getPlayer(m.id());
-            if (p != null && m.status() != Status.LEFT && inDungeonWorld(p)) {
+            if (p != null && m.status() != Status.LEFT && here(ar, p)) {
                 if (reason != null) {
                     p.sendMessage(reason);
                 }
+                // what they banked comes home by the difficulty's rules; a fault (a stop) loses nothing
+                finds.payout(ar, p, keep, stop, why);
                 ar.downedAt.remove(m.id());
                 sendBack(p, m.characterId());
+            } else if (m.status() != Status.LEFT) {
+                // away (offline, or outside the dungeon): the same rules, and it waits for them
+                finds.settleAway(ar, m, keep, stop, stop ? why : "you were away when the run ended");
+                if (p != null && inDungeonWorld(p)) {
+                    sendBack(p, m.characterId());
+                } else if (p != null) {
+                    sweep(p); // (online outside: what came home is handed over now)
+                }
             }
         }
         for (Set<Entity> set : ar.roomMobs.values()) {

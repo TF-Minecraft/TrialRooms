@@ -358,7 +358,7 @@ class RunListenerTest {
     Player p = player();
     l.onQuit(new PlayerQuitEvent(p, (net.kyori.adventure.text.Component) null,
         PlayerQuitEvent.QuitReason.DISCONNECTED));
-    verify(runs).quit(p);
+    verify(runs).quit(p, "DISCONNECTED");
     l.onJoin(new PlayerJoinEvent(p, (net.kyori.adventure.text.Component) null));
     l.onWorldChange(new PlayerChangedWorldEvent(p, mock(World.class)));
     CharacterActivatedEvent activated = mock(CharacterActivatedEvent.class);

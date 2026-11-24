@@ -66,6 +66,7 @@ public final class DifficultyMenu implements ClickMenu, InventoryHolder {
             if (!d.advice().isBlank()) {
                 lore.add(d.advice());
             }
+            lore.addAll(d.lootRules());
             List<WeeklyAffix> weekly = runs.weeklyAffixes(gate.recipe(), d.tier());
             if (!weekly.isEmpty()) {
                 lore.add("This week: " + String.join(", ", weekly.stream().map(WeeklyAffix::title).toList()));

@@ -26,6 +26,7 @@ tiers:
   1: {power: 1.0, luck: 0}
   2: {power: 1.25, luck: 0.5}
   3: {power: 1.55, luck: 1.0}
+  4: {power: 1.9, luck: 1.5}
 
 # The socket colour dungeon items carry: only dungeon gems fit it (TLibs socket-tier-groups).
 socket: Dungeon Gem
@@ -77,6 +78,13 @@ rewards:
   # Reaching the vault within the run's par time (recipes.yml par:): extra marks (inside the weekly
   # cap) and extra luck for the vault's roll (0.5 makes Normal roll like Hard and Hard like Nightmare).
   par: {marks: 5, luck: 0.5}
+  # What finds are worth, by how strong they are: an item its rarity's value times its tier's power
+  # (tiers above), a dungeon gem gem times that, each mark mark, an hour of spoils spoils-hour. Value
+  # decides what a treasure room's way out lets a player take (up to half of what they would lose),
+  # and insure is the marks per point of value that insuring one worn piece costs on a difficulty
+  # with gear at stake. Players see values only on the finds screens, never on items.
+  value: {uncommon: 10, rare: 30, epic: 80, legendary: 200, gem: 0.5, mark: 1, spoils-hour: 40}
+  insure: 0.2
 
 # Spoils: what leaves the dungeon with the player (never dungeon gear). A dungeon is a run source of
 # the act system (ACT-SYSTEM.md rule 5): an hour of proper play pays a full act budget and a full
@@ -126,7 +134,13 @@ cosmetics:
     - {recipe: warband_seithr, difficulty: normal, chance: 0.05, item: v.skeleton_skull, name: "Ice Golem Trophy"}
     - {recipe: warband_seithr, difficulty: hard, chance: 0.08, item: v.skeleton_skull, name: "Ice Golem Trophy (Hard)"}
     - {recipe: warband_seithr, difficulty: nightmare, chance: 0.12, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Nightmare)"}
+    - {recipe: delve_seithr, difficulty: mythic, chance: 0.2, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Mythic)"}
+    - {recipe: dungeon_seithr, difficulty: mythic, chance: 0.2, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Mythic)"}
+    - {recipe: warband_seithr, difficulty: mythic, chance: 0.2, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Mythic)"}
   skins:
+    - {recipe: delve_seithr, difficulty: mythic, chance: 0.1, permission: armourshop.dungeon.seithr_mythic, name: "Seithr Mythic"}
+    - {recipe: dungeon_seithr, difficulty: mythic, chance: 0.1, permission: armourshop.dungeon.seithr_mythic, name: "Seithr Mythic"}
+    - {recipe: warband_seithr, difficulty: mythic, chance: 0.1, permission: armourshop.dungeon.seithr_mythic, name: "Seithr Mythic"}
     - {recipe: dungeon_seithr, difficulty: hard, chance: 0.03, permission: armourshop.dungeon.seithr_frost, name: "Seithr Frost"}
     - {recipe: dungeon_seithr, difficulty: nightmare, chance: 0.05, permission: armourshop.dungeon.seithr_glacial, name: "Seithr Glacial"}
     - {recipe: warband_seithr, difficulty: hard, chance: 0.03, permission: armourshop.dungeon.seithr_frost, name: "Seithr Frost"}

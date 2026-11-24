@@ -60,7 +60,7 @@ public class LootCoreTest {
     assertNull(k.base("nothing"));
     assertNull(k.rarity("mythic"));
     assertEquals(1.55, k.tier(3).power());
-    assertEquals(1.55, k.tier(9).power(), "past the last tier: the last");
+    assertEquals(1.9, k.tier(9).power(), "past the last tier: the last");
     assertEquals(1.0, k.tier(0).power(), "below the first: the first");
     assertTrue(k.unscaled().contains("movement_speed"));
     assertEquals(4, k.looks().get("legendary").get("heavy").size());

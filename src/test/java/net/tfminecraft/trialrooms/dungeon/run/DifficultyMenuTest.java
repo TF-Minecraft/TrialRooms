@@ -106,6 +106,17 @@ class DifficultyMenuTest {
   }
 
   @Test
+  void theScreenShowsEachDifficultysLootRules() {
+    Difficulty mythic = new Difficulty("mythic", "Mythic", 4, 3, 2, null, "", 0, 0, new Difficulty.Banking(0, false, 0),
+        true, 2);
+    DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(mythic)));
+    when(runs.unlocked(ann, "delve", mythic)).thenReturn(true);
+    m.open();
+    String lore = String.valueOf(m.getInventory().getItem(m.slot(0)).getItemMeta().lore());
+    assertTrue(lore.contains("comes home only if the boss falls") && lore.contains("Your worn dungeon gear is at stake"), lore);
+  }
+
+  @Test
   void theScreenShowsThisWeeksAffixes() {
     when(runs.weeklyAffixes("delve", 2)).thenReturn(List.of(WeeklyAffix.FORTIFIED, WeeklyAffix.VOLATILE));
     DifficultyMenu m = new DifficultyMenu(runs, plugin, ann, gate, entry(List.of(normal, hard)));

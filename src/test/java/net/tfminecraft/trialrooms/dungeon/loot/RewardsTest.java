@@ -26,6 +26,7 @@ import net.kyori.adventure.text.Component;
 import net.tfminecraft.trialrooms.dungeon.locker.Locker;
 import net.tfminecraft.trialrooms.dungeon.locker.LockerExtras;
 import net.tfminecraft.trialrooms.dungeon.locker.LockerService;
+import net.tfminecraft.trialrooms.dungeon.run.RunRewards;
 import net.tfminecraft.trialrooms.dungeon.run.RunRewards.Moment;
 
 public class RewardsTest {
@@ -145,6 +146,13 @@ public class RewardsTest {
   }
 
   @Test
+  void aRiskierDifficultyPaysMore() {
+    rewards(doubles(0.5)).reward(ann, "delve_seithr", 1, Moment.BOSS, run, false, 1.5);
+    assertEquals(8, locker.marks(), "the boss's 5 marks x1.5, rounded");
+    verify(lockers).file(eq(locker), any()); // 0.5 < 0.35 x 1.5: a find a normal run would have missed
+  }
+
+  @Test
   void aVaultUnderParPaysMoreAndRollsLuckier() {
     rewards(doubles(0.9)).reward(ann, "delve_seithr", 1, Moment.VAULT, run, true);
     assertEquals(15, locker.marks(), "10 for the vault, 5 for par");
@@ -237,7 +245,7 @@ public class RewardsTest {
     assertEquals(List.of(new LockerExtras.Offer("heavy_helmet", "Heavy Helmet", Map.of("rare", 30, "epic", 80))), offers);
     assertEquals("§cThat costs 30 marks; you have 0.", r.buy(ann, "heavy_helmet", "rare"));
     locker.marks(100);
-    when(loot.roll(ann, 1, "rare", "heavy_helmet")).thenReturn(new DungeonLoot.Rolled(sword, null));
+    when(loot.roll(ann, 1, "rare", "heavy_helmet")).thenReturn(new DungeonLoot.Rolled(sword, null, "rare"));
     assertEquals("§aBought Rimebound Sword§a for 30 marks.", r.buy(ann, "heavy_helmet", "rare"));
     assertEquals(70, locker.marks());
     assertEquals("§cThat can't be bought.", r.buy(ann, "heavy_helmet", "legendary"));
@@ -434,5 +442,207 @@ public class RewardsTest {
     assertEquals("2026-W39", DungeonRewards.week(1_790_000_000_000L, ZoneId.of("UTC")));
     assertEquals("2026-W53", DungeonRewards.week(1_798_761_600_000L, ZoneId.of("UTC")), "2027-01-01 is still in 2026's week 53");
     assertNotNull(Set.of());
+  }
+
+  @Test
+  void theShippedValuesLoad() {
+    RewardRules.Values v = rules.values();
+    assertEquals(Map.of("uncommon", 10, "rare", 30, "epic", 80, "legendary", 200), v.rarities());
+    assertEquals(160, v.item("epic", 2, false));
+    assertEquals(80, v.item("epic", 2, true), "a gem is worth half");
+    assertEquals(0, v.item("mythic", 2, false));
+    assertEquals(1.0, v.mark());
+    assertEquals(40.0, v.spoils());
+    assertEquals(0.2, v.insure());
+    assertEquals(RewardRules.Values.NONE, new RewardRules(Map.of(), 0, 0, 0, 0, Map.of(), Map.of(), 1, "t", "p").values());
+    assertThrows(IllegalArgumentException.class, () -> new RewardRules.Values(Map.of("rare", -1), 0, 0, 0, 0));
+    assertThrows(IllegalArgumentException.class, () -> new RewardRules.Values(Map.of(), -1, 0, 0, 0));
+    assertThrows(IllegalArgumentException.class, () -> new RewardRules.Values(Map.of(), 0, -1, 0, 0));
+    assertThrows(IllegalArgumentException.class, () -> new RewardRules.Values(Map.of(), 0, 0, -1, 0));
+    assertThrows(IllegalArgumentException.class, () -> new RewardRules.Values(Map.of(), 0, 0, 0, -1));
+    assertThrows(IllegalArgumentException.class,
+        () -> new RewardRules.Values(Map.of(), 0, 0, Double.POSITIVE_INFINITY, 0));
+    // no value section: nothing is worth anything
+    List<String> problems = new ArrayList<>();
+    YamlConfiguration y = shippedYaml();
+    y.set("rewards.value", null);
+    y.set("rewards.insure", null);
+    assertEquals(0, RewardRules.load(y, kit, problems).values().item("epic", 1, false));
+    assertEquals(List.of("loot.yml rewards: no value section: finds count 1 each in ways out",
+        "loot.yml rewards: no insure: insuring a worn piece costs 1 mark"), problems);
+  }
+
+  @Test
+  void findsAreRolledWhenFoundAndHandedOverWhenTheyComeHome() {
+    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any())).thenReturn(new DungeonLoot.Rolled(sword, null, "epic"));
+    when(loot.power(anyInt())).thenReturn(1.25);
+    when(lockers.encode(sword)).thenReturn(new byte[] {7});
+    when(lockers.decode(any())).thenReturn(sword);
+    DungeonRewards r = rewards(doubles(0.0, 0.9)); // the boss's chance wins; an item, not a gem
+    locker.pity(0.2);
+    RunRewards.Find f = r.find(ann, "delve", 1, Moment.BOSS, run, 1);
+    assertEquals("Rimebound Sword and 5 marks", f.label());
+    assertEquals(5, f.value(), "a mocked item carries no value; the marks do");
+    assertTrue(f.counts() && f.rolled());
+    assertEquals(0.0, locker.pity(), "a win starts the pity over");
+    verify(lockers, never()).file(any(), any());
+    assertEquals(0, locker.marks(), "nothing handed over yet");
+    assertEquals(1, locker.weekRuns("delve"), "the run counts at its first find (lost or not)");
+    r.deliver(ann, f, "delve", 1, run, 1, false);
+    verify(lockers).file(locker, sword);
+    assertEquals(5, locker.marks());
+    assertEquals(1, locker.weekRuns("delve"));
+    verify(ann).sendMessage("§b+5 dungeon marks §7(5 in your locker)");
+    // a second find of the same run: rolls as the run did, counts it no more
+    RunRewards.Find again = r.find(ann, "delve", 1, Moment.BOSS, run, 1);
+    r.deliver(ann, again, "delve", 1, run, 1, false);
+    assertEquals(1, locker.weekRuns("delve"));
+    // this week's runs used up: a new run finds marks only, and hears so once
+    locker.weekRun("delve", 3);
+    UUID run2 = UUID.randomUUID();
+    RunRewards.Find marks = r.find(ann, "delve", 1, Moment.ELITE, run2, 1);
+    assertEquals("2 dungeon marks", marks.label());
+    assertFalse(marks.counts());
+    r.find(ann, "delve", 1, Moment.ELITE, run2, 1);
+    verify(ann, times(1)).sendMessage(startsWith("§7You have had this week's loot from this dungeon"));
+    assertEquals(3, locker.weekRuns("delve"));
+    assertEquals(run2.toString(), locker.lastRun());
+    assertFalse(locker.lastRunRewarded());
+    // the weekly mark cap holds at hand-over; a find staff give back skips it
+    locker.weekMarks(60);
+    clearInvocations(ann);
+    r.deliver(ann, marks, "delve", 1, run2, 1, false);
+    verify(ann, never()).sendMessage(startsWith("§b+"));
+    int before = locker.marks();
+    r.deliver(ann, marks, "delve", 1, UUID.randomUUID(), 1, true);
+    assertEquals(before + 2, locker.marks());
+    // a save that fails keeps it all in memory and says so
+    when(lockers.saveLocker(ann, locker)).thenReturn(false);
+    r.deliver(ann, f, "delve", 1, run, 1, false);
+    verify(ann).sendMessage("§cYour finds could not be saved yet. Tell staff.");
+    when(lockers.saveLocker(ann, locker)).thenReturn(true);
+    // an item that can't be read changes nothing
+    when(lockers.decode(any())).thenThrow(new IllegalStateException("bad bytes"));
+    int had = locker.marks();
+    assertThrows(IllegalStateException.class, () -> r.deliver(ann, f, "delve", 1, run, 1, false));
+    assertEquals(had, locker.marks());
+    doReturn(sword).when(lockers).decode(any());
+    // finds not rolled ahead are rolled at hand-over
+    clearInvocations(lockers);
+    r.deliver(ann, RunRewards.Find.of(Moment.ELITE), "delve", 1, UUID.randomUUID(), 1, false);
+    verify(lockers).saveLocker(ann, locker);
+    r.deliver(ann, RunRewards.Find.spoils(1), "delve", 1, run, 1, false); // (no spoils set up: nothing)
+    // no locker, no rules
+    Player bo = mock(Player.class);
+    assertNull(r.find(bo, "delve", 1, Moment.BOSS, run, 1));
+    assertThrows(IllegalStateException.class, () -> r.deliver(bo, f, "delve", 1, run, 1, false));
+    assertNull(new DungeonRewards(loot, lockers, () -> null, doubles(0), now::get, ZoneId.of("UTC"))
+        .find(ann, "delve", 1, Moment.BOSS, run, 1));
+  }
+
+  @Test
+  void aFindHoldsWhatWasRolled() {
+    when(lockers.encode(any())).thenReturn(new byte[] {7});
+    // nothing at all: no find
+    rules = new RewardRules(Map.of(), 0, 0, 3, 60, Map.of(), Map.of(), 1, "t", "p");
+    assertNull(rewards(doubles(0.0)).find(ann, "delve", 1, Moment.EVENT, run, 1));
+    // a sure item and no marks: the item alone
+    rules = new RewardRules(Map.of(Moment.VAULT, 1.0), 0, 0, 3, 60, Map.of(), Map.of(), 1, "t", "p");
+    RunRewards.Find f = rewards(doubles(0.9)).find(ann, "delve", 1, Moment.VAULT, run, 1);
+    assertEquals("Rimebound Sword", f.label());
+    assertEquals(0, f.marks());
+    // a lost roll grows the pity; a sure one (boosted to 1) leaves it be
+    rules = new RewardRules(Map.of(Moment.ELITE, 0.5), 0, 0.1, 3, 60, Map.of(), Map.of(), 1, "t", "p");
+    rewards(doubles(0.9)).find(ann, "delve", 1, Moment.ELITE, run, 1);
+    assertEquals(0.1, locker.pity(), 1e-9);
+    rewards(doubles(0.9)).find(ann, "delve", 1, Moment.ELITE, run, 2);
+    assertEquals(0.1, locker.pity(), 1e-9);
+  }
+
+  @Test
+  void spoilsFindsAreRolledWhenFound() {
+    Spoils s = new Spoils(Map.of("m.materials.ignitium", 70.0), Map.of(), List.of());
+    ItemStack ignitium = stackable("Ignitium", 64);
+    when(loot.item("m.materials.ignitium")).thenReturn(ignitium);
+    when(lockers.encode(any())).thenReturn(new byte[] {3});
+    java.util.function.Supplier<RewardRules>[] now2 = new java.util.function.Supplier[] {() -> rules};
+    DungeonRewards r = new DungeonRewards(loot, lockers, () -> now2[0].get(), doubles(0.5), now::get,
+        ZoneId.of("UTC"), () -> s, java.util.logging.Logger.getLogger("t"));
+    RunRewards.Find f = r.spoilsFind(ann, "d", 1, run);
+    assertEquals("Spoils: 70 Ignitium", f.label());
+    assertEquals(40, f.value());
+    assertEquals(2, f.spoils().size(), "in whole stacks");
+    assertNull(r.spoilsFind(ann, "d", 0, run), "nothing rolled");
+    assertEquals(1, r.spoilsFind(ann, "d", 0.01, run).value(), "a handful is still worth something");
+    now2[0] = () -> null;
+    assertEquals(0, r.spoilsFind(ann, "d", 1, run).value(), "no rules: no value");
+    assertNull(rewards(doubles(0.5)).spoilsFind(ann, "d", 1, run), "no spoils set up");
+    // handed over: the spoils wait outside
+    when(lockers.decode(any())).thenReturn(ignitium);
+    r.deliver(ann, f, "d", 1, run, 1, false);
+    verify(lockers, times(2)).owe(eq(locker), eq(ignitium));
+  }
+
+  @Test
+  void itemsCarryTheirValueAndMarksPayForInsurance() {
+    org.mockbukkit.mockbukkit.MockBukkit.mock();
+    try {
+      DungeonRewards r = rewards(doubles(0.5));
+      ItemStack helm = new ItemStack(org.bukkit.Material.IRON_HELMET);
+      assertEquals(0, r.value(null));
+      assertEquals(0, r.value(new ItemStack(org.bukkit.Material.STICK)), "no meta yet");
+      assertEquals(0, r.value(helm));
+      helm.editMeta(m -> m.setCustomModelData(1));
+      assertEquals(0, r.value(helm), "meta, but no value");
+      assertSame(helm, DungeonRewards.valued(helm, 0));
+      DungeonRewards.valued(helm, 64);
+      assertEquals(64, r.value(helm));
+      assertNull(DungeonRewards.valued(null, 5));
+      // icons: the item, the spoils, the marks
+      when(lockers.decode(new byte[0])).thenReturn(helm);
+      when(lockers.decode(any())).thenReturn(helm);
+      assertSame(helm, r.icon(new RunRewards.Find(Moment.BOSS, 0, "x", 1, 0, true, List.of(new byte[] {1}), List.of(), true)));
+      assertSame(helm, r.icon(new RunRewards.Find(null, 1, "x", 1, 0, false, List.of(), List.of(new byte[] {1}), true)));
+      ItemStack em = r.icon(new RunRewards.Find(Moment.ELITE, 0, "x", 1, 90, false, List.of(), List.of(), true));
+      assertEquals(org.bukkit.Material.EMERALD, em.getType());
+      assertEquals(64, em.getAmount());
+      assertEquals(1, r.icon(new RunRewards.Find(Moment.ELITE, 0, "x", 1, 0, false, List.of(), List.of(), true)).getAmount());
+      assertEquals(org.bukkit.Material.PAPER, r.icon(RunRewards.Find.of(Moment.BOSS)).getType());
+      assertEquals(org.bukkit.Material.BUNDLE, r.icon(RunRewards.Find.spoils(1)).getType());
+      // a drop of a known rarity is tagged with its value
+      ItemStack iron = spy(new ItemStack(org.bukkit.Material.IRON_SWORD));
+      doReturn(Component.text("Iron Edge")).when(iron).effectiveName(); // (MockBukkit has no effective names)
+      when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any())).thenReturn(new DungeonLoot.Rolled(iron, null, "rare"));
+      when(loot.power(anyInt())).thenReturn(1.0);
+      when(lockers.encode(any())).thenReturn(new byte[] {7});
+      var held = org.mockito.ArgumentCaptor.forClass(ItemStack.class);
+      rewards(doubles(0.9)).reward(ann, "delve", 1, Moment.VAULT, run); // (the vault's item is sure; 0.9: not a gem)
+      verify(lockers).file(eq(locker), held.capture());
+      assertEquals(30, r.value(held.getValue()));
+    } finally {
+      org.mockbukkit.mockbukkit.MockBukkit.unmock();
+    }
+  }
+
+  @Test
+  void marksAreSpentAndGivenBack() {
+    DungeonRewards r = rewards(doubles(0.5));
+    locker.marks(20);
+    assertEquals(20, r.marks(ann));
+    assertFalse(r.spend(ann, 30));
+    assertTrue(r.spend(ann, 15));
+    assertEquals(5, locker.marks());
+    assertTrue(r.spend(ann, -15), "given back");
+    assertEquals(20, locker.marks());
+    when(lockers.saveLocker(ann, locker)).thenReturn(false);
+    assertFalse(r.spend(ann, 5));
+    assertEquals(20, locker.marks(), "a spend that can't be saved is undone");
+    Player bo = mock(Player.class);
+    assertEquals(-1, r.marks(bo));
+    assertFalse(r.spend(bo, 1));
+    assertEquals(11, r.insurance(52), "a fifth of the value, rounded up");
+    when(loot.power(Integer.MAX_VALUE)).thenReturn(1.9);
+    assertEquals(76, r.insurance(0), "a piece without a value insures as the best item");
+    assertEquals(0, new DungeonRewards(loot, lockers, () -> null, doubles(0), now::get, ZoneId.of("UTC")).insurance(52));
   }
 }

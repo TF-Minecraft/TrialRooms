@@ -46,7 +46,7 @@ helpful-auras: [guardian_angel, Guardian_Angel_Ward, TFMC_Guard_Shield_Wall_Ward
 #   bolstering: each death within radius blocks adds this much damage to the enemies near it.
 affixes:
   pool: [fortified, tyrannical, volatile, raging, bolstering]
-  per-tier: {2: 1, 3: 2}
+  per-tier: {2: 1, 3: 2, 4: 2}
   fortified: 1.25
   tyrannical: {health: 1.3, damage: 1.15}
   raging: {below: 0.3, damage: 1.25}

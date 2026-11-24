@@ -134,7 +134,7 @@ class DungeonModuleTest {
     assertEquals(30, m.lootKit().bases().size());
     assertNotNull(m.rewardRules(), "and its rewards");
     assertEquals(18.9, m.spoils().perHour().get("m.materials.ignitium"), "and its spoils");
-    assertEquals(9, m.cosmetics().trophies().size(), "and its cosmetics");
+    assertEquals(12, m.cosmetics().trophies().size(), "and its cosmetics");
     assertEquals(5, m.affixes().pool().size(), "and the weekly affixes from settings.yml");
     assertEquals(20, m.recipes().get("delve_seithr").rules().minutes());
     // a second start keeps edited files
