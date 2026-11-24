@@ -47,6 +47,11 @@ final class RunFinds {
      */
     record Offer(List<Find> safe, List<Find> atRisk, int allowance) {
 
+        /** A find's weight in a way out's sums: its value, at least 1 (a find without a value still counts). */
+        static int weight(Find f) {
+            return Math.max(1, f.value());
+        }
+
         /** Whether picks (indexes into atRisk) are all there, each once, and within the allowance. */
         boolean allows(Collection<Integer> picks) {
             if (new HashSet<>(picks).size() != picks.size()) {
@@ -57,7 +62,7 @@ final class RunFinds {
                 if (i < 0 || i >= atRisk.size()) {
                     return false;
                 }
-                sum += atRisk.get(i).value();
+                sum += weight(atRisk.get(i));
             }
             return sum <= allowance;
         }
@@ -155,11 +160,12 @@ final class RunFinds {
         if (ar.gearAtRisk && ar.run.state() == DungeonRun.State.RUNNING && lockers != null) {
             // (an insured piece is worn: insurance on one not worn is refunded as the doors open)
             String spare = ar.insured.get(id);
+            boolean wore = spare != null && lockers.wears(p, spare);
             gear = lockers.forfeitWorn(p, spare);
             if (!gear.isEmpty()) {
                 p.sendMessage("§4Your worn dungeon gear is destroyed.");
             }
-            if (spare != null) {
+            if (wore) {
                 p.sendMessage("§aYour insured piece was spared: it is back in your locker.");
             }
         }
@@ -208,7 +214,7 @@ final class RunFinds {
         log(ar, id, why, "", parts.lost(), List.of());
         int banked = h.banked.size();
         if (!ok) {
-            p.sendMessage("§cSome of your finds could not be paid. Tell staff.");
+            p.sendMessage("§cSome of your finds could not be handed over yet: they wait for you. Tell staff if this keeps happening.");
         } else if (keep < 1 && banked > 0) {
             p.sendMessage("§e" + parts.bankedHome() + " of " + banked + " banked finds come home.");
         } else if (!pay.isEmpty()) {
@@ -216,20 +222,30 @@ final class RunFinds {
         }
     }
 
-    /** Hands finds to a player here; each on its own, so one that fails never takes the rest with it. */
+    /**
+     * Hands finds to a player here; each on its own, so one that fails never takes the rest with it.
+     * One that fails waits for them (handed over when they next play the character outside a run).
+     */
     private boolean deliver(ActiveRun ar, Player p, List<Find> pay) {
         RunRewards rewards = runs.rewards();
         String d = ar.difficulty.id(); // (only a difficulty banks finds)
-        boolean ok = true;
+        List<Find> failed = new ArrayList<>();
         for (Find f : pay) {
-            ok &= runs.safely(p, "a found " + f.label(),
-                    () -> rewards.deliver(p, f, ar.run.recipeId(), ar.rules.tier(), ar.run.id(), ar.boost, false));
+            if (!runs.safely(p, "a found " + f.label(),
+                    () -> rewards.deliver(p, f, ar.run.recipeId(), ar.rules.tier(), ar.run.id(), ar.boost, false))) {
+                failed.add(f);
+            }
             if (f.moment() == RunRewards.Moment.BOSS) {
                 List<String> party = ar.securedParty.isEmpty() ? RunManager.stayed(ar) : ar.securedParty;
-                ok &= runs.safely(p, "a trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, f.moment(), ar.run.id(), party));
+                runs.safely(p, "a trophy roll", () -> rewards.feat(p, ar.run.recipeId(), d, f.moment(), ar.run.id(), party));
             }
         }
-        return ok;
+        if (!failed.isEmpty() && store != null) {
+            store.addPending(p.getUniqueId(), new FindStore.Pending(ar.run.member(p.getUniqueId()).characterId(),
+                    ar.run.recipeId(), ar.run.id(), ar.rules.tier(), ar.boost, false, "finds that could not be handed over",
+                    failed, List.of()));
+        }
+        return failed.isEmpty();
     }
 
     /**
@@ -256,7 +272,10 @@ final class RunFinds {
         if (store == null || rewards == null) {
             return false;
         }
-        List<FindStore.Pending> owed = store.takePending(p.getUniqueId(), character);
+        List<FindStore.Pending> owed = store.pending(p.getUniqueId(), character);
+        if (!owed.isEmpty()) {
+            store.takePending(p.getUniqueId(), character); // (taken after it was read: what fails is put back)
+        }
         for (FindStore.Pending o : owed) {
             List<Find> failed = new ArrayList<>();
             for (Find f : o.finds()) {
@@ -295,9 +314,9 @@ final class RunFinds {
         boolean bankedSafe = ar.banking.keep() >= 1;
         List<Find> risk = new ArrayList<>(bankedSafe ? List.of() : h.banked);
         risk.addAll(h.carried);
-        int best = risk.stream().mapToInt(Find::value).max().orElse(0);
-        return new Offer(List.copyOf(bankedSafe ? h.banked : List.of()), List.copyOf(risk),
-                Math.max((value(risk) + 1) / 2, best));
+        int best = risk.stream().mapToInt(Offer::weight).max().orElse(0);
+        int total = risk.stream().mapToInt(Offer::weight).sum();
+        return new Offer(List.copyOf(bankedSafe ? h.banked : List.of()), List.copyOf(risk), Math.max((total + 1) / 2, best));
     }
 
     /**
@@ -320,7 +339,7 @@ final class RunFinds {
         clear(id);
         log(ar, id, "left through a way out (finds not taken)", "", lost, List.of());
         if (!ok) {
-            p.sendMessage("§cSome of your finds could not be paid. Tell staff.");
+            p.sendMessage("§cSome of your finds could not be handed over yet: they wait for you. Tell staff if this keeps happening.");
         } else if (!pay.isEmpty()) {
             p.sendMessage("§a✦ You take " + pay.size() + " find" + (pay.size() == 1 ? "" : "s") + " home.");
         }
@@ -350,28 +369,41 @@ final class RunFinds {
     String insure(ActiveRun ar, Player p, String id) {
         UUID u = p.getUniqueId();
         if (id.equals(ar.insured.get(u))) {
-            refund(ar, p);
+            refund(ar, u);
             return "§7Insurance cancelled: your marks are back.";
         }
         Insurable pick = insurable(p).stream().filter(i -> i.id().equals(id)).findFirst().orElse(null);
         if (pick == null) {
             return "§cWear that piece first: put on its loadout in the locker.";
         }
-        refund(ar, p); // one piece: the one insured before is let go
         if (!runs.rewards().spend(p, pick.cost())) {
             return "§cInsuring it costs " + pick.cost() + " marks; you have " + Math.max(0, runs.rewards().marks(p)) + ".";
         }
+        refund(ar, u); // one piece: the one insured before is let go (paid for the new one first)
         ar.insured.put(u, id);
         ar.insurePaid.put(u, pick.cost());
         return "§aInsured for " + pick.cost() + " marks: if you fall, this piece is spared.";
     }
 
-    /** Gives back what a player paid for insurance (leaving before the doors open, or cancelling). */
-    void refund(ActiveRun ar, Player p) {
-        ar.insured.remove(p.getUniqueId());
-        Integer paid = ar.insurePaid.remove(p.getUniqueId());
-        if (paid != null) { // (paid with the rewards' marks, so they are there)
-            runs.rewards().spend(p, -paid);
+    /**
+     * Gives back what a member paid for insurance (leaving before the doors open, or cancelling): to
+     * them at once when they play the run here, otherwise it waits for the character that paid.
+     */
+    void refund(ActiveRun ar, UUID member) {
+        ar.insured.remove(member);
+        Integer paid = ar.insurePaid.remove(member);
+        if (paid == null) {
+            return;
+        }
+        Player p = org.bukkit.Bukkit.getPlayer(member);
+        if (p != null && runs.here(ar, p) && runs.rewards().spend(p, -paid)) { // (paid with the rewards' marks)
+            return;
+        }
+        if (store != null) {
+            store.addPending(member, new FindStore.Pending(ar.run.member(member).characterId(), ar.run.recipeId(),
+                    ar.run.id(), ar.rules.tier(), 1, true, "your insurance was refunded", List.of(new Find(null, 0,
+                            paid + " dungeon marks (insurance refund)", 0, paid, false, List.of(), List.of(), true)),
+                    List.of()));
         }
     }
 
@@ -384,7 +416,7 @@ final class RunFinds {
             }
             Locker l = runs.lockers().locker(p); // (insured from the lockers, so they are there)
             if (l == null || !l.wornSlots().containsValue(id)) {
-                refund(ar, p);
+                refund(ar, p.getUniqueId());
                 p.sendMessage("§eYour insurance was refunded: you are not wearing that piece.");
             }
         }

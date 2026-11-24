@@ -96,31 +96,38 @@ public final class FindStore {
     }
 
     /**
-     * At startup: every pouch left on disk is from a run a crash cut off, and comes home in full.
-     * Returns how many there were.
+     * At startup: a pouch of a run a stop cut off ({@code cutOff}) comes home in full (not the
+     * players' fault). A pouch of any other run was never settled, so it goes to the loss log for
+     * staff to look at. One file that can't be read never stops the rest. Returns how many pouches
+     * there were.
      */
-    public int recover() {
+    public int recover(java.util.Set<UUID> cutOff) {
         File[] files = root.toFile().listFiles((d, n) -> n.endsWith(".yml"));
         int n = 0;
         for (File f : files == null ? new File[0] : files) {
-            UUID player;
             try {
-                player = UUID.fromString(f.getName().substring(0, f.getName().length() - 4));
-            } catch (IllegalArgumentException e) {
-                continue;
+                UUID player = UUID.fromString(f.getName().substring(0, f.getName().length() - 4));
+                Pouch p = pouch(player);
+                if (p == null) {
+                    continue;
+                }
+                List<RunRewards.Find> all = new ArrayList<>(p.banked());
+                all.addAll(p.carried());
+                if (cutOff.contains(p.run())) {
+                    if (!all.isEmpty()) {
+                        addPending(player, new Pending(p.character(), p.recipe(), p.run(), p.tier(), p.boost(), false,
+                                "a stop cut your run short", all, List.of()));
+                    }
+                } else if (!all.isEmpty()) {
+                    logLoss(player, new Loss(0, System.currentTimeMillis(), p.character(), p.run(), p.recipe(), "",
+                            p.tier(), "finds of a run that ended without settling them", "found at startup", all,
+                            List.of(), false));
+                }
+                clearHold(player);
+                n++;
+            } catch (RuntimeException e) {
+                log.warning("[dungeons] could not recover the finds in " + f.getName() + ": " + e);
             }
-            Pouch p = pouch(player);
-            if (p == null) {
-                continue;
-            }
-            List<RunRewards.Find> all = new ArrayList<>(p.banked());
-            all.addAll(p.carried());
-            if (!all.isEmpty()) {
-                addPending(player, new Pending(p.character(), p.recipe(), p.run(), p.tier(), p.boost(), false,
-                        "a stop cut your run short", all, List.of()));
-            }
-            clearHold(player);
-            n++;
         }
         return n;
     }
@@ -145,23 +152,26 @@ public final class FindStore {
         write(player, y);
     }
 
-    /** Takes what is owed to one of a player's characters. */
-    public List<Pending> takePending(UUID player, String character) {
-        YamlConfiguration y = read(player);
+    /** What is owed to one of a player's characters (still on disk until taken). */
+    public List<Pending> pending(UUID player, String character) {
         List<Pending> out = new ArrayList<>();
-        List<Map<?, ?>> keep = new ArrayList<>();
-        for (Map<?, ?> m : y.getMapList("pending")) {
+        for (Map<?, ?> m : read(player).getMapList("pending")) {
             if (character.equals(m.get("character"))) {
                 out.add(new Pending(character, (String) m.get("recipe"), UUID.fromString((String) m.get("run")),
                         ((Number) m.get("tier")).intValue(), ((Number) m.get("boost")).doubleValue(),
                         Boolean.TRUE.equals(m.get("restore")), (String) m.get("why"), unfinds(list(m.get("finds"))),
                         unbytes(m.get("gear"))));
-            } else {
-                keep.add(m);
             }
         }
+        return out;
+    }
+
+    /** Takes what is owed to one of a player's characters off the disk, and returns it. */
+    public List<Pending> takePending(UUID player, String character) {
+        List<Pending> out = pending(player, character);
         if (!out.isEmpty()) {
-            y.set("pending", keep);
+            YamlConfiguration y = read(player);
+            y.set("pending", y.getMapList("pending").stream().filter(m -> !character.equals(m.get("character"))).toList());
             write(player, y);
         }
         return out;
@@ -288,8 +298,26 @@ public final class FindStore {
         return root.resolve(player + ".yml").toFile();
     }
 
+    /**
+     * A player's file. One that can't be parsed is moved aside (never overwritten by the next write,
+     * so staff can still read what it held) and the player starts a new one.
+     */
     private YamlConfiguration read(UUID player) {
-        return YamlConfiguration.loadConfiguration(file(player));
+        File f = file(player);
+        YamlConfiguration y = new YamlConfiguration();
+        if (!f.exists()) {
+            return y;
+        }
+        try {
+            y.load(f);
+        } catch (IOException | org.bukkit.configuration.InvalidConfigurationException e) {
+            File aside = new File(f.getPath() + ".broken-" + System.currentTimeMillis());
+            f.renameTo(aside); // (if even that fails, the log line below is what is left of it)
+            log.severe("[dungeons] the finds of " + player + " could not be read (" + e.getMessage() + "); moved to "
+                    + aside.getName());
+            return new YamlConfiguration();
+        }
+        return y;
     }
 
     /** Writes beside the file and renames over it, so a crash mid-write never leaves half a file. */

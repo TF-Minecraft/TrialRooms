@@ -244,11 +244,12 @@ public final class RunManager {
     }
 
     public void start() {
+        Set<UUID> cutOff = files.activeRuns();
         int recovered = files.recoverActive();
         if (recovered > 0) {
             plugin.getLogger().warning("[dungeons] " + recovered + " run(s) were cut off by a stop; keys refunded");
         }
-        int pouches = finds.store() == null ? 0 : finds.store().recover();
+        int pouches = finds.store() == null ? 0 : finds.store().recover(cutOff);
         if (pouches > 0) {
             plugin.getLogger().warning("[dungeons] finds of " + pouches + " player(s) from runs a stop cut off will come home");
         }
@@ -614,9 +615,8 @@ public final class RunManager {
                 }
             }
             runs.put(run.id(), ar);
-            if (!keyPath.isBlank()) {
-                files.saveActive(run.id(), leader.getUniqueId(), keyPath);
-            }
+            // (every run, keyed or not: a crash pays the finds of the runs it cut off, and only those)
+            files.saveActive(run.id(), leader.getUniqueId(), keyPath);
             for (int i = 0; i < layout.rooms().size(); i++) {
                 if (DungeonRun.isFight(layout.rooms().get(i).node().type())) {
                     setDoors(ar, i, true, true);
@@ -784,7 +784,7 @@ public final class RunManager {
             if (!m.online()) {
                 if (now - m.offlineSinceMs() >= settings().graceSeconds() * 1000L) {
                     // away too long: as if they had left (what they banked comes home by the rules)
-                    finds.settleAway(ar, m, run.state() == DungeonRun.State.COMPLETE ? 1 : keep(ar), false,
+                    finds.settleAway(ar, m, keepNow(ar), false,
                             "you were away too long and left the run");
                     run.leave(m.id());
                     byPlayer.remove(m.id());
@@ -1413,7 +1413,7 @@ public final class RunManager {
     }
 
     /** Whether the player is in the dungeon world, in this run on the character that entered it. */
-    private boolean here(ActiveRun ar, Player p) {
+    boolean here(ActiveRun ar, Player p) {
         return inDungeonWorld(p) && isPlayingMember(ar, p);
     }
 
@@ -1511,6 +1511,12 @@ public final class RunManager {
             return;
         }
         if (m != null) {
+            // back on another character: they leave the run, by the leaving rules
+            if (ar.lobbyRoom >= 0) {
+                finds.refund(ar, p.getUniqueId());
+            }
+            finds.settleAway(ar, m, keepNow(ar), false,
+                    "you came back on another character");
             ar.run.leave(p.getUniqueId());
             byPlayer.remove(p.getUniqueId());
         }
@@ -1551,7 +1557,11 @@ public final class RunManager {
         }
         boolean here = here(ar, p);
         if (ar.lobbyRoom >= 0) {
-            finds.refund(ar, p); // (left before the doors opened: insurance is given back)
+            finds.refund(ar, p.getUniqueId()); // (left before the doors opened: insurance is given back)
+        }
+        if (!here) { // (away from the dungeon: the leaving rules, handed over later)
+            finds.settleAway(ar, ar.run.member(p.getUniqueId()), keepNow(ar),
+                    false, "you left the run while away from it");
         }
         if (here) { // (leaving before the boss falls is a run that failed, for them)
             boolean down = ar.run.member(p.getUniqueId()).status() == Status.DOWNED;
@@ -1559,7 +1569,7 @@ public final class RunManager {
                 // (leaving while down, or mid-fight with gear at stake, dodges no loss)
                 finds.lose(ar, p, down ? "left while down" : "left in the middle of a fight", situation(ar, p));
             }
-            finds.payout(ar, p, ar.run.state() == DungeonRun.State.COMPLETE ? 1 : keep(ar), false, "left the run");
+            finds.payout(ar, p, keepNow(ar), false, "left the run");
         }
         depart(ar, p, here);
         return true;
@@ -1859,6 +1869,11 @@ public final class RunManager {
         return ar.banking == null ? 1 : ar.banking.keep();
     }
 
+    /** What a member leaving now keeps of what they banked: all once the boss has fallen, else the difficulty's share. */
+    private static double keepNow(ActiveRun ar) {
+        return ar.run.state() == DungeonRun.State.COMPLETE ? 1 : keep(ar);
+    }
+
     /** Rolls whether a banked find comes home when a run fails. */
     java.util.function.DoubleSupplier keepRoll = () -> ThreadLocalRandom.current().nextDouble();
 
@@ -1953,12 +1968,12 @@ public final class RunManager {
         double keep = outcome == DungeonRun.State.COMPLETE || stop ? 1 : keep(ar);
         String why = stop ? "a stop cut your run short" : outcome == DungeonRun.State.COMPLETE ? ""
                 : outcome == DungeonRun.State.FAILED ? "the run failed" : "the run was ended";
+        if (ar.lobbyRoom >= 0) {
+            new ArrayList<>(ar.insurePaid.keySet()).forEach(id -> finds.refund(ar, id)); // (the doors never opened)
+        }
         for (Member m : ar.run.members()) {
             byPlayer.remove(m.id(), ar);
             Player p = Bukkit.getPlayer(m.id());
-            if (p != null && ar.lobbyRoom >= 0) {
-                finds.refund(ar, p); // (the doors never opened)
-            }
             if (p != null && m.status() != Status.LEFT && here(ar, p)) {
                 if (reason != null) {
                     p.sendMessage(reason);

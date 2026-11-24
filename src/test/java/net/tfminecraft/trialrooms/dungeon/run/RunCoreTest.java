@@ -446,11 +446,11 @@ public class RunCoreTest {
         false, 1).lootRules().size(), "no way out: no line for it");
     assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(0, false, 0, false, -0.1));
     assertThrows(IllegalArgumentException.class, () -> new Difficulty.Banking(0, false, 0, false, 1.1));
-    RunFinds.Offer o = new RunFinds.Offer(List.of(), List.of(RunRewards.Find.of(RunRewards.Moment.EVENT)), 0);
+    RunFinds.Offer o = new RunFinds.Offer(List.of(), List.of(RunRewards.Find.of(RunRewards.Moment.EVENT)), 1);
     assertFalse(o.allows(List.of(0, 0)), "each once");
     assertFalse(o.allows(List.of(1)), "not there");
     assertFalse(o.allows(List.of(-1)));
-    assertTrue(o.allows(List.of(0)));
+    assertTrue(o.allows(List.of(0)), "a find without a value weighs 1");
   }
 
   @Test

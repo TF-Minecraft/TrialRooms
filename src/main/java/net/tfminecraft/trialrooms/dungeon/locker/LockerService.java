@@ -607,14 +607,25 @@ public final class LockerService {
         return !forfeitWorn(p, null).isEmpty();
     }
 
+    /** Whether a player wears a locker item now (false when their locker can't be read). */
+    public boolean wears(Player p, String id) {
+        Locker l = locker(p);
+        return l != null && l.wornSlots().containsValue(id);
+    }
+
     /** Puts dungeon items (given back by staff) in a player's locker; false when it can't be saved. */
     public boolean restore(Player p, List<byte[]> items) {
         Locker l = locker(p);
         if (l == null) {
             return false;
         }
-        items.forEach(b -> file(l, codec.decode(b)));
-        return saveLocker(p, l);
+        List<String> ids = new ArrayList<>();
+        items.forEach(b -> ids.add(file(l, codec.decode(b))));
+        if (!saveLocker(p, l)) {
+            ids.forEach(l::remove); // (they wait to be given back again: never twice)
+            return false;
+        }
+        return true;
     }
 
     /** An item as bytes (the server's own format). */

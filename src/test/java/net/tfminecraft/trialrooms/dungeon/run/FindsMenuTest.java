@@ -123,6 +123,12 @@ class FindsMenuTest {
     assertEquals(List.of(1), m.picks());
     assertTrue(lore(m.getInventory().getItem(FindsMenu.CONFIRM)).contains("Picked: value 30 of 30"));
     m.click(30, false);
+    when(runs.exitOffer(ann)).thenReturn(new RunFinds.Offer(List.of(ring), List.of(event), 30));
+    m.render();
+    assertEquals(List.of(), m.picks(), "a pick no longer at risk is dropped");
+    when(runs.exitOffer(ann)).thenReturn(offer);
+    m.render();
+    m.click(11, false);
     when(runs.exitWith(ann, List.of(1))).thenReturn("§cno");
     m.click(FindsMenu.CONFIRM, false);
     server.getScheduler().performOneTick();

@@ -109,7 +109,9 @@ public final class FindsMenu implements ClickMenu, InventoryHolder {
         if (offer == null) {
             return;
         }
-        int picked = picks.stream().mapToInt(i -> offer.atRisk().get(i).value()).sum();
+        int size = offer.atRisk().size();
+        picks.removeIf(i -> i >= size); // (a save point since may have banked some of them away)
+        int picked = picks.stream().mapToInt(i -> RunFinds.Offer.weight(offer.atRisk().get(i))).sum();
         inventory.setItem(INFO, button(Material.ENDER_EYE, "The way out", List.of(
                 "Leave alone, now. You take home:",
                 offer.safe().isEmpty() ? "· only the finds you pick" : "· your banked finds, and the finds you pick",

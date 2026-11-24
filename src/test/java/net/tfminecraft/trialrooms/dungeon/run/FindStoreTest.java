@@ -60,17 +60,29 @@ class FindStoreTest {
     s.hold(bo, new FindStore.Pouch(run, "c2", "delve", 2, 1, List.of(), List.of()));
     s.addPending(UUID.randomUUID(), new FindStore.Pending("c9", "delve", run, 1, 1, false, "x", List.of(), List.of()));
     Files.writeString(temp.resolve("finds").resolve("notes.yml"), "a: 1");
-    assertEquals(2, s.recover(), "two pouches (one empty); other files are left alone");
+    UUID cy = UUID.randomUUID();
+    UUID other = UUID.randomUUID();
+    s.hold(cy, new FindStore.Pouch(other, "c3", "delve", 2, 1, List.of(ring), List.of()));
+    UUID dee = UUID.randomUUID();
+    s.hold(dee, new FindStore.Pouch(other, "c4", "delve", 2, 1, List.of(), List.of()));
+    assertEquals(4, s.recover(java.util.Set.of(run)), "four pouches; a file that isn't a player's is skipped");
+    assertEquals(List.of(), s.takePending(cy, "c3"), "a run the stop didn't cut off: not paid");
+    assertEquals("finds of a run that ended without settling them", s.losses(cy).get(0).why());
+    assertNull(s.pouch(cy));
+    assertEquals(List.of(), s.losses(dee), "an empty one is nothing to log");
     assertNull(s.pouch(ann));
     assertEquals(List.of(), s.takePending(bo, "c2"), "an empty pouch owes nothing");
     assertEquals(List.of(), s.takePending(ann, "c2"), "another character");
+    assertEquals(1, s.pending(ann, "c1").size(), "read, not taken");
+    s.addPending(ann, new FindStore.Pending("c2", "delve", run, 1, 1, false, "x", List.of(ring), List.of()));
     List<FindStore.Pending> owed = s.takePending(ann, "c1");
     assertEquals(1, owed.size());
     assertEquals("a stop cut your run short", owed.get(0).why());
     assertEquals(2, owed.get(0).finds().size(), "banked and carried");
     assertFalse(owed.get(0).restore());
     assertEquals(List.of(), s.takePending(ann, "c1"), "taken once");
-    assertEquals(0, new FindStore(temp.resolve("none"), Logger.getLogger("t")).recover(), "no folder yet");
+    assertEquals(1, s.takePending(ann, "c2").size(), "the other character's stays until taken");
+    assertEquals(0, new FindStore(temp.resolve("none"), Logger.getLogger("t")).recover(java.util.Set.of()), "no folder yet");
   }
 
   @Test
@@ -101,6 +113,25 @@ class FindStoreTest {
     List<FindStore.Loss> kept = s.losses(ann);
     assertEquals(FindStore.KEEP_LOSSES, kept.size(), "the oldest go");
     assertEquals(FindStore.KEEP_LOSSES + 4, kept.get(kept.size() - 1).id());
+  }
+
+  @Test
+  void aFileThatCantBeReadIsKeptAsideNotOverwritten() throws Exception {
+    FindStore s = store();
+    Files.createDirectories(temp.resolve("finds"));
+    Path f = temp.resolve("finds").resolve(ann + ".yml");
+    Files.writeString(f, "pouch: [unclosed");
+    assertNull(s.pouch(ann));
+    assertFalse(Files.exists(f), "moved aside");
+    try (var aside = Files.list(temp.resolve("finds"))) {
+      assertTrue(aside.anyMatch(p -> p.getFileName().toString().startsWith(ann + ".yml.broken-")));
+    }
+    s.hold(ann, new FindStore.Pouch(run, "c1", "delve", 1, 1, List.of(ring), List.of()));
+    assertNotNull(s.pouch(ann), "a new file for what comes next");
+    // a pouch whose run can't be read is skipped at startup, not thrown
+    UUID bo = UUID.randomUUID();
+    Files.writeString(temp.resolve("finds").resolve(bo + ".yml"), "pouch: {run: nonsense}");
+    assertEquals(1, s.recover(java.util.Set.of(run)));
   }
 
   @Test

@@ -128,11 +128,18 @@ public record RewardRules(Map<Moment, Double> chances, double gemChance, double 
                     values.put(rarity.id(), vs.getInt(rarity.id(), 0));
                 }
             }
-            return new RewardRules(chances, r.getDouble("gem-chance", 0), r.getDouble("pity", 0),
+            RewardRules rules = new RewardRules(chances, r.getDouble("gem-chance", 0), r.getDouble("pity", 0),
                     r.getInt("weekly.runs", 3), r.getInt("weekly.marks", 100), marks, prices, r.getInt("shop-tier", 1),
                     r.getString("gems.template", "gemstones.larimar"), pool, r.getInt("par.marks", 0),
                     r.getDouble("par.luck", 0), new Values(values, r.getDouble("value.gem", 0.5),
                             r.getDouble("value.mark", 1), r.getDouble("value.spoils-hour", 0), r.getDouble("insure", 0)));
+            if (vs == null) {
+                problems.add("loot.yml rewards: no value section: finds count 1 each in ways out");
+            }
+            if (!r.contains("insure")) {
+                problems.add("loot.yml rewards: no insure: insuring a worn piece costs 1 mark");
+            }
+            return rules;
         } catch (RuntimeException e) {
             problems.add("loot.yml rewards: " + e.getMessage());
             return null;

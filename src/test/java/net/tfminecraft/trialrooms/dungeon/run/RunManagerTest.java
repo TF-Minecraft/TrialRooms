@@ -734,7 +734,7 @@ class RunManagerTest {
     assertTrue(got.containsAll(List.of("Ann EVENT x2.0", "Ann BOSS x2.0", "Ann feat BOSS", "Bo BOSS x2.0",
         "Cy BOSS x2.0", "Ann VAULT x2.0", "Bo VAULT x2.0")), got.toString());
     assertFalse(got.contains("Bo EVENT x2.0"), "Bo fell carrying it");
-    assertTrue(nextMatching(c, "Some of your finds could not be paid. Tell staff."), "Cy's event roll failed");
+    assertTrue(nextMatching(c, "Some of your finds could not be handed over yet"), "Cy's event roll failed");
     runs.runs().forEach(r -> runs.end(r, false, null));
     difficulties = List.of();
   }
@@ -2340,6 +2340,7 @@ class RunManagerTest {
     when(lockers.locker(a)).thenReturn(locker);
     when(lockers.show(locker, "x")).thenReturn(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_HELMET));
     when(lockers.show(locker, "y")).thenReturn(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_CHESTPLATE));
+    when(lockers.wears(a, "x")).thenReturn(true);
     int[] marks = {100};
     runs.openInsurance(a);
     assertTrue(nextMatching(a, "Insurance is bought in the lobby"));
@@ -2405,6 +2406,11 @@ class RunManagerTest {
     ticks(1);
     verify(lockers).forfeitWorn(a, "x");
     assertTrue(nextMatching(a, "Your insured piece was spared"));
+    when(lockers.wears(a, "x")).thenReturn(false);
+    assertTrue(runs.down(a));
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    assertFalse(nextMatching(a, "Your insured piece was spared"), "nothing known to be worn");
     runs.runs().forEach(r -> runs.end(r, false, null));
     assertNull(runs.insured(a));
     assertEquals(90, marks[0], "insurance that was used stays paid");
@@ -2553,7 +2559,7 @@ class RunManagerTest {
     assertFalse(nextMatching(c, "A way out glimmers"), "shown once");
     // the exit fails to pay one of Cy's finds: Cy hears so, and leaves all the same
     assertNull(runs.exitWith(c, List.of(0)));
-    assertTrue(nextMatching(c, "Some of your finds could not be paid"));
+    assertTrue(nextMatching(c, "Some of your finds could not be handed over yet"));
     // Ann takes nothing: nothing to say
     a.teleport(new Location(main, 10, 70, 10));
     assertNull(runs.exitOffer(a), "from outside the dungeon");
@@ -2672,6 +2678,132 @@ class RunManagerTest {
     ticks(1);
     assertEquals(100, marks[0]);
     runs.runs().forEach(r -> runs.end(r, false, null));
+    difficulties = List.of();
+  }
+
+  @Test
+  void leavingWhileAwayOrOnAnotherCharacterSettlesTheFinds() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(banking("normal", new Difficulty.Banking(1, true, 1), false));
+    FindStore store = store();
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal");
+    clearCombat(only(), a);
+    a.teleport(new Location(main, 10, 70, 10));
+    got.clear();
+    runs.leave(a); // from outside the dungeon: banked finds come home (Normal), handed over on the next sweep
+    assertNull(store.pouch(a.getUniqueId()));
+    runs.sweep(a);
+    assertTrue(got.containsAll(List.of("Ann EVENT", "Ann spoils")), got.toString());
+    assertTrue(nextMatching(a, "you left the run while away from it"));
+    ticks(1);
+    // back on another character: they leave, by the same rules
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "normal");
+    clearCombat(only(), a);
+    characterOf.put("Ann", "char-Other");
+    runs.sweep(a);
+    assertNull(store.pouch(a.getUniqueId()));
+    assertEquals(1, store.pending(a.getUniqueId(), "char-Ann").size(), "waits for the character that found it");
+    characterOf.put("Ann", "char-Ann");
+    runs.sweep(a);
+    assertTrue(got.contains("Ann EVENT"), got.toString());
+    ticks(1);
+    // an unsettled pouch of a run the stop didn't cut off is not paid at startup: staff can look at it
+    store.hold(a.getUniqueId(), new FindStore.Pouch(UUID.randomUUID(), "char-Ann", "delve", 1, 1,
+        List.of(RunRewards.Find.of(RunRewards.Moment.EVENT)), List.of()));
+    RunManager next = new RunManager(plugin, module, chars, keys, mobs, files, gates, now::get);
+    next.findStore(store);
+    next.start();
+    assertEquals("finds of a run that ended without settling them", runs.losses(a.getUniqueId()).getLast().why());
+    next.stop();
+  }
+
+  @Test
+  void insuranceRefundsReachTheCharacterThatPaid() {
+    settings = withLobby(60);
+    difficulties = List.of(banking("mythic", new Difficulty.Banking(0, false, 0), true));
+    var lockers = mock(net.tfminecraft.trialrooms.dungeon.locker.LockerService.class);
+    runs.lockers(lockers);
+    var locker = new net.tfminecraft.trialrooms.dungeon.locker.Locker();
+    locker.put("x", new byte[] {1});
+    locker.put("y", new byte[] {2});
+    locker.assign(0, 39, "x");
+    locker.assign(0, 38, "y");
+    locker.wear(0, Map.of(), 1);
+    PlayerMock a = player("Ann");
+    when(lockers.locker(a)).thenReturn(locker);
+    when(lockers.show(eq(locker), anyString())).thenReturn(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_HELMET));
+    int[] marks = {100};
+    boolean[] refusing = {false};
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, Moment moment, UUID run) {
+      }
+
+      @Override
+      public int marks(org.bukkit.entity.Player p) {
+        return marks[0];
+      }
+
+      @Override
+      public boolean spend(org.bukkit.entity.Player p, int n) {
+        if (refusing[0] || marks[0] < n) {
+          return false;
+        }
+        marks[0] -= n;
+        return true;
+      }
+
+      @Override
+      public int insurance(int value) {
+        return 10;
+      }
+
+      @Override
+      public void deliver(org.bukkit.entity.Player p, Find f, String recipe, int tier, UUID run, double boost,
+          boolean restore) {
+        marks[0] += f.marks();
+      }
+    });
+    // too poor for the new piece: the old one stays insured
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "mythic");
+    runs.insure(a, "x");
+    marks[0] = 5;
+    assertTrue(runs.insure(a, "y").startsWith("§cInsuring it costs"));
+    assertEquals("x", runs.insured(a));
+    marks[0] = 90;
+    // no store: a refund that can't be paid here is lost (nothing to keep it in)
+    a.teleport(new Location(main, 10, 70, 10));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    assertEquals(90, marks[0]);
+    FindStore store = store();
+    // away when the lobby run ends: the refund waits for the character that paid
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "mythic");
+    runs.insure(a, "x");
+    a.teleport(new Location(main, 10, 70, 10));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    assertEquals(90, marks[0], "online outside: handed over at once");
+    assertTrue(nextMatching(a, "Finds came home: your insurance was refunded."));
+    // here, but the marks can't be saved: it waits too
+    marks[0] = 90;
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "mythic");
+    runs.insure(a, "x");
+    refusing[0] = true;
+    runs.leave(a);
+    assertEquals(1, store.takePending(a.getUniqueId(), "char-Ann").size());
+    refusing[0] = false;
+    // offline when it ends: it waits
+    runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "mythic");
+    runs.insure(a, "x");
+    a.disconnect();
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    List<FindStore.Pending> owed = store.takePending(a.getUniqueId(), "char-Ann");
+    assertEquals(1, owed.size());
+    assertEquals(10, owed.get(0).finds().get(0).marks());
+    assertTrue(owed.get(0).restore(), "outside the weekly cap");
     difficulties = List.of();
   }
 

@@ -81,7 +81,7 @@ delve_seithr:
   # fight rooms; rest: on reaching the rest room); falling loses what is carried. If the boss falls
   # everything comes home; if the run fails each banked find comes home with the chance keep.
   # treasure: reaching a treasure room (a detour on a branch) banks too. exit: the chance each
-  # treasure room holds a way out, where one player may leave with finds worth up to half of what
+  # treasure room holds a way out, where each player may leave alone with finds worth up to half of what
   # they would lose (or their best find). No bank section: finds are paid at once. gear-at-risk: falling destroys the dungeon gear worn.
   # boost: item chances and marks multiplied for the risk.
   difficulties:

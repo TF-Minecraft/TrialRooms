@@ -363,7 +363,9 @@ public final class DungeonCommand {
         }
         String name = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
                 .serialize(r.item().effectiveName());
-        sender.sendMessage(lockers.add(target, r.item()) == null
+        org.bukkit.inventory.ItemStack item = net.tfminecraft.trialrooms.dungeon.loot.DungeonRewards.valued(r.item(), rules, loot.power(tier),
+                r.rarity(), gem);
+        sender.sendMessage(lockers.add(target, item) == null
                 ? "§c" + target.getName() + " has no usable locker (no character played?)."
                 : "§a" + name + " is in " + target.getName() + "'s dungeon locker.");
     }

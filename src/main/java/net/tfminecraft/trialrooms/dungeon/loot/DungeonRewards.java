@@ -51,8 +51,6 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     private java.util.function.Predicate<String> console; // (only used once cosmetics are set)
 
     private AccountLimits accounts;
-    /** The run each player last heard "this week's loot is had" for (said once a run). */
-    private final Map<UUID, UUID> told = new java.util.HashMap<>();
 
     /** Limits cosmetics per player account too (all their characters together), not only per character. */
     public DungeonRewards accounts(AccountLimits accounts) {
@@ -213,9 +211,9 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     // ---- finds of banking runs: rolled when found, handed over once they come home
 
     /**
-     * A find rolled now: its item chance (with pity) and marks, held until it comes home. Whether
-     * the run rolls items is decided by this week's runs; the run counts towards them once its
-     * first find comes home, so a run whose finds are all lost costs no weekly run.
+     * A find rolled now: its item chance (with pity) and marks, held until it comes home. As with
+     * finds paid at once, the run's first find decides whether it counts towards this week's item
+     * runs (and it counts even if what it finds is lost later: no fishing for a drop for free).
      */
     @Override
     public Find find(Player p, String recipe, int tier, Moment moment, UUID run, double boost) {
@@ -225,10 +223,16 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             return null;
         }
         week(l);
-        boolean rolls = l.lastRun().equals(run.toString()) ? l.lastRunRewarded() : l.weekRuns(recipe) < r.weeklyRuns();
-        if (!rolls && !run.equals(told.put(p.getUniqueId(), run))) {
-            p.sendMessage("§7You have had this week's loot from this dungeon: it pays marks only until the week turns.");
+        if (!l.lastRun().equals(run.toString())) {
+            boolean rolls = l.weekRuns(recipe) < r.weeklyRuns();
+            if (rolls) {
+                l.weekRun(recipe, l.weekRuns(recipe) + 1);
+            } else {
+                p.sendMessage("§7You have had this week's loot from this dungeon: it pays marks only until the week turns.");
+            }
+            l.lastRun(run.toString(), rolls);
         }
+        boolean rolls = l.lastRunRewarded();
         int marks = (int) Math.round(r.marks(moment) * boost);
         ItemStack found = null;
         if (rolls) {
@@ -236,12 +240,13 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             boolean win = chance >= 1 || chance > 0 && rng.nextDouble() < chance + l.pity();
             if (chance > 0 && chance < 1) {
                 l.pity(win ? 0 : l.pity() + r.pity());
-                lockers.saveLocker(p, l); // (a pity that isn't saved only costs the player a little luck)
             }
             if (win) {
                 found = drop(p, r, tier, 0);
             }
         }
+        // the week's count and the pity, in one write (one that isn't saved only costs a little luck)
+        lockers.saveLocker(p, l);
         if (found == null && marks <= 0) {
             return null;
         }
@@ -270,8 +275,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
 
     /**
      * Hands a find over: its items to the locker, its spoils to wait outside, its marks inside the
-     * weekly cap. The first find of a run to come home counts the run towards this week's item
-     * runs. A find given back by staff skips the limits.
+     * weekly cap (a find given back by staff skips the cap).
      */
     @Override
     public void deliver(Player p, Find f, String recipe, int tier, UUID run, double boost, boolean restore) {
@@ -287,12 +291,6 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         int pay = f.marks();
         if (!restore) {
             RewardRules r = rules.get();
-            if (!l.lastRun().equals(run.toString())) {
-                if (f.counts()) {
-                    l.weekRun(recipe, l.weekRuns(recipe) + 1);
-                }
-                l.lastRun(run.toString(), f.counts());
-            }
             pay = Math.min(pay, Math.max(0, (r == null ? 0 : r.weeklyMarks()) - l.weekMarks()));
             l.weekMarks(l.weekMarks() + pay);
         }
@@ -351,10 +349,21 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         return true;
     }
 
+    /** What insuring costs; a piece without a value (from before values) costs as the best item does. */
     @Override
     public int insurance(int value) {
         RewardRules r = rules.get();
-        return r == null ? 0 : (int) Math.ceil(value * r.values().insure());
+        if (r == null) {
+            return 0;
+        }
+        double v = value > 0 ? value
+                : r.values().rarities().values().stream().mapToInt(Integer::intValue).max().orElse(0) * loot.power(Integer.MAX_VALUE);
+        return (int) Math.ceil(v * r.values().insure());
+    }
+
+    /** An item tagged with its value by the rules (left as it is without rules or a rarity). */
+    public static ItemStack valued(ItemStack item, RewardRules rules, double power, String rarity, boolean gem) {
+        return rules == null || rarity == null ? item : valued(item, rules.values().item(rarity, power, gem));
     }
 
     /** Tags an item with its value (none for no value). */
@@ -454,7 +463,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             item = loot.gem(tier, luck, null, r.gemPool(), r.gemTemplate());
             gem = true;
         }
-        return valued(item.item(), item.rarity() == null ? 0 : r.values().item(item.rarity(), loot.power(tier), gem));
+        return valued(item.item(), r, loot.power(tier), item.rarity(), gem);
     }
 
     private static String name(ItemStack item) {
@@ -492,8 +501,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         }
         // The item and the price go to disk in one write.
         l.marks(l.marks() - price);
-        String id = lockers.file(l, valued(rolled.item(), rolled.rarity() == null ? 0
-                : r.values().item(rolled.rarity(), loot.power(r.shopTier()), false)));
+        String id = lockers.file(l, valued(rolled.item(), r, loot.power(r.shopTier()), rolled.rarity(), false));
         if (!lockers.saveLocker(p, l)) {
             l.remove(id);
             l.marks(l.marks() + price);

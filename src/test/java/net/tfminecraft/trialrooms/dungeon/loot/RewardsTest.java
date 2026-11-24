@@ -466,7 +466,10 @@ public class RewardsTest {
     List<String> problems = new ArrayList<>();
     YamlConfiguration y = shippedYaml();
     y.set("rewards.value", null);
+    y.set("rewards.insure", null);
     assertEquals(0, RewardRules.load(y, kit, problems).values().item("epic", 1, false));
+    assertEquals(List.of("loot.yml rewards: no value section: finds count 1 each in ways out",
+        "loot.yml rewards: no insure: insuring a worn piece costs 1 mark"), problems);
   }
 
   @Test
@@ -484,6 +487,7 @@ public class RewardsTest {
     assertEquals(0.0, locker.pity(), "a win starts the pity over");
     verify(lockers, never()).file(any(), any());
     assertEquals(0, locker.marks(), "nothing handed over yet");
+    assertEquals(1, locker.weekRuns("delve"), "the run counts at its first find (lost or not)");
     r.deliver(ann, f, "delve", 1, run, 1, false);
     verify(lockers).file(locker, sword);
     assertEquals(5, locker.marks());
@@ -501,7 +505,6 @@ public class RewardsTest {
     assertFalse(marks.counts());
     r.find(ann, "delve", 1, Moment.ELITE, run2, 1);
     verify(ann, times(1)).sendMessage(startsWith("§7You have had this week's loot from this dungeon"));
-    r.deliver(ann, marks, "delve", 1, run2, 1, false);
     assertEquals(3, locker.weekRuns("delve"));
     assertEquals(run2.toString(), locker.lastRun());
     assertFalse(locker.lastRunRewarded());
@@ -631,6 +634,8 @@ public class RewardsTest {
     assertEquals(-1, r.marks(bo));
     assertFalse(r.spend(bo, 1));
     assertEquals(11, r.insurance(52), "a fifth of the value, rounded up");
+    when(loot.power(Integer.MAX_VALUE)).thenReturn(1.9);
+    assertEquals(76, r.insurance(0), "a piece without a value insures as the best item");
     assertEquals(0, new DungeonRewards(loot, lockers, () -> null, doubles(0), now::get, ZoneId.of("UTC")).insurance(52));
   }
 }

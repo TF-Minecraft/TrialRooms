@@ -97,6 +97,16 @@ public final class RunFiles {
         root.resolve("active").resolve(run + ".yml").toFile().delete();
     }
 
+    /** The runs left from a stopped server (before {@link #recoverActive()} clears them). */
+    public java.util.Set<UUID> activeRuns() {
+        File[] files = root.resolve("active").toFile().listFiles((d, n) -> n.endsWith(".yml"));
+        java.util.Set<UUID> out = new java.util.HashSet<>();
+        for (File f : files == null ? new File[0] : files) {
+            out.add(UUID.fromString(f.getName().substring(0, f.getName().length() - 4)));
+        }
+        return out;
+    }
+
     /** Turns runs left from a stopped server into refunds. Returns how many were found. */
     public int recoverActive() {
         File[] files = root.resolve("active").toFile().listFiles((d, n) -> n.endsWith(".yml"));
