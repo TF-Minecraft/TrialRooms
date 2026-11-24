@@ -573,6 +573,7 @@ public class RewardsTest {
     assertEquals(40, f.value());
     assertEquals(2, f.spoils().size(), "in whole stacks");
     assertNull(r.spoilsFind(ann, "d", 0, run), "nothing rolled");
+    assertEquals(1, r.spoilsFind(ann, "d", 0.01, run).value(), "a handful is still worth something");
     now2[0] = () -> null;
     assertEquals(0, r.spoilsFind(ann, "d", 1, run).value(), "no rules: no value");
     assertNull(rewards(doubles(0.5)).spoilsFind(ann, "d", 1, run), "no spoils set up");

@@ -269,7 +269,8 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             return null;
         }
         RewardRules r = rules.get();
-        int value = r == null ? 0 : (int) Math.round(hours * r.values().spoils());
+        // (a room's spoils are worth at least 1: a short room's handful is still something)
+        int value = r == null ? 0 : Math.max(1, (int) Math.round(hours * r.values().spoils()));
         return new Find(null, hours, "Spoils: " + String.join(", ", got), value, 0, false, List.of(), items, true);
     }
 
