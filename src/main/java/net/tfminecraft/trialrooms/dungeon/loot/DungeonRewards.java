@@ -287,6 +287,9 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         if (l == null) {
             throw new IllegalStateException("no locker to hand finds to");
         }
+        // every item read first: one that can't be read changes nothing (and the find waits to be tried again)
+        List<ItemStack> gear = f.gear().stream().map(lockers::decode).toList();
+        List<ItemStack> spoilt = f.spoils().stream().map(lockers::decode).toList();
         week(l);
         int pay = f.marks();
         if (!restore) {
@@ -295,8 +298,8 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             l.weekMarks(l.weekMarks() + pay);
         }
         l.marks(l.marks() + pay);
-        f.gear().forEach(g -> lockers.file(l, lockers.decode(g)));
-        f.spoils().forEach(s -> lockers.owe(l, lockers.decode(s)));
+        gear.forEach(g -> lockers.file(l, g));
+        spoilt.forEach(s -> lockers.owe(l, s));
         if (!lockers.saveLocker(p, l)) {
             // all of it stays in the locker in memory, for the next save that works
             p.sendMessage("§cYour finds could not be saved yet. Tell staff.");

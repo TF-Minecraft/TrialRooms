@@ -521,6 +521,12 @@ public class RewardsTest {
     r.deliver(ann, f, "delve", 1, run, 1, false);
     verify(ann).sendMessage("§cYour finds could not be saved yet. Tell staff.");
     when(lockers.saveLocker(ann, locker)).thenReturn(true);
+    // an item that can't be read changes nothing
+    when(lockers.decode(any())).thenThrow(new IllegalStateException("bad bytes"));
+    int had = locker.marks();
+    assertThrows(IllegalStateException.class, () -> r.deliver(ann, f, "delve", 1, run, 1, false));
+    assertEquals(had, locker.marks());
+    doReturn(sword).when(lockers).decode(any());
     // finds not rolled ahead are rolled at hand-over
     clearInvocations(lockers);
     r.deliver(ann, RunRewards.Find.of(Moment.ELITE), "delve", 1, UUID.randomUUID(), 1, false);

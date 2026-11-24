@@ -247,7 +247,7 @@ public final class RunManager {
         Set<UUID> cutOff = files.activeRuns();
         int recovered = files.recoverActive();
         if (recovered > 0) {
-            plugin.getLogger().warning("[dungeons] " + recovered + " run(s) were cut off by a stop; keys refunded");
+            plugin.getLogger().warning("[dungeons] " + recovered + " run(s) were cut off by a stop (keys refunded where paid)");
         }
         int pouches = finds.store() == null ? 0 : finds.store().recover(cutOff);
         if (pouches > 0) {
@@ -784,6 +784,9 @@ public final class RunManager {
             if (!m.online()) {
                 if (now - m.offlineSinceMs() >= settings().graceSeconds() * 1000L) {
                     // away too long: as if they had left (what they banked comes home by the rules)
+                    if (ar.lobbyRoom >= 0) {
+                        finds.refund(ar, m.id());
+                    }
                     finds.settleAway(ar, m, keepNow(ar), false,
                             "you were away too long and left the run");
                     run.leave(m.id());
@@ -1572,6 +1575,9 @@ public final class RunManager {
             finds.payout(ar, p, keepNow(ar), false, "left the run");
         }
         depart(ar, p, here);
+        if (!inDungeonWorld(p)) {
+            sweep(p); // (outside: what came home is handed over now)
+        }
         return true;
     }
 

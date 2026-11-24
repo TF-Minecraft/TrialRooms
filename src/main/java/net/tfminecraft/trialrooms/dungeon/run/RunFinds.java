@@ -272,10 +272,9 @@ final class RunFinds {
         if (store == null || rewards == null) {
             return false;
         }
+        // handed over first, taken off the disk after: a crash in between hands it over twice rather than never
         List<FindStore.Pending> owed = store.pending(p.getUniqueId(), character);
-        if (!owed.isEmpty()) {
-            store.takePending(p.getUniqueId(), character); // (taken after it was read: what fails is put back)
-        }
+        List<FindStore.Pending> keep = new ArrayList<>();
         for (FindStore.Pending o : owed) {
             List<Find> failed = new ArrayList<>();
             for (Find f : o.finds()) {
@@ -289,10 +288,14 @@ final class RunFinds {
                 p.sendMessage("§a✦ Finds came home: " + o.why() + ".");
             } else {
                 // kept for the next time (a locker that can't be read or saved right now)
-                store.addPending(p.getUniqueId(), new FindStore.Pending(character, o.recipe(), o.run(), o.tier(), o.boost(),
-                        o.restore(), o.why(), failed, gear));
+                keep.add(new FindStore.Pending(character, o.recipe(), o.run(), o.tier(), o.boost(), o.restore(), o.why(),
+                        failed, gear));
                 p.sendMessage("§cSome finds owed to you could not be handed over yet. Tell staff if this keeps happening.");
             }
+        }
+        if (!owed.isEmpty()) {
+            store.takePending(p.getUniqueId(), character);
+            keep.forEach(k -> store.addPending(p.getUniqueId(), k));
         }
         return !owed.isEmpty();
     }

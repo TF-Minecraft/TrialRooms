@@ -2792,9 +2792,10 @@ class RunManagerTest {
     runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "mythic");
     runs.insure(a, "x");
     refusing[0] = true;
-    runs.leave(a);
-    assertEquals(1, store.takePending(a.getUniqueId(), "char-Ann").size());
+    runs.leave(a); // (owed, then handed over as soon as she is outside)
     refusing[0] = false;
+    assertEquals(90, marks[0]);
+    assertEquals(List.of(), store.takePending(a.getUniqueId(), "char-Ann"));
     // offline when it ends: it waits
     runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "mythic");
     runs.insure(a, "x");
@@ -2804,6 +2805,18 @@ class RunManagerTest {
     assertEquals(1, owed.size());
     assertEquals(10, owed.get(0).finds().get(0).marks());
     assertTrue(owed.get(0).restore(), "outside the weekly cap");
+    // away too long while the doors are still shut: refunded then
+    settings = new RunSettings(4, 4, 5, 30, 3, 2.5, 8, 1, 60, List.of(), 60, java.util.Set.of(), java.util.Set.of(),
+        5, 10, 60, 600);
+    PlayerMock b = player("Bo");
+    when(lockers.locker(b)).thenReturn(locker);
+    runs.useGate(b, gates.add(main.getBlockAt(13, 69, 10), "delve"), "mythic");
+    runs.insure(b, "x");
+    runs.quit(b);
+    b.disconnect();
+    now.addAndGet(2000);
+    ticks(1);
+    assertEquals(1, store.takePending(b.getUniqueId(), "char-Bo").size());
     difficulties = List.of();
   }
 

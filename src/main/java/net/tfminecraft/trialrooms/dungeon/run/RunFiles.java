@@ -102,7 +102,11 @@ public final class RunFiles {
         File[] files = root.resolve("active").toFile().listFiles((d, n) -> n.endsWith(".yml"));
         java.util.Set<UUID> out = new java.util.HashSet<>();
         for (File f : files == null ? new File[0] : files) {
-            out.add(UUID.fromString(f.getName().substring(0, f.getName().length() - 4)));
+            try {
+                out.add(UUID.fromString(f.getName().substring(0, f.getName().length() - 4)));
+            } catch (IllegalArgumentException e) {
+                log.warning("[dungeons] a stray file in the active runs: " + f.getName());
+            }
         }
         return out;
     }

@@ -58,6 +58,7 @@ class RunFilesTest {
   void activeRunsLeftAtStartBecomeRefunds() throws Exception {
     RunFiles f = new RunFiles(temp, log);
     assertEquals(0, f.recoverActive());
+    assertEquals(java.util.Set.of(), f.activeRuns(), "no folder yet");
     UUID leader = UUID.randomUUID();
     UUID run = UUID.randomUUID();
     f.saveActive(run, leader, "m.loot.trial_key");
@@ -66,6 +67,8 @@ class RunFilesTest {
     f.saveActive(cleared, leader, "x");
     f.clearActive(cleared);
     Files.writeString(temp.resolve("active/broken.yml"), "key: y\n");
+    assertEquals(2, f.activeRuns().size(), "a stray file is skipped");
+    assertTrue(f.activeRuns().contains(run));
     assertEquals(3, f.recoverActive());
     assertEquals(List.of("m.loot.trial_key"), f.takeRefunds(leader));
     assertEquals(List.of(), f.takeRefunds(leader));
