@@ -28,11 +28,14 @@ public final class DungeonCommand {
 
     static final String USAGE = "§eUsage: /tr dungeon <map|preview|start> <recipe> [seed] | clear | reload | runs"
             + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave | ready"
-            + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>";
+            + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>"
+            + " | finds | insure | losses <player> | restore <player> <id>";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim", "top");
+            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim", "top", "finds", "insure",
+            "losses", "restore");
     /** What players without the staff permission may use. */
-    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim", "top");
+    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim", "top", "finds",
+            "insure");
 
     private final DungeonModule module;
 
@@ -59,6 +62,17 @@ public final class DungeonCommand {
             case "locker" -> locker(sender, args);
             case "loot" -> loot(sender, args);
             case "marks" -> marks(sender, args);
+            case "finds", "insure" -> {
+                if (!(sender instanceof Player p)) {
+                    sender.sendMessage("§cOnly players hold finds.");
+                } else if (sub.equals("finds")) {
+                    module.runs().openFinds(p);
+                } else {
+                    module.runs().openInsurance(p);
+                }
+            }
+            case "losses" -> losses(sender, args);
+            case "restore" -> restore(sender, args);
             case "clear" -> sender.sendMessage("§aCleared " + module.clearPreviews() + " dungeon previews.");
             case "reload" -> {
                 List<String> problems = module.reload();
@@ -371,6 +385,65 @@ public final class DungeonCommand {
         }
         lockers.saveLocker(target, locker);
         sender.sendMessage("§a" + target.getName() + " has " + locker.marks() + " dungeon marks.");
+    }
+
+    /** A player by name, online or known to the server; null when unknown. */
+    private static org.bukkit.OfflinePlayer known(String name) {
+        Player online = Bukkit.getPlayerExact(name);
+        return online != null ? online : Bukkit.getOfflinePlayerIfCached(name);
+    }
+
+    /** Staff: what a player lost in runs (the latest ten), each with a button to give it back. */
+    private void losses(CommandSender sender, String[] args) {
+        org.bukkit.OfflinePlayer target = args.length >= 2 ? known(args[1]) : null;
+        if (target == null) {
+            sender.sendMessage("§cUsage: /tr dungeon losses <player>");
+            return;
+        }
+        List<net.tfminecraft.trialrooms.dungeon.run.FindStore.Loss> all = module.runs().losses(target.getUniqueId());
+        if (all.isEmpty()) {
+            sender.sendMessage("§7" + args[1] + " has lost nothing in dungeons (that is still logged).");
+            return;
+        }
+        sender.sendMessage("§6Dungeon losses of " + args[1] + " §7(latest last):");
+        java.time.format.DateTimeFormatter when = java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.ENGLISH)
+                .withZone(java.time.ZoneId.systemDefault());
+        for (var l : all.subList(Math.max(0, all.size() - 10), all.size())) {
+            net.kyori.adventure.text.Component line = net.kyori.adventure.text.Component.text(
+                    "#" + l.id() + " " + when.format(java.time.Instant.ofEpochMilli(l.at())) + " · " + l.recipe()
+                            + (l.difficulty().isBlank() ? "" : " " + l.difficulty()) + " · " + l.why() + " · "
+                            + l.finds().size() + " finds (value " + l.value() + ")"
+                            + (l.gear().isEmpty() ? "" : ", " + l.gear().size() + " worn pieces") + " ",
+                    net.kyori.adventure.text.format.NamedTextColor.GRAY)
+                    .hoverEvent(net.kyori.adventure.text.event.HoverEvent.showText(net.kyori.adventure.text.Component.text(
+                            String.join("\n", l.finds().stream().map(f -> f.label()).toList())
+                                    + (l.detail().isBlank() ? "" : "\n" + l.detail()))));
+            sender.sendMessage(l.restored() ? line.append(net.kyori.adventure.text.Component.text("(given back)",
+                    net.kyori.adventure.text.format.NamedTextColor.DARK_GREEN))
+                    : line.append(net.kyori.adventure.text.Component.text("[Give back]",
+                            net.kyori.adventure.text.format.NamedTextColor.GREEN)
+                            .clickEvent(net.kyori.adventure.text.event.ClickEvent.suggestCommand(
+                                    "/tr dungeon restore " + args[1] + " " + l.id()))));
+        }
+    }
+
+    /** Staff: gives a logged loss back to the character that lost it. */
+    private void restore(CommandSender sender, String[] args) {
+        org.bukkit.OfflinePlayer target = args.length >= 3 ? known(args[1]) : null;
+        int id;
+        try {
+            id = args.length >= 3 ? Integer.parseInt(args[2]) : -1;
+        } catch (NumberFormatException e) {
+            id = -1;
+        }
+        if (target == null || id < 0) {
+            sender.sendMessage("§cUsage: /tr dungeon restore <player> <id> (ids from /tr dungeon losses)");
+            return;
+        }
+        var l = module.runs().restoreLoss(target.getUniqueId(), id);
+        sender.sendMessage(l == null ? "§cNo loss #" + id + " to give back (wrong id, or given back already)."
+                : "§aLoss #" + id + " given back: it waits for " + args[1]
+                        + "'s character that lost it, outside the dungeon.");
     }
 
     /** Tab completion for the arguments after {@code dungeon}. */

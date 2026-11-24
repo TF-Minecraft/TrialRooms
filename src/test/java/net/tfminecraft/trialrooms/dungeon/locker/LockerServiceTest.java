@@ -703,4 +703,22 @@ class LockerServiceTest {
     assertEquals(1, lockers.locker(ann).owed().size());
     assertNull(ann.getInventory().getItem(0));
   }
+
+  @Test
+  void anInsuredPieceIsSparedAndGearGivenBackLandsInTheLocker() {
+    Locker l = kitted();
+    assertEquals(LockerService.Result.DONE, lockers.wear(ann, 0));
+    String helm = l.loadout(0).get(39);
+    l.restoreSlot(0, 1, "ghost"); // a loadout naming a piece the locker no longer has
+    List<byte[]> gone = lockers.forfeitWorn(ann, helm);
+    assertEquals(1, gone.size(), "the sword; the helmet is spared and the ghost is nothing");
+    assertTrue(l.items().containsKey(helm));
+    assertEquals(1, l.items().size());
+    assertTrue(lockers.restore(ann, gone));
+    assertEquals(2, l.items().size(), "given back");
+    assertFalse(new LockerService(plugin, store, codec, p -> null, p -> { }).restore(ann, gone), "no character");
+    assertEquals(List.of(), lockers.forfeitWorn(ann, null), "nothing worn");
+    ItemStack it = named(Material.STICK, "a stick");
+    assertEquals("a stick", name(lockers.decode(lockers.encode(it))));
+  }
 }

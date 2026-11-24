@@ -132,6 +132,6 @@ public final class RecipeLoader {
     /** A difficulty's bank section: save points and what a failed run keeps (none: finds are paid at once). */
     private static net.tfminecraft.trialrooms.dungeon.run.Difficulty.Banking banking(ConfigurationSection s) {
         return s == null ? null : new net.tfminecraft.trialrooms.dungeon.run.Difficulty.Banking(s.getInt("every", 0),
-                s.getBoolean("rest", false), s.getDouble("keep", 0));
+                s.getBoolean("rest", false), s.getDouble("keep", 0), s.getBoolean("treasure", false), s.getDouble("exit", 0));
     }
 }

@@ -577,20 +577,53 @@ public final class LockerService {
 
     /**
      * Destroys the loadout a player wears (a fall where gear is at stake): it comes off as at a
-     * take-off, own items back, and its dungeon items leave the locker. False when nothing was
-     * worn or the take-off didn't go through (then nothing is destroyed).
+     * take-off, own items back, and its dungeon items leave the locker, all but {@code spare} (an
+     * insured piece, or null). Returns what was destroyed, as it was worn (for the loss log); empty
+     * when nothing was worn or the take-off didn't go through (then nothing is destroyed).
      */
-    public boolean forfeitWorn(Player p) {
+    public List<byte[]> forfeitWorn(Player p, String spare) {
         Locker l = locker(p);
         if (l == null || l.worn() < 0) {
-            return false;
+            return List.of();
         }
         List<String> ids = new ArrayList<>(l.loadout(l.worn()).values());
+        ids.remove(spare);
         if (takeOff(p) != Result.DONE) {
+            return List.of();
+        }
+        List<byte[]> gone = new ArrayList<>();
+        for (String id : ids) {
+            if (l.item(id) != null) {
+                gone.add(l.item(id));
+                l.remove(id);
+            }
+        }
+        saveLocker(p, l);
+        return gone;
+    }
+
+    /** As {@link #forfeitWorn(Player, String)} with nothing spared; true when anything was destroyed. */
+    public boolean forfeitWorn(Player p) {
+        return !forfeitWorn(p, null).isEmpty();
+    }
+
+    /** Puts dungeon items (given back by staff) in a player's locker; false when it can't be saved. */
+    public boolean restore(Player p, List<byte[]> items) {
+        Locker l = locker(p);
+        if (l == null) {
             return false;
         }
-        ids.forEach(l::remove);
+        items.forEach(b -> file(l, codec.decode(b)));
         return saveLocker(p, l);
+    }
+
+    /** An item as bytes (the server's own format). */
+    public byte[] encode(ItemStack item) {
+        return codec.encode(item);
+    }
+
+    public ItemStack decode(byte[] data) {
+        return codec.decode(data);
     }
 
     /** Whether the player carries the mark of a wear for their current character (for tests and staff). */

@@ -155,13 +155,16 @@ public final class KitLoader {
 
     /**
      * The markers the run code needs, so nothing falls back to a guessed spot: spawn markers in
-     * combat and elite rooms, a {@code boss} spawn marker in boss rooms, a rest marker in rest rooms.
+     * combat and elite rooms, a {@code boss} spawn marker in boss rooms, a rest marker in rest rooms,
+     * a chest marker in treasure rooms (its cache spot, where a way out may stand).
      */
     static void requireMarkers(RoomTemplate t) {
         boolean spawn = false;
         boolean boss = false;
         boolean rest = false;
+        boolean chest = false;
         for (Marker m : t.markers()) {
+            chest |= m.kind().equals("chest");
             spawn |= m.kind().equals("spawn");
             boss |= m.kind().equals("spawn") && m.tag().equals("boss");
             rest |= m.kind().equals("rest");
@@ -170,6 +173,7 @@ public final class KitLoader {
             case COMBAT, ELITE -> spawn ? null : "a spawn marker";
             case BOSS -> boss ? null : "a spawn marker tagged boss";
             case REST -> rest ? null : "a rest marker";
+            case TREASURE -> chest ? null : "a chest marker";
             default -> null;
         };
         if (missing != null) {

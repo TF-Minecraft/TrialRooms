@@ -159,4 +159,10 @@ class DungeonLootTest {
     loot().roll(ann, 1, null, null);
     assertEquals(28, forge.recipeLookups, "every recipe base once, the chosen one from the cache");
   }
+
+  @Test
+  void aTiersPowerIsTheKits() {
+    assertEquals(1.25, loot().power(2));
+    assertEquals(1.0, new DungeonLoot(forge, () -> null, new Random(5)).power(2), "loot off");
+  }
 }

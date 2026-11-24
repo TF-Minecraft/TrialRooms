@@ -572,6 +572,27 @@ class RunManagerTest {
       }
 
       @Override
+      public RunRewards.Find find(org.bukkit.entity.Player p, String recipe, int tier, RunRewards.Moment moment,
+          java.util.UUID run, double boost) {
+        return new RunRewards.Find(moment, 0, moment.name().toLowerCase() + " find", 10, 0, false, List.of(), List.of(),
+            false);
+      }
+
+      @Override
+      public RunRewards.Find spoilsFind(org.bukkit.entity.Player p, String recipe, double hours, java.util.UUID run) {
+        return new RunRewards.Find(null, hours, "spoils", 30, 0, false, List.of(), List.of(), false);
+      }
+
+      @Override
+      public void deliver(org.bukkit.entity.Player p, RunRewards.Find f, String recipe, int tier, java.util.UUID run,
+          double boost, boolean restore) {
+        if (restore) {
+          got.add(p.getName() + " restore");
+        }
+        RunRewards.super.deliver(p, f, recipe, tier, run, boost, restore);
+      }
+
+      @Override
       public void feat(org.bukkit.entity.Player p, String recipe, String difficulty, RunRewards.Moment moment,
           java.util.UUID run, List<String> party) {
         got.add(p.getName() + " feat " + moment);
@@ -640,8 +661,8 @@ class RunManagerTest {
     ticks(2);
     runs.keepRoll = () -> 0.8; // over 50%: this one stays behind
     runs.end(ar, false, null);
-    assertEquals(List.of("Ann spoils"), got, "the find stayed behind; the banked spoils come home at half");
-    assertTrue(nextMatching(a, "0 of 1 banked finds come home."));
+    assertEquals(List.of(), got, "each banked find (the event's, the room's spoils) stayed behind");
+    assertTrue(nextMatching(a, "0 of 2 banked finds come home."));
     got.clear();
     runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "hard");
     ar = only();
@@ -802,7 +823,7 @@ class RunManagerTest {
     PlayerMock c = player("Cy");
     when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
     when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId(), c.getUniqueId()));
-    when(lockers.forfeitWorn(b)).thenReturn(true);
+    when(lockers.forfeitWorn(b, null)).thenReturn(List.of(new byte[] {1}));
     runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "mythic");
     assertTrue(nextMatching(a, "Your worn dungeon gear is at stake"));
     into(a, RoomType.COMBAT);
@@ -816,7 +837,7 @@ class RunManagerTest {
     assertTrue(runs.down(b));
     now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
     ticks(1);
-    verify(lockers).forfeitWorn(b);
+    verify(lockers).forfeitWorn(b, null);
     assertTrue(nextMatching(b, "Your worn dungeon gear is destroyed."));
     RunManager.ActiveRun ar = only();
     assertTrue(runs.down(a));
@@ -825,7 +846,7 @@ class RunManagerTest {
     assertFalse(nextMatching(a, "is destroyed"), "nothing worn: nothing destroyed");
     ar.run.state(DungeonRun.State.COMPLETE); // after the win, a death destroys nothing
     runs.died(b);
-    verify(lockers, times(1)).forfeitWorn(b);
+    verify(lockers, times(1)).forfeitWorn(b, null);
     runs.runs().forEach(r -> runs.end(r, false, null));
     // a wipe: whoever is still down falls with it; leaving while down is a fall too
     rules = new RunRules(1, 3, "m.key", 0, 1, 0.5);
@@ -844,7 +865,7 @@ class RunManagerTest {
     assertFalse(runs.isDowned(b));
     assertTrue(runs.down(b));
     ticks(1); // everyone down or out, and no more getting up: the party wipes
-    verify(lockers, times(2)).forfeitWorn(b);
+    verify(lockers, times(2)).forfeitWorn(b, null);
     runs.runs().forEach(r -> runs.end(r, false, null));
     runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "mythic");
     into(a, RoomType.COMBAT);
@@ -853,7 +874,7 @@ class RunManagerTest {
     int lives = only().run.lives();
     assertTrue(runs.down(b));
     runs.leave(b);
-    verify(lockers, times(3)).forfeitWorn(b);
+    verify(lockers, times(3)).forfeitWorn(b, null);
     assertEquals(lives, only().run.lives(), "leaving while down costs the party no life");
     runs.runs().forEach(r -> runs.end(r, false, null));
     // leaving alive in the middle of a fight, with gear at stake, is no way out either
@@ -862,11 +883,11 @@ class RunManagerTest {
     into(b, RoomType.COMBAT);
     ticks(12);
     runs.leave(b);
-    verify(lockers, times(4)).forfeitWorn(b);
+    verify(lockers, times(4)).forfeitWorn(b, null);
     runs.runs().forEach(r -> runs.end(r, false, null));
     runs.useGate(a, gates.add(main.getBlockAt(11, 69, 11), "delve"), "mythic");
     runs.leave(b); // alive, and no fight going on: leaving costs nothing
-    verify(lockers, times(4)).forfeitWorn(b);
+    verify(lockers, times(4)).forfeitWorn(b, null);
     runs.runs().forEach(r -> runs.end(r, false, null));
     difficulties = List.of();
   }
@@ -2049,6 +2070,611 @@ class RunManagerTest {
   }
 
   /** The middle of a room's footprint box at standing height (the tests' rooms are rectangles). */
+  // ------------------------------------------------------------------ finds kept, losses logged, ways out, insurance
+
+  FindStore store() {
+    FindStore store = new FindStore(temp.resolve("finds"), Logger.getLogger("t"));
+    runs.findStore(store);
+    return store;
+  }
+
+  Difficulty banking(String id, Difficulty.Banking b, boolean gear) {
+    return new Difficulty(id, id, 1, 1, 1, null, "", 0, 0, b, gear, 1);
+  }
+
+  @Test
+  void findsAreKeptOnDiskAndARunACrashCutOffHandsThemOver() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(banking("normal", new Difficulty.Banking(1, true, 1), false));
+    FindStore store = store();
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal");
+    RunManager.ActiveRun ar = only();
+    clearCombat(ar, a);
+    assertEquals(2, store.pouch(a.getUniqueId()).banked().size(), "banked, and on disk");
+    // the server dies with the run going: the next start hands everything over
+    RunManager next = new RunManager(plugin, module, chars, keys, mobs, files, gates, now::get);
+    next.findStore(store);
+    next.rewards(recording(got));
+    var lockers = mock(net.tfminecraft.trialrooms.dungeon.locker.LockerService.class);
+    next.lockers(lockers);
+    next.start();
+    assertNull(store.pouch(a.getUniqueId()));
+    a.teleport(new Location(main, 10, 70, 10));
+    next.sweep(a);
+    assertEquals(List.of("Ann EVENT", "Ann spoils"), got);
+    assertTrue(nextMatching(a, "Finds came home: a stop cut your run short."));
+    verify(lockers, times(2)).settle(a, false); // (once more after the hand-over: spoils among them come now)
+    next.stop();
+    // without rewards, nothing is handed over (and nothing taken)
+    RunManager bare = new RunManager(plugin, module, chars, keys, mobs, files, gates, now::get);
+    bare.findStore(store);
+    bare.sweep(a);
+  }
+
+  @Test
+  void loggingOutCostsWhatAFallWouldAndStaffCanGiveItBack() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(banking("nightmare", new Difficulty.Banking(0, false, 0), false));
+    FindStore store = store();
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "nightmare");
+    RunManager.ActiveRun ar = only();
+    clearCombat(ar, a);
+    runs.quit(a, "DISCONNECTED"); // no fight going on: logging out costs nothing
+    assertEquals(List.of(), runs.losses(a.getUniqueId()));
+    runs.sweep(a);
+    into(a, RoomType.BOSS);
+    ticks(14);
+    assertTrue(ar.run.activeRoom() >= 0, "the boss fight is on");
+    Location back = a.getLocation();
+    a.teleport(new Location(main, 10, 70, 10));
+    runs.quit(a, "DISCONNECTED"); // away from the dungeon: not in the fight, nothing to lose
+    assertEquals(List.of(), runs.losses(a.getUniqueId()));
+    a.teleport(back);
+    runs.sweep(a);
+    runs.quit(a, "TIMED_OUT");
+    List<FindStore.Loss> losses = runs.losses(a.getUniqueId());
+    assertEquals(1, losses.size());
+    FindStore.Loss l = losses.get(0);
+    assertEquals("logged out in the middle of a fight", l.why());
+    assertTrue(l.detail().contains("TIMED_OUT") && l.detail().contains("enemies left in the fight"), l.detail());
+    assertEquals(40, l.value());
+    assertNull(runs.restoreLoss(a.getUniqueId(), 99));
+    assertNotNull(runs.restoreLoss(a.getUniqueId(), l.id()), "in the dungeon: it waits");
+    assertEquals(List.of(), got);
+    assertNull(runs.restoreLoss(a.getUniqueId(), l.id()), "given back once");
+    runs.end(ar, false, null);
+    assertEquals(List.of(), got, "nothing else came home: Nightmare keeps nothing of a failed run");
+    a.teleport(new Location(main, 10, 70, 10));
+    runs.sweep(a);
+    assertTrue(got.containsAll(List.of("Ann restore", "Ann EVENT", "Ann spoils")), got.toString());
+    assertTrue(nextMatching(a, "staff gave back what you lost"));
+    assertTrue(runs.losses(a.getUniqueId()).get(0).restored());
+    // logging out while down is a fall
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "nightmare");
+    ar = only();
+    clearCombat(ar, a);
+    assertTrue(runs.down(a));
+    runs.quit(a);
+    assertEquals("logged out while down", runs.losses(a.getUniqueId()).get(1).why());
+    runs.end(ar, false, null);
+    // online outside when staff give it back: handed over at once
+    a.teleport(new Location(main, 10, 70, 10));
+    runs.sweep(a);
+    runs.restoreLoss(a.getUniqueId(), 2);
+    assertTrue(got.contains("Ann restore"));
+    // no store: no losses
+    RunManager bare = new RunManager(plugin, module, chars, keys, mobs, files, gates, now::get);
+    assertEquals(List.of(), bare.losses(a.getUniqueId()));
+    assertNull(bare.restoreLoss(a.getUniqueId(), 1));
+  }
+
+  @Test
+  void membersAwayGetWhatComesHomeByTheSameRulesLater() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(banking("normal", new Difficulty.Banking(1, true, 1), false));
+    store();
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal");
+    RunManager.ActiveRun ar = only();
+    clearCombat(ar, a, b);
+    b.teleport(new Location(main, 10, 70, 10)); // online, outside
+    ticks(1);
+    got.clear();
+    runs.end(ar, false, null);
+    assertTrue(got.containsAll(List.of("Bo EVENT", "Bo spoils")), got.toString());
+    assertTrue(nextMatching(b, "you were away when the run ended"));
+    // away too long: as if they had left (and handed over when they are back)
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "normal");
+    ar = only();
+    clearCombat(ar, a, b);
+    runs.quit(b);
+    now.addAndGet(settings.graceSeconds() * 1000L + 1);
+    ticks(1);
+    assertFalse(got.contains("Bo EVENT"), "not handed over while offline");
+    runs.sweep(b);
+    assertTrue(got.contains("Bo EVENT"), got.toString());
+    assertTrue(nextMatching(b, "you were away too long and left the run"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
+  void treasureRoomsBankAndSomeHoldAWayOut() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(banking("hard", new Difficulty.Banking(0, false, 0.5, true, 1), false));
+    FindStore store = store();
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    runs.exitRoll = () -> 0;
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "hard");
+    RunManager.ActiveRun ar = only();
+    int t = room(RoomType.TREASURE);
+    assertEquals(java.util.Set.of(t), ar.exits);
+    clearCombat(ar, a);
+    runs.openExit(a);
+    assertTrue(nextMatching(a, "Stand by a way out in a treasure room"), "not shown yet");
+    into(a, RoomType.TREASURE);
+    ticks(2);
+    assertTrue(nextMatching(a, "A way out glimmers"));
+    assertEquals(2, store.pouch(a.getUniqueId()).banked().size(), "the treasure room banked");
+    double[] c = ar.geometry().markers(t, "chest").get(0);
+    var exit = mock(org.bukkit.block.Block.class);
+    when(exit.getX()).thenReturn((int) Math.floor(c[0]));
+    when(exit.getY()).thenReturn((int) Math.floor(c[1]));
+    when(exit.getZ()).thenReturn((int) Math.floor(c[2]));
+    var other = mock(org.bukkit.block.Block.class);
+    when(other.getX()).thenReturn((int) Math.floor(c[0]));
+    when(other.getY()).thenReturn((int) Math.floor(c[1]) + 1);
+    when(other.getZ()).thenReturn((int) Math.floor(c[2]));
+    assertFalse(runs.propClick(a, other));
+    when(other.getY()).thenReturn((int) Math.floor(c[1]));
+    when(other.getZ()).thenReturn((int) Math.floor(c[2]) + 1);
+    assertFalse(runs.propClick(a, other));
+    when(other.getX()).thenReturn((int) Math.floor(c[0]) + 1);
+    assertFalse(runs.propClick(a, other));
+    assertTrue(runs.propClick(a, exit));
+    assertInstanceOf(FindsMenu.class, a.getOpenInventory().getTopInventory().getHolder());
+    RunFinds.Offer o = runs.exitOffer(a);
+    assertEquals(List.of(), o.safe(), "Hard: banked finds are at risk too");
+    assertEquals(2, o.atRisk().size());
+    assertEquals(30, o.allowance(), "the best find is worth more than half");
+    assertTrue(runs.down(a));
+    assertEquals("§cOnly someone on their feet can take the way out.", runs.exitWith(a, List.of(1)));
+    assertNull(runs.exitOffer(a));
+    ar.run.addRevive(a.getUniqueId(), 60_000, 1);
+    assertEquals("§cThose finds are worth more than the way out lets you take.", runs.exitWith(a, List.of(0, 1)));
+    assertNull(runs.exitWith(a, List.of(1)));
+    assertEquals(List.of("Ann spoils"), got);
+    assertTrue(nextMatching(a, "You take the way out."));
+    FindStore.Loss lost = runs.losses(a.getUniqueId()).get(0);
+    assertEquals("left through a way out (finds not taken)", lost.why());
+    assertEquals(10, lost.value());
+    ticks(1);
+    assertTrue(runs.runs().isEmpty(), "the party (Ann alone) left");
+    assertEquals("§cThere is no way out for you here.", runs.exitWith(a, List.of()));
+    runs.openExit(a);
+    assertTrue(nextMatching(a, "There is no way out for you here."));
+    // Normal: banked finds come home on top of the picks; nothing picked, nothing held
+    got.clear();
+    difficulties = List.of(banking("normal", new Difficulty.Banking(0, false, 1, true, 1), false));
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "normal");
+    ar = only();
+    clearCombat(ar, a);
+    into(a, RoomType.TREASURE);
+    ticks(2);
+    assertTrue(nextMatching(a, "its cache keeps"));
+    into(a, RoomType.COMBAT);
+    ticks(1);
+    into(a, RoomType.TREASURE);
+    ticks(1);
+    assertFalse(nextMatching(a, "its cache keeps"), "each treasure room banks once");
+    o = runs.exitOffer(a);
+    assertEquals(2, o.safe().size());
+    assertEquals(0, o.allowance());
+    assertNull(runs.exitWith(a, List.of()));
+    assertEquals(List.of("Ann EVENT", "Ann spoils"), got);
+    assertTrue(nextMatching(a, "You take 2 finds home."));
+    ticks(1);
+    // a difficulty that doesn't bank finds has no way out
+    difficulties = List.of(new Difficulty("plain", "Plain", 1, 1, 1, null, ""));
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "plain");
+    assertTrue(only().exits.isEmpty());
+    into(a, RoomType.TREASURE);
+    ticks(2);
+    assertNull(runs.exitOffer(a));
+    runs.openFinds(a);
+    assertTrue(nextMatching(a, "You hold no finds"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
+  void theFindsScreenOpensInABankingRun() {
+    difficulties = List.of(banking("normal", new Difficulty.Banking(1, true, 1), false));
+    PlayerMock a = player("Ann");
+    runs.openFinds(a);
+    assertTrue(nextMatching(a, "You hold no finds"));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal");
+    runs.openFinds(a);
+    assertInstanceOf(FindsMenu.class, a.getOpenInventory().getTopInventory().getHolder());
+    assertEquals(difficulties.get(0).lootRules(), runs.lootRules(a));
+    assertEquals(org.bukkit.Material.PAPER, runs.icon(RunRewards.Find.of(RunRewards.Moment.EVENT)).getType());
+    runs.rewards(recording(new ArrayList<>()));
+    assertEquals(org.bukkit.Material.BUNDLE, runs.icon(RunRewards.Find.spoils(1)).getType());
+    assertEquals(-1, runs.marksOf(a));
+    runs.rewards(null);
+    assertEquals(-1, runs.marksOf(a));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    assertEquals(List.of(), runs.lootRules(a));
+    difficulties = List.of(new Difficulty("plain", "Plain", 1, 1, 1, null, ""));
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "plain");
+    assertEquals(List.of(), runs.lootRules(a));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
+  void mythicInsuranceSparesOneWornPiece() {
+    settings = withLobby(60);
+    difficulties = List.of(banking("mythic", new Difficulty.Banking(0, false, 0), true));
+    var lockers = mock(net.tfminecraft.trialrooms.dungeon.locker.LockerService.class);
+    runs.lockers(lockers);
+    var locker = new net.tfminecraft.trialrooms.dungeon.locker.Locker();
+    locker.put("x", new byte[] {1});
+    locker.put("y", new byte[] {2});
+    locker.assign(0, 39, "x");
+    locker.assign(0, 38, "y");
+    locker.wear(0, Map.of(), 1);
+    PlayerMock a = player("Ann");
+    when(lockers.locker(a)).thenReturn(locker);
+    when(lockers.show(locker, "x")).thenReturn(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_HELMET));
+    when(lockers.show(locker, "y")).thenReturn(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_CHESTPLATE));
+    int[] marks = {100};
+    runs.openInsurance(a);
+    assertTrue(nextMatching(a, "Insurance is bought in the lobby"));
+    assertTrue(runs.insure(a, "x").startsWith("§cInsurance is bought"), "in no run");
+    assertEquals(List.of(), runs.insurable(a), "no rewards: nothing to pay with");
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, Moment moment, UUID run) {
+      }
+
+      @Override
+      public int value(org.bukkit.inventory.ItemStack item) {
+        return 50;
+      }
+
+      @Override
+      public int marks(org.bukkit.entity.Player p) {
+        return marks[0];
+      }
+
+      @Override
+      public boolean spend(org.bukkit.entity.Player p, int n) {
+        if (marks[0] < n) {
+          return false;
+        }
+        marks[0] -= n;
+        return true;
+      }
+
+      @Override
+      public int insurance(int value) {
+        return value / 5;
+      }
+    });
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "mythic");
+    assertTrue(nextMatching(a, "[Insure a piece]"));
+    runs.openInsurance(a);
+    assertInstanceOf(FindsMenu.class, a.getOpenInventory().getTopInventory().getHolder());
+    assertEquals(2, runs.insurable(a).size());
+    assertEquals(10, runs.insurable(a).get(0).cost());
+    assertEquals("§aInsured for 10 marks: if you fall, this piece is spared.", runs.insure(a, "x"));
+    assertEquals(90, marks[0]);
+    runs.insure(a, "y"); // one piece: the helmet is let go
+    assertEquals(90, marks[0]);
+    assertEquals("y", runs.insured(a));
+    assertEquals("§7Insurance cancelled: your marks are back.", runs.insure(a, "y"));
+    assertEquals(100, marks[0]);
+    assertEquals("§cWear that piece first: put on its loadout in the locker.", runs.insure(a, "z"));
+    marks[0] = 5;
+    assertEquals("§cInsuring it costs 10 marks; you have 5.", runs.insure(a, "x"));
+    marks[0] = 100;
+    runs.insure(a, "x");
+    runs.ready(a);
+    ticks(1); // the doors open: still worn, still insured
+    assertEquals("x", runs.insured(a));
+    assertEquals("§cInsurance is bought in the lobby of a run where your worn gear is at stake.", runs.insure(a, "y"));
+    runs.openInsurance(a);
+    assertTrue(nextMatching(a, "Insurance is bought in the lobby"));
+    into(a, RoomType.COMBAT);
+    ticks(12);
+    assertTrue(runs.down(a));
+    now.addAndGet(settings.bleedOutSeconds() * 1000L + 1);
+    ticks(1);
+    verify(lockers).forfeitWorn(a, "x");
+    assertTrue(nextMatching(a, "Your insured piece was spared"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    assertNull(runs.insured(a));
+    assertEquals(90, marks[0], "insurance that was used stays paid");
+    marks[0] = 100;
+    // leaving before the doors open gives the marks back; so does a run that ends there
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "mythic");
+    runs.insure(a, "x");
+    assertEquals(90, marks[0]);
+    runs.leave(a);
+    assertEquals(100, marks[0]);
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "mythic");
+    runs.insure(a, "x");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    assertEquals(100, marks[0]);
+    // the insured piece taken off before the doors open: refunded
+    runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "mythic");
+    runs.insure(a, "x");
+    locker.takeOff();
+    runs.ready(a);
+    ticks(1);
+    assertEquals(100, marks[0]);
+    assertTrue(nextMatching(a, "Your insurance was refunded"));
+    assertEquals(List.of(), runs.insurable(a), "nothing worn");
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    when(lockers.locker(a)).thenReturn(null);
+    assertEquals(List.of(), runs.insurable(a));
+    runs.lockers(null);
+    assertEquals(List.of(), runs.insurable(a));
+    difficulties = List.of();
+  }
+
+  @Test
+  void findsThatComeToNothingAreNotCarried() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(banking("normal", new Difficulty.Banking(0, false, 1), false));
+    runs.exitRoll = () -> 1;
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, Moment moment, UUID run) {
+      }
+
+      @Override
+      public Find find(org.bukkit.entity.Player p, String recipe, int tier, Moment moment, UUID run, double boost) {
+        return null;
+      }
+
+      @Override
+      public Find spoilsFind(org.bukkit.entity.Player p, String recipe, double hours, UUID run) {
+        return null;
+      }
+    });
+    PlayerMock a = player("Ann");
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal");
+    RunManager.ActiveRun ar = only();
+    clearCombat(ar, a); // (an event and spoils, both rolled to nothing)
+    assertEquals(List.of(), runs.heldBy(a).carried);
+    into(a, RoomType.TREASURE); // a banking run's treasure room without a way out
+    ticks(1);
+    assertTrue(ar.exitsShown.isEmpty());
+    assertFalse(nextMatching(a, "You carry a find"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
+  void awayMembersAreSettledByTheRunsRules() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(banking("normal", new Difficulty.Banking(1, true, 1), false),
+        banking("nightmare", new Difficulty.Banking(0, false, 0), false));
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    // no store: nothing can wait for them
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "normal");
+    RunManager.ActiveRun ar = only();
+    clearCombat(ar, a, b);
+    b.teleport(new Location(main, 10, 70, 10));
+    got.clear();
+    runs.end(ar, false, null);
+    assertFalse(got.contains("Bo EVENT"));
+    FindStore store = store();
+    // Nightmare: nothing comes home for someone away, and it is logged
+    runs.useGate(a, gates.add(main.getBlockAt(12, 69, 10), "delve"), "nightmare");
+    ar = only();
+    clearCombat(ar, a, b);
+    b.teleport(new Location(main, 10, 70, 10));
+    runs.end(ar, false, null);
+    assertEquals("you were away when the run ended", runs.losses(b.getUniqueId()).get(0).why());
+    assertEquals(List.of(), store.takePending(b.getUniqueId(), "char-Bo"));
+    // a stop: everything comes home for someone away, carried too
+    got.clear();
+    runs.useGate(a, gates.add(main.getBlockAt(14, 69, 10), "delve"), "nightmare");
+    ar = only();
+    clearCombat(ar, a, b);
+    b.teleport(new Location(main, 10, 70, 10));
+    runs.stop();
+    assertTrue(got.containsAll(List.of("Bo EVENT", "Bo spoils")), got.toString());
+    assertTrue(nextMatching(b, "a stop cut your run short"));
+    // away too long after the win: banked finds come home in full
+    got.clear();
+    settings = new RunSettings(4, 4, 5, 30, 3, 2.5, 8, 1, 60, List.of(), 60, java.util.Set.of(), java.util.Set.of(),
+        5, 10, 60);
+    runs.useGate(a, gates.add(main.getBlockAt(16, 69, 10), "delve"), "normal");
+    ar = only();
+    clearCombat(ar, a, b);
+    runs.quit(b);
+    into(a, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(a, RoomType.VAULT);
+    ticks(2);
+    assertEquals(DungeonRun.State.COMPLETE, ar.run.state());
+    now.addAndGet(2000);
+    ticks(1);
+    runs.sweep(b);
+    assertTrue(got.containsAll(List.of("Bo EVENT", "Bo spoils")), got.toString());
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
+  void thereIsNoWayOutAfterTheWinOrFromOutside() {
+    rules = new RunRules(1, 3, "m.key", 3, 1, 0.5, 1, "", 0, 0, 0, 30);
+    difficulties = List.of(banking("hard", new Difficulty.Banking(0, false, 0.5, false, 1), false));
+    store();
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    runs.exitRoll = () -> 0;
+    PlayerMock a = player("Ann");
+    PlayerMock c = player("Cy");
+    when(chars.partyLeader(c)).thenReturn(c.getUniqueId());
+    when(chars.partyMembers(c)).thenReturn(List.of(c.getUniqueId(), a.getUniqueId()));
+    runs.useGate(c, gates.add(main.getBlockAt(10, 69, 10), "delve"), "hard");
+    RunManager.ActiveRun ar = only();
+    clearCombat(ar, a, c);
+    into(c, RoomType.TREASURE);
+    into(a, RoomType.TREASURE);
+    ticks(2);
+    assertFalse(nextMatching(c, "its cache keeps"), "Hard here banks nowhere in treasure rooms");
+    into(c, RoomType.COMBAT);
+    ticks(1);
+    into(c, RoomType.TREASURE);
+    ticks(1);
+    assertFalse(nextMatching(c, "A way out glimmers"), "shown once");
+    // the exit fails to pay one of Cy's finds: Cy hears so, and leaves all the same
+    assertNull(runs.exitWith(c, List.of(0)));
+    assertTrue(nextMatching(c, "Some of your finds could not be paid"));
+    // Ann takes nothing: nothing to say
+    a.teleport(new Location(main, 10, 70, 10));
+    assertNull(runs.exitOffer(a), "from outside the dungeon");
+    assertNull(runs.heldBy(a));
+    into(a, RoomType.TREASURE);
+    runs.sweep(a);
+    assertNull(runs.exitWith(a, List.of()));
+    assertFalse(nextMatching(a, "finds home"));
+    ticks(1);
+    // after the win there is no way out (the vault's exit is the way)
+    runs.useGate(c, gates.add(main.getBlockAt(12, 69, 10), "delve"), "hard");
+    ar = only();
+    into(c, RoomType.TREASURE);
+    into(c, RoomType.BOSS);
+    ticks(14);
+    killAll();
+    ticks(4);
+    into(c, RoomType.VAULT);
+    ticks(2);
+    into(c, RoomType.TREASURE);
+    assertNull(runs.exitOffer(c));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    // a run without difficulties has no loot rules; a run without gear at stake has no insurance
+    difficulties = List.of();
+    settings = withLobby(60);
+    runs.startRun(c, "delve", 4);
+    assertEquals(List.of(), runs.lootRules(c));
+    runs.openInsurance(c);
+    assertTrue(nextMatching(c, "Insurance is bought in the lobby"));
+    assertTrue(runs.insure(c, "x").startsWith("§cInsurance is bought"));
+    runs.runs().forEach(r -> runs.end(r, false, null));
+  }
+
+  @Test
+  void lossesOfStakedGearAreLoggedAndGivenBack() {
+    difficulties = List.of(banking("mythic", new Difficulty.Banking(0, false, 0), true));
+    FindStore store = store();
+    List<String> got = new ArrayList<>();
+    runs.rewards(recording(got));
+    var lockers = mock(net.tfminecraft.trialrooms.dungeon.locker.LockerService.class);
+    runs.lockers(lockers);
+    PlayerMock c = player("Cy");
+    when(lockers.forfeitWorn(c, null)).thenReturn(List.of(new byte[] {4}));
+    runs.useGate(c, gates.add(main.getBlockAt(10, 69, 10), "delve"), "mythic");
+    RunManager.ActiveRun ar = only();
+    into(c, RoomType.COMBAT);
+    ticks(12);
+    c.teleport(new Location(dungeon, -5000, 65, -5000)); // somewhere between rooms
+    assertTrue(runs.down(c));
+    runs.quit(c, "KICKED");
+    FindStore.Loss l = runs.losses(c.getUniqueId()).get(0);
+    assertEquals("logged out while down", l.why());
+    assertTrue(l.detail().contains("KICKED") && l.detail().contains("between rooms"), l.detail());
+    assertEquals(1, l.gear().size());
+    runs.end(ar, false, null);
+    // given back: the gear waits for a locker that can take it
+    runs.lockers(null);
+    runs.restoreLoss(c.getUniqueId(), l.id());
+    c.teleport(new Location(main, 10, 70, 10));
+    runs.sweep(c);
+    assertTrue(nextMatching(c, "could not be handed over yet"));
+    runs.lockers(lockers);
+    runs.sweep(c);
+    assertTrue(nextMatching(c, "could not be handed over yet"), "the locker can't take it yet");
+    when(lockers.restore(eq(c), any())).thenReturn(true);
+    runs.sweep(c);
+    assertTrue(nextMatching(c, "Finds came home: staff gave back what you lost."));
+    verify(lockers, times(2)).restore(eq(c), any());
+    // an owed find that can't be handed over waits too
+    store.addPending(c.getUniqueId(), new FindStore.Pending("char-Cy", "delve", UUID.randomUUID(), 1, 1, false, "x",
+        List.of(RunRewards.Find.of(RunRewards.Moment.EVENT)), List.of()));
+    runs.sweep(c);
+    assertTrue(nextMatching(c, "could not be handed over yet"), "Cy's event finds break in these tests");
+    assertEquals(1, store.takePending(c.getUniqueId(), "char-Cy").size());
+    // an offline player's loss given back waits for them
+    UUID gone = UUID.randomUUID();
+    int id = store.logLoss(gone, l);
+    assertNotNull(runs.restoreLoss(gone, id));
+    difficulties = List.of();
+  }
+
+  @Test
+  void insuranceOnALockerThatCantBeReadIsRefunded() {
+    settings = withLobby(60);
+    difficulties = List.of(banking("mythic", new Difficulty.Banking(0, false, 0), true));
+    var lockers = mock(net.tfminecraft.trialrooms.dungeon.locker.LockerService.class);
+    runs.lockers(lockers);
+    var locker = new net.tfminecraft.trialrooms.dungeon.locker.Locker();
+    locker.put("x", new byte[] {1});
+    locker.assign(0, 39, "x");
+    locker.wear(0, Map.of(), 1);
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    when(lockers.locker(a)).thenReturn(locker);
+    when(lockers.show(locker, "x")).thenReturn(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_HELMET));
+    int[] marks = {100};
+    runs.rewards(new RunRewards() {
+      @Override
+      public void reward(org.bukkit.entity.Player p, String recipe, int tier, Moment moment, UUID run) {
+      }
+
+      @Override
+      public boolean spend(org.bukkit.entity.Player p, int n) {
+        marks[0] -= n;
+        return true;
+      }
+    });
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"), "mythic");
+    runs.insure(a, "x");
+    assertEquals(99, marks[0], "at least a mark");
+    when(lockers.locker(a)).thenReturn(null);
+    runs.ready(a);
+    runs.ready(b);
+    ticks(1);
+    assertEquals(100, marks[0]);
+    runs.runs().forEach(r -> runs.end(r, false, null));
+    difficulties = List.of();
+  }
+
   double[] middle(int room) {
     var r = layout.rooms().get(room);
     return new double[] {(r.originX() + r.widthCells() / 2.0) * 32, 65, (r.originZ() + r.depthCells() / 2.0) * 32};

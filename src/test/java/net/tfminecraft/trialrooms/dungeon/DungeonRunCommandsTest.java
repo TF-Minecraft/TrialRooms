@@ -371,4 +371,58 @@ class DungeonRunCommandsTest {
     }
     m.disable();
   }
+
+  @Test
+  void playersSeeTheirFindsAndStaffGiveLossesBack() {
+    CommandSender console = mock(CommandSender.class);
+    Player p = mock(Player.class);
+    c.run(p, new String[] {"finds"});
+    verify(runs).openFinds(p);
+    c.run(p, new String[] {"insure"});
+    verify(runs).openInsurance(p);
+    c.run(console, new String[] {"finds"});
+    verify(console).sendMessage("§cOnly players hold finds.");
+    c.run(console, new String[] {"losses"});
+    verify(console).sendMessage("§cUsage: /tr dungeon losses <player>");
+    c.run(console, new String[] {"losses", "Nobody"});
+    verify(console, times(2)).sendMessage("§cUsage: /tr dungeon losses <player>");
+    var ann = server.addPlayer("Ann");
+    c.run(console, new String[] {"losses", "Ann"});
+    verify(console).sendMessage("§7Ann has lost nothing in dungeons (that is still logged).");
+    var find = new net.tfminecraft.trialrooms.dungeon.run.RunRewards.Find(
+        net.tfminecraft.trialrooms.dungeon.run.RunRewards.Moment.BOSS, 0, "Rimebound Ring", 52, 0, false, List.of(),
+        List.of(), true);
+    List<net.tfminecraft.trialrooms.dungeon.run.FindStore.Loss> losses = new java.util.ArrayList<>();
+    for (int i = 1; i <= 12; i++) {
+      losses.add(new net.tfminecraft.trialrooms.dungeon.run.FindStore.Loss(i, 1_790_000_000_000L, "c1", UUID.randomUUID(),
+          "delve", i % 2 == 0 ? "" : "mythic", 4, "fell", i % 3 == 0 ? "" : "with 2/20 health", List.of(find),
+          i % 2 == 0 ? List.of() : List.of(new byte[] {1}), i == 12));
+    }
+    when(runs.losses(ann.getUniqueId())).thenReturn(losses);
+    var player = server.addPlayer("Staff");
+    c.run(player, new String[] {"losses", "Ann"});
+    String first = player.nextMessage();
+    assertTrue(first.startsWith("§6Dungeon losses of Ann"), first);
+    int lines = 0;
+    String last = null;
+    for (String m; (m = player.nextMessage()) != null; lines++) {
+      last = m;
+    }
+    assertEquals(10, lines, "the latest ten");
+    assertTrue(last.contains("#12") && last.contains("(given back)"), last);
+    // giving one back
+    c.run(console, new String[] {"restore", "Ann"});
+    verify(console).sendMessage(startsWith("§cUsage: /tr dungeon restore"));
+    c.run(console, new String[] {"restore", "Ann", "x"});
+    c.run(console, new String[] {"restore", "Nobody", "3"});
+    verify(console, times(3)).sendMessage(startsWith("§cUsage: /tr dungeon restore"));
+    c.run(console, new String[] {"restore", "Ann", "3"});
+    verify(console).sendMessage("§cNo loss #3 to give back (wrong id, or given back already).");
+    when(runs.restoreLoss(ann.getUniqueId(), 3)).thenReturn(losses.get(2));
+    c.run(console, new String[] {"restore", "Ann", "3"});
+    verify(console).sendMessage(startsWith("§aLoss #3 given back"));
+    ann.disconnect();
+    c.run(console, new String[] {"restore", "Ann", "3"});
+    verify(console, times(2)).sendMessage(startsWith("§aLoss #3 given back"));
+  }
 }

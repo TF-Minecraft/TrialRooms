@@ -78,6 +78,13 @@ rewards:
   # Reaching the vault within the run's par time (recipes.yml par:): extra marks (inside the weekly
   # cap) and extra luck for the vault's roll (0.5 makes Normal roll like Hard and Hard like Nightmare).
   par: {marks: 5, luck: 0.5}
+  # What finds are worth, by how strong they are: an item its rarity's value times its tier's power
+  # (tiers above), a dungeon gem gem times that, each mark mark, an hour of spoils spoils-hour. Value
+  # decides what a treasure room's way out lets a player take (up to half of what they would lose),
+  # and insure is the marks per point of value that insuring one worn piece costs on a difficulty
+  # with gear at stake. Players see values only on the finds screens, never on items.
+  value: {uncommon: 10, rare: 30, epic: 80, legendary: 200, gem: 0.5, mark: 1, spoils-hour: 40}
+  insure: 0.2
 
 # Spoils: what leaves the dungeon with the player (never dungeon gear). A dungeon is a run source of
 # the act system (ACT-SYSTEM.md rule 5): an hour of proper play pays a full act budget and a full

@@ -129,6 +129,7 @@ public final class DungeonModule {
         LockerService lockers = new LockerService(plugin, new LockerStore(root.resolve("lockers"), plugin.getLogger()),
                 ItemCodec.PAPER, characters::activeCharacterId, org.bukkit.entity.Player::saveData);
         runs.lockers(lockers);
+        runs.findStore(new net.tfminecraft.trialrooms.dungeon.run.FindStore(root.resolve("finds"), plugin.getLogger()));
         runs.records(new net.tfminecraft.trialrooms.dungeon.run.Records(root.resolve("records.yml").toFile(),
                 plugin.getLogger()));
         var plugins = plugin.getServer().getPluginManager();

@@ -114,6 +114,7 @@ class LoadTest {
     room(dir, "noboss", "type: boss\ndoorways:\n  - {cell: '0,0', side: north}\n"
         + "markers:\n  - {kind: spawn, at: '8,1,8'}\n", true);
     room(dir, "norest", "type: rest\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
+    room(dir, "nochest", "type: treasure\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
     room(dir, "hall", "type: corridor\ndoorways:\n  - {cell: '0,0', side: north}\n", true);
     List<String> problems = new ArrayList<>();
     DungeonKit kit = KitLoader.load(dir.toFile(), problems);
@@ -128,6 +129,7 @@ class LoadTest {
     assertTrue(all.contains("nospawn: a elite room needs a spawn marker"), all);
     assertTrue(all.contains("noboss: a boss room needs a spawn marker tagged boss"), all);
     assertTrue(all.contains("norest: a rest room needs a rest marker"), all);
+    assertTrue(all.contains("nochest: a treasure room needs a chest marker"), all);
     assertTrue(all.contains("notalist: cells must be a list"), all);
     assertTrue(all.contains("toohigh: doorway"), all);
     List<String> rise = new ArrayList<>();

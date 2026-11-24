@@ -29,15 +29,22 @@ public record Difficulty(String id, String name, int tier, double health, double
      * carried; falling loses what is carried. If the boss falls everything comes home; if the run
      * fails, each banked find comes home with the keep chance and carried finds are lost.
      *
-     * @param every a save point after every this many cleared fight rooms (0 = none)
-     * @param rest  whether reaching the rest room is a save point
-     * @param keep  the chance each banked find comes home when the run fails (0 to 1)
+     * @param every    a save point after every this many cleared fight rooms (0 = none)
+     * @param rest     whether reaching the rest room is a save point
+     * @param keep     the chance each banked find comes home when the run fails (0 to 1)
+     * @param treasure whether reaching a treasure room (a detour on a branch) is a save point
+     * @param exit     the chance each treasure room holds a way out: a player may leave there with
+     *                 finds worth up to half of what they would lose (or their best one)
      */
-    public record Banking(int every, boolean rest, double keep) {
+    public record Banking(int every, boolean rest, double keep, boolean treasure, double exit) {
         public Banking {
-            if (every < 0 || !(keep >= 0 && keep <= 1)) {
-                throw new IllegalArgumentException("bank: every not negative, keep between 0 and 1");
+            if (every < 0 || !(keep >= 0 && keep <= 1) || !(exit >= 0 && exit <= 1)) {
+                throw new IllegalArgumentException("bank: every not negative, keep and exit between 0 and 1");
             }
+        }
+
+        public Banking(int every, boolean rest, double keep) {
+            this(every, rest, keep, false, 0);
         }
     }
 
@@ -63,19 +70,31 @@ public record Difficulty(String id, String name, int tier, double health, double
     public List<String> lootRules() {
         List<String> out = new ArrayList<>();
         if (banking != null) {
-            String every = banking.every() > 0 ? "every " + banking.every() + " cleared fight rooms" : null;
-            String rest = banking.rest() ? "at the rest room" : null;
-            if (every == null && rest == null) {
+            List<String> at = new ArrayList<>();
+            if (banking.every() > 0) {
+                at.add("every " + banking.every() + " cleared fight rooms");
+            }
+            if (banking.treasure()) {
+                at.add("in treasure rooms");
+            }
+            if (banking.rest()) {
+                at.add("at the rest room");
+            }
+            if (at.isEmpty()) {
                 out.add("What you find comes home only if the boss falls.");
             } else {
-                out.add("What you find is banked " + (every == null ? rest : rest == null ? every : every + " and " + rest)
-                        + ".");
+                String last = at.remove(at.size() - 1);
+                out.add("What you find is banked " + (at.isEmpty() ? last : String.join(", ", at) + " and " + last) + ".");
                 out.add(banking.keep() >= 1 ? "If the run fails, you keep all you banked."
                         : banking.keep() <= 0 ? "If the run fails, what you banked is lost too."
                         : "If the run fails, each banked find has a " + Math.round(banking.keep() * 100)
                                 + "% chance to come home.");
             }
             out.add("Fall, and what you carry is lost.");
+            if (banking.exit() > 0) {
+                out.add("Some treasure rooms hold a way out: leave alone, with finds worth up to half of what you"
+                        + " would lose.");
+            }
         }
         if (gearAtRisk) {
             out.add("Your worn dungeon gear is at stake: fall, and it is destroyed.");

@@ -25,10 +25,44 @@ import net.tfminecraft.trialrooms.dungeon.run.RunRewards.Moment;
  * @param gemPool     the bonus pool a gem's one stat comes from
  * @param parMarks    extra marks for reaching the vault under par (inside the weekly cap)
  * @param parLuck     extra luck for the vault's roll under par (added to the tier's)
+ * @param values      what finds are worth (what an early exit lets out, and what insurance costs)
  */
 public record RewardRules(Map<Moment, Double> chances, double gemChance, double pity, int weeklyRuns, int weeklyMarks,
         Map<Moment, Integer> marks, Map<String, Integer> prices, int shopTier, String gemTemplate, String gemPool,
-        int parMarks, double parLuck) {
+        int parMarks, double parLuck, Values values) {
+
+    /**
+     * What finds are worth: an item its rarity's value times its tier's power (so the stronger the
+     * item, the more it is worth), a gem a share of that, each mark and each hour of spoils their own.
+     *
+     * @param rarities value of an item of each rarity at tier power 1
+     * @param gem      a gem's share of an item's value
+     * @param mark     value of one mark
+     * @param spoils   value of an hour of spoils
+     * @param insure   marks insuring a worn piece costs per point of its value
+     */
+    public record Values(Map<String, Integer> rarities, double gem, double mark, double spoils, double insure) {
+        public static final Values NONE = new Values(Map.of(), 0, 0, 0, 0);
+
+        public Values {
+            if (rarities.values().stream().anyMatch(v -> v < 0) || !(gem >= 0) || !(mark >= 0) || !(spoils >= 0)
+                    || !(insure >= 0) || Double.isInfinite(gem + mark + spoils + insure)) {
+                throw new IllegalArgumentException("rewards value: numbers can't be negative");
+            }
+        }
+
+        /** An item's value: its rarity's, times its tier's power (a share of it for a gem). */
+        public int item(String rarity, double power, boolean gem) {
+            return (int) Math.round(rarities.getOrDefault(rarity, 0) * power * (gem ? this.gem : 1));
+        }
+    }
+
+    public RewardRules(Map<Moment, Double> chances, double gemChance, double pity, int weeklyRuns, int weeklyMarks,
+            Map<Moment, Integer> marks, Map<String, Integer> prices, int shopTier, String gemTemplate, String gemPool,
+            int parMarks, double parLuck) {
+        this(chances, gemChance, pity, weeklyRuns, weeklyMarks, marks, prices, shopTier, gemTemplate, gemPool, parMarks,
+                parLuck, Values.NONE);
+    }
 
     public RewardRules(Map<Moment, Double> chances, double gemChance, double pity, int weeklyRuns, int weeklyMarks,
             Map<Moment, Integer> marks, Map<String, Integer> prices, int shopTier, String gemTemplate, String gemPool) {
@@ -87,10 +121,18 @@ public record RewardRules(Map<Moment, Double> chances, double gemChance, double 
             if (kit.pools().getOrDefault(pool, Map.of()).isEmpty()) {
                 throw new IllegalArgumentException("gems: no bonus pool " + pool + " with stats in it");
             }
+            Map<String, Integer> values = new LinkedHashMap<>();
+            ConfigurationSection vs = r.getConfigurationSection("value");
+            if (vs != null) {
+                for (LootKit.Rarity rarity : kit.rarities()) {
+                    values.put(rarity.id(), vs.getInt(rarity.id(), 0));
+                }
+            }
             return new RewardRules(chances, r.getDouble("gem-chance", 0), r.getDouble("pity", 0),
                     r.getInt("weekly.runs", 3), r.getInt("weekly.marks", 100), marks, prices, r.getInt("shop-tier", 1),
                     r.getString("gems.template", "gemstones.larimar"), pool, r.getInt("par.marks", 0),
-                    r.getDouble("par.luck", 0));
+                    r.getDouble("par.luck", 0), new Values(values, r.getDouble("value.gem", 0.5),
+                            r.getDouble("value.mark", 1), r.getDouble("value.spoils-hour", 0), r.getDouble("insure", 0)));
         } catch (RuntimeException e) {
             problems.add("loot.yml rewards: " + e.getMessage());
             return null;

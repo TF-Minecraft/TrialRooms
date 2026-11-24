@@ -20,8 +20,17 @@ import net.tfminecraft.trialrooms.dungeon.loot.LootKit.Rarity;
  */
 public final class DungeonLoot {
 
-    /** An item, or why there is none. */
-    public record Rolled(ItemStack item, String problem) {
+    /** An item (and its rarity id), or why there is none. */
+    public record Rolled(ItemStack item, String problem, String rarity) {
+        public Rolled(ItemStack item, String problem) {
+            this(item, problem, null);
+        }
+    }
+
+    /** How much stronger a tier makes items (1 with loot off). */
+    public double power(int tier) {
+        LootKit k = kit.get();
+        return k == null ? 1 : k.tier(tier).power();
     }
 
     /** Where a base's item comes from: its template, starting stats and the stats it owns. */
@@ -73,7 +82,8 @@ public final class DungeonLoot {
         Source s = source(k, base, sources).orElseThrow();
         ItemStack item = forge.make(LootRoller.plan(k, base, s.stats(), tier, rarity, rng), s.template(), s.managed(),
                 k.socket());
-        return item == null ? new Rolled(null, "The item " + base.id() + " could not be built.") : new Rolled(item, null);
+        return item == null ? new Rolled(null, "The item " + base.id() + " could not be built.")
+                : new Rolled(item, null, rarity.id());
     }
 
     /** A dungeon gem of a rarity (null: by chance at the tier) with one stat from a pool. */
@@ -92,7 +102,8 @@ public final class DungeonLoot {
             return new Rolled(null, "There is no rarity " + rarityId + ".");
         }
         ItemStack gem = forge.makeGem(LootRoller.gem(k, pool, tier, rarity, rng), template, k.socket());
-        return gem == null ? new Rolled(null, "The gem template " + template + " is missing.") : new Rolled(gem, null);
+        return gem == null ? new Rolled(null, "The gem template " + template + " is missing.")
+                : new Rolled(gem, null, rarity.id());
     }
 
     /** The items a player's class can use. */

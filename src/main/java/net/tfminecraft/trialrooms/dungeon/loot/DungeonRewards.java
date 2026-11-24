@@ -35,6 +35,10 @@ import net.tfminecraft.trialrooms.dungeon.run.RunRewards;
  */
 public final class DungeonRewards implements RunRewards, LockerExtras {
 
+    /** Where a dungeon item keeps its value (how strong it is: what insuring it costs). */
+    public static final org.bukkit.NamespacedKey VALUE = java.util.Objects.requireNonNull(
+            org.bukkit.NamespacedKey.fromString("trialrooms:dungeon_value"));
+
     private final DungeonLoot loot;
     private final LockerService lockers;
     private final Supplier<RewardRules> rules;
@@ -47,6 +51,8 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     private java.util.function.Predicate<String> console; // (only used once cosmetics are set)
 
     private AccountLimits accounts;
+    /** The run each player last heard "this week's loot is had" for (said once a run). */
+    private final Map<UUID, UUID> told = new java.util.HashMap<>();
 
     /** Limits cosmetics per player account too (all their characters together), not only per character. */
     public DungeonRewards accounts(AccountLimits accounts) {
@@ -167,6 +173,21 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
             return;
         }
         List<String> got = new java.util.ArrayList<>();
+        rollSpoils(s, hours, got).forEach(stack -> lockers.owe(l, stack));
+        if (got.isEmpty()) {
+            return;
+        }
+        if (!lockers.saveLocker(p, l)) {
+            // they stay in the locker in memory, for the next save that works
+            p.sendMessage("§cYour spoils could not be saved yet. Tell staff.");
+            return;
+        }
+        p.sendMessage("§eSpoils: §f" + String.join(", ", got) + " §7(yours when you leave the dungeon)");
+    }
+
+    /** Spoils for some hours of play, in stacks; what they are is added to {@code got} as players read it. */
+    private List<ItemStack> rollSpoils(Spoils s, double hours, List<String> got) {
+        List<ItemStack> out = new java.util.ArrayList<>();
         for (Map.Entry<String, Integer> e : s.roll(hours, rng).entrySet()) {
             ItemStack it;
             try {
@@ -182,19 +203,173 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
                 ItemStack stack = it.clone();
                 stack.setAmount(Math.min(left, it.getMaxStackSize()));
                 left -= stack.getAmount();
-                lockers.owe(l, stack);
+                out.add(stack);
             }
             got.add(e.getValue() + " " + name(it));
         }
-        if (got.isEmpty()) {
+        return out;
+    }
+
+    // ---- finds of banking runs: rolled when found, handed over once they come home
+
+    /**
+     * A find rolled now: its item chance (with pity) and marks, held until it comes home. Whether
+     * the run rolls items is decided by this week's runs; the run counts towards them once its
+     * first find comes home, so a run whose finds are all lost costs no weekly run.
+     */
+    @Override
+    public Find find(Player p, String recipe, int tier, Moment moment, UUID run, double boost) {
+        RewardRules r = rules.get();
+        Locker l = lockers.locker(p);
+        if (r == null || l == null) {
+            return null;
+        }
+        week(l);
+        boolean rolls = l.lastRun().equals(run.toString()) ? l.lastRunRewarded() : l.weekRuns(recipe) < r.weeklyRuns();
+        if (!rolls && !run.equals(told.put(p.getUniqueId(), run))) {
+            p.sendMessage("§7You have had this week's loot from this dungeon: it pays marks only until the week turns.");
+        }
+        int marks = (int) Math.round(r.marks(moment) * boost);
+        ItemStack found = null;
+        if (rolls) {
+            double chance = Math.min(1, r.chance(moment) * boost);
+            boolean win = chance >= 1 || chance > 0 && rng.nextDouble() < chance + l.pity();
+            if (chance > 0 && chance < 1) {
+                l.pity(win ? 0 : l.pity() + r.pity());
+                lockers.saveLocker(p, l); // (a pity that isn't saved only costs the player a little luck)
+            }
+            if (win) {
+                found = drop(p, r, tier, 0);
+            }
+        }
+        if (found == null && marks <= 0) {
+            return null;
+        }
+        int value = value(found) + (int) Math.round(marks * r.values().mark());
+        String label = found == null ? marks + " dungeon marks" : name(found) + (marks > 0 ? " and " + marks + " marks" : "");
+        return new Find(moment, 0, label, value, marks, rolls, found == null ? List.of() : List.of(lockers.encode(found)),
+                List.of(), true);
+    }
+
+    /** A cleared room's spoils, rolled now and held until they come home. */
+    @Override
+    public Find spoilsFind(Player p, String recipe, double hours, UUID run) {
+        Spoils s = spoils.get();
+        if (s == null) {
+            return null;
+        }
+        List<String> got = new java.util.ArrayList<>();
+        List<byte[]> items = rollSpoils(s, hours, got).stream().map(lockers::encode).toList();
+        if (items.isEmpty()) {
+            return null;
+        }
+        RewardRules r = rules.get();
+        int value = r == null ? 0 : (int) Math.round(hours * r.values().spoils());
+        return new Find(null, hours, "Spoils: " + String.join(", ", got), value, 0, false, List.of(), items, true);
+    }
+
+    /**
+     * Hands a find over: its items to the locker, its spoils to wait outside, its marks inside the
+     * weekly cap. The first find of a run to come home counts the run towards this week's item
+     * runs. A find given back by staff skips the limits.
+     */
+    @Override
+    public void deliver(Player p, Find f, String recipe, int tier, UUID run, double boost, boolean restore) {
+        if (!f.rolled()) {
+            RunRewards.super.deliver(p, f, recipe, tier, run, boost, restore);
             return;
         }
+        Locker l = lockers.locker(p);
+        if (l == null) {
+            throw new IllegalStateException("no locker to hand finds to");
+        }
+        week(l);
+        int pay = f.marks();
+        if (!restore) {
+            RewardRules r = rules.get();
+            if (!l.lastRun().equals(run.toString())) {
+                if (f.counts()) {
+                    l.weekRun(recipe, l.weekRuns(recipe) + 1);
+                }
+                l.lastRun(run.toString(), f.counts());
+            }
+            pay = Math.min(pay, Math.max(0, (r == null ? 0 : r.weeklyMarks()) - l.weekMarks()));
+            l.weekMarks(l.weekMarks() + pay);
+        }
+        l.marks(l.marks() + pay);
+        f.gear().forEach(g -> lockers.file(l, lockers.decode(g)));
+        f.spoils().forEach(s -> lockers.owe(l, lockers.decode(s)));
         if (!lockers.saveLocker(p, l)) {
-            // they stay in the locker in memory, for the next save that works
-            p.sendMessage("§cYour spoils could not be saved yet. Tell staff.");
+            // all of it stays in the locker in memory, for the next save that works
+            p.sendMessage("§cYour finds could not be saved yet. Tell staff.");
             return;
         }
-        p.sendMessage("§eSpoils: §f" + String.join(", ", got) + " §7(yours when you leave the dungeon)");
+        if (pay > 0) {
+            p.sendMessage("§b+" + pay + " dungeon marks §7(" + l.marks() + " in your locker)");
+        }
+    }
+
+    @Override
+    public ItemStack icon(Find f) {
+        if (!f.gear().isEmpty()) {
+            return lockers.decode(f.gear().get(0));
+        }
+        if (!f.spoils().isEmpty()) {
+            return lockers.decode(f.spoils().get(0));
+        }
+        return f.rolled() ? new ItemStack(org.bukkit.Material.EMERALD, Math.max(1, Math.min(64, f.marks())))
+                : RunRewards.super.icon(f);
+    }
+
+    /** The value an item carries (0 for none). */
+    @Override
+    public int value(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) {
+            return 0;
+        }
+        Integer v = item.getItemMeta().getPersistentDataContainer().get(VALUE, org.bukkit.persistence.PersistentDataType.INTEGER);
+        return v == null ? 0 : v;
+    }
+
+    @Override
+    public int marks(Player p) {
+        Locker l = lockers.locker(p);
+        return l == null ? -1 : l.marks();
+    }
+
+    @Override
+    public boolean spend(Player p, int marks) {
+        Locker l = lockers.locker(p);
+        if (l == null || l.marks() < marks) {
+            return false;
+        }
+        l.marks(l.marks() - marks);
+        if (!lockers.saveLocker(p, l)) {
+            l.marks(l.marks() + marks);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public int insurance(int value) {
+        RewardRules r = rules.get();
+        return r == null ? 0 : (int) Math.ceil(value * r.values().insure());
+    }
+
+    /** Tags an item with its value (none for no value). */
+    static ItemStack valued(ItemStack item, int value) {
+        if (item != null && value > 0) {
+            item.editMeta(m -> m.getPersistentDataContainer().set(VALUE, org.bukkit.persistence.PersistentDataType.INTEGER, value));
+        }
+        return item;
+    }
+
+    private void week(Locker l) {
+        String week = week(clock.getAsLong(), zone);
+        if (!week.equals(l.week())) {
+            l.newWeek(week);
+        }
     }
 
     /** The ISO week a moment falls in, as 2026-W47. */
@@ -271,13 +446,15 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         }
     }
 
-    /** An item for the player's class, or a dungeon gem (always a gem when no item fits them). */
+    /** An item for the player's class, or a dungeon gem (always a gem when no item fits them), with its value. */
     private ItemStack drop(Player p, RewardRules r, int tier, double luck) {
-        DungeonLoot.Rolled item = rng.nextDouble() < r.gemChance() ? null : loot.roll(p, tier, luck, null, null);
+        boolean gem = rng.nextDouble() < r.gemChance();
+        DungeonLoot.Rolled item = gem ? null : loot.roll(p, tier, luck, null, null);
         if (item == null || item.item() == null) {
             item = loot.gem(tier, luck, null, r.gemPool(), r.gemTemplate());
+            gem = true;
         }
-        return item.item();
+        return valued(item.item(), item.rarity() == null ? 0 : r.values().item(item.rarity(), loot.power(tier), gem));
     }
 
     private static String name(ItemStack item) {
@@ -315,7 +492,8 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         }
         // The item and the price go to disk in one write.
         l.marks(l.marks() - price);
-        String id = lockers.file(l, rolled.item());
+        String id = lockers.file(l, valued(rolled.item(), rolled.rarity() == null ? 0
+                : r.values().item(rolled.rarity(), loot.power(r.shopTier()), false)));
         if (!lockers.saveLocker(p, l)) {
             l.remove(id);
             l.marks(l.marks() + price);
@@ -336,7 +514,8 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
         LootForge.Socketed s = loot.socket(p, lockers.show(l, item), lockers.show(l, gem));
         switch (s.result()) {
             case DONE -> {
-                lockers.replace(l, item, s.item());
+                // (MMOItems rebuilds the item: its value comes along)
+                lockers.replace(l, item, valued(s.item(), value(lockers.show(l, item))));
                 l.remove(gem);
                 lockers.saveLocker(p, l);
                 return "§aThe gem settles into its socket.";
