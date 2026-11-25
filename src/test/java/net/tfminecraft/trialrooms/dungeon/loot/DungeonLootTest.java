@@ -133,7 +133,7 @@ class DungeonLootTest {
     assertNotNull(g.item());
     LootRoller.GemPlan plan = forge.gems.getFirst();
     assertEquals("epic", plan.rarity().id());
-    assertTrue(plan.name().endsWith(" Rimestone"));
+    assertTrue(plan.name().endsWith(" Delvestone"));
     assertTrue(kit.pools().get("jewellery").containsKey(plan.stat()));
     assertNotNull(l.gem(1, null, "jewellery", "x").item(), "a rarity by chance");
     assertEquals("There is no rarity mythic.", l.gem(1, "mythic", "jewellery", "x").problem());
@@ -147,6 +147,11 @@ class DungeonLootTest {
     assertSame(item, l.socket(ann, item, mock(ItemStack.class)).item());
     forge.items.put("m.materials.ignitium", item);
     assertSame(item, l.item("m.materials.ignitium"), "spoils are ordinary items");
+    when(item.getType()).thenReturn(org.bukkit.Material.PAPER);
+    assertSame(item, l.look("m.materials.ignitium"));
+    when(item.getType()).thenReturn(org.bukkit.Material.DIRT);
+    assertNull(l.look("m.materials.ignitium"), "TLibs gives dirt for a missing ItemsAdder item");
+    assertNull(l.look("m.materials.none"));
     kit = null;
     assertTrue(l.gem(1, null, "jewellery", "x").problem().startsWith("Dungeon loot is off"));
     assertEquals(List.of(), l.usable(ann));
@@ -157,7 +162,7 @@ class DungeonLootTest {
     forge.recipes.put("sword", new LootForge.Recipe("sword.custom_sword", Map.of(), Set.of()));
     forge.classes.put("sword.custom_sword", List.of("Juggernaut"));
     loot().roll(ann, 1, null, null);
-    assertEquals(28, forge.recipeLookups, "every recipe base once, the chosen one from the cache");
+    assertEquals(36, forge.recipeLookups, "every recipe base once, the chosen one from the cache");
   }
 
   @Test

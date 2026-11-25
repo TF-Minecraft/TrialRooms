@@ -146,22 +146,25 @@ class RunListenerTest {
     // incoming: not run mobs are left alone; immune bosses take nothing; shields soften; phases cap
     EntityDamageEvent stranger = damage(calm, p, DamageCause.ENTITY_ATTACK, 10);
     when(runs.inDungeonWorld(calm)).thenReturn(true);
+    l.onEnemyStruck(stranger);
     l.onEnemyHurt(stranger);
     assertEquals(10, stranger.getDamage());
     when(runs.isRunMob(mob)).thenReturn(true);
     // outside the dungeon world nothing is looked at
     EntityDamageEvent away = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyStruck(away);
     l.onEnemyHurt(away);
     l.onEnemyHurtDone(away);
     verify(runs, never()).incomingFactor(mob);
     when(runs.inDungeonWorld(mob)).thenReturn(true);
     when(runs.incomingFactor(mob)).thenReturn(0.0);
     EntityDamageEvent immune = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
-    l.onEnemyHurt(immune);
+    l.onEnemyStruck(immune);
     assertTrue(immune.isCancelled());
     when(runs.incomingFactor(mob)).thenReturn(0.4);
     when(runs.damageCap(mob)).thenReturn(Double.POSITIVE_INFINITY);
     EntityDamageEvent shielded = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyStruck(shielded);
     l.onEnemyHurt(shielded);
     assertEquals(4, shielded.getDamage(), 1e-9);
     when(runs.incomingFactor(mob)).thenReturn(1.0);
@@ -171,10 +174,14 @@ class RunListenerTest {
     assertEquals(5, capped.getDamage(), 1e-9);
     when(runs.damageCap(mob)).thenReturn(0.0);
     EntityDamageEvent none = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyStruck(none);
+    assertTrue(none.isCancelled(), "a boss at its phase floor takes nothing (before MythicLib sees the hit)");
+    none = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
     l.onEnemyHurt(none);
     assertTrue(none.isCancelled());
     // /kill always kills
     EntityDamageEvent kill = damage(mob, null, DamageCause.KILL, 1000);
+    l.onEnemyStruck(kill);
     l.onEnemyHurt(kill);
     assertFalse(kill.isCancelled());
     assertEquals(1000, kill.getDamage());

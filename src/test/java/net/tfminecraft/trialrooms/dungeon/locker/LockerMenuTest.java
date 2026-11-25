@@ -251,6 +251,19 @@ class LockerMenuTest {
       asked.add("socket " + gem + " " + item);
       return "socketed";
     }
+
+    java.util.List<Part> parts = java.util.List.of();
+
+    @Override
+    public java.util.List<Part> parts(org.bukkit.entity.Player p, String item, String other) {
+      return parts;
+    }
+
+    @Override
+    public String trade(org.bukkit.entity.Player p, String item, String other, String slot) {
+      asked.add("trade " + item + " " + other + " " + slot);
+      return "traded";
+    }
   }
 
   @Test
@@ -320,7 +333,46 @@ class LockerMenuTest {
   }
 
   @Test
+  void gunsTradePartsFromTheStash() {
+    FakeExtras extras = new FakeExtras();
+    String a = lockers.add(ann, new ItemStack(Material.STONE_HOE));
+    String b = lockers.add(ann, new ItemStack(Material.WOODEN_HOE));
+    LockerMenu m = new LockerMenu(lockers, ann, p -> true, extras);
+    m.open();
+    m.click(LockerMenu.STASH, true); // nothing picked yet: a plain pick
+    assertEquals(a, m.selected());
+    m.click(LockerMenu.STASH, true); // the same gun: let go
+    assertNull(m.selected());
+    m.click(LockerMenu.STASH);
+    m.click(LockerMenu.STASH + 1, true); // nothing to trade: a plain pick
+    assertEquals(b, m.selected());
+    extras.parts = java.util.List.of(new LockerExtras.Part("barrel", "Long", "Short"), new LockerExtras.Part("stock", "A", "B"));
+    m.click(LockerMenu.STASH, true);
+    assertEquals(Material.WOODEN_HOE, m.getInventory().getItem(LockerMenu.OWN_GUN).getType());
+    assertEquals(Material.STONE_HOE, m.getInventory().getItem(LockerMenu.OTHER_GUN).getType());
+    m.click(LockerMenu.PARTS + 1);
+    assertEquals(java.util.List.of("trade " + b + " " + a + " stock"), extras.asked);
+    assertEquals("traded", last());
+    m.click(LockerMenu.PARTS + 2); // no part there
+    m.click(LockerMenu.PARTS - 1);
+    assertEquals(1, extras.asked.size());
+    extras.parts = java.util.List.of();
+    m.render(); // a gun went away
+    assertNull(m.getInventory().getItem(LockerMenu.OWN_GUN));
+    m.click(LockerMenu.BACK);
+    assertEquals(Material.STONE_HOE, m.getInventory().getItem(LockerMenu.STASH).getType());
+    // without extras: a plain pick
+    LockerMenu plain = menu();
+    plain.open();
+    plain.click(LockerMenu.STASH);
+    plain.click(LockerMenu.STASH + 1, true);
+    assertEquals(b, plain.selected());
+  }
+
+  @Test
   void jewelleryGoesInTheRingAndAmuletSlots() {
+    assertFalse(LockerMenu.fits(new ItemStack(Material.GOLD_NUGGET), 11), "artifacts only");
+    assertFalse(LockerMenu.fits(new ItemStack(Material.STONE), 12));
     assertTrue(LockerMenu.fits(new ItemStack(Material.GOLD_NUGGET), 9));
     assertFalse(LockerMenu.fits(new ItemStack(Material.GOLD_INGOT), 9));
     assertTrue(LockerMenu.fits(new ItemStack(Material.GOLD_INGOT), 10));

@@ -85,7 +85,12 @@ public final class DungeonModule {
     private net.tfminecraft.trialrooms.dungeon.loot.Cosmetics cosmetics;
     private net.tfminecraft.trialrooms.dungeon.run.Affixes affixes;
     private DungeonLoot loot;
+    /** Whether GunsAndGadgets was told of dungeon guns. */
+    private boolean guns;
+    /** Whether Magic holds Equilibrium in runs. */
+    private boolean magic;
     private DungeonRewards rewards;
+    private net.tfminecraft.trialrooms.dungeon.gear.GearService gear;
 
     public DungeonModule(JavaPlugin plugin, Function<WorldCreator, World> creator) {
         this.plugin = plugin;
@@ -111,6 +116,15 @@ public final class DungeonModule {
     }
 
     public void disable() {
+        if (gear != null) {
+            gear.stop();
+        }
+        if (guns) {
+            net.tfminecraft.gunsandgadgets.api.DungeonGuns.onRefresh(null);
+        }
+        if (magic) {
+            net.tfminecraft.magic.api.DungeonWeapons.holdEquilibrium(null);
+        }
         if (runs != null) {
             runs.stop();
         }
@@ -139,18 +153,94 @@ public final class DungeonModule {
         }
         if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
+            if (plugins.isPluginEnabled("GunsAndGadgets")) {
+                optional("dungeon guns", this::startGuns);
+            }
+            if (plugins.isPluginEnabled("Magic")) {
+                optional("dungeon mage weapons", this::startMageWeapons);
+            }
             rewards = new DungeonRewards(loot, lockers, this::rewardRules, new java.util.Random(),
                     System::currentTimeMillis, java.time.ZoneId.systemDefault(), this::spoils, plugin.getLogger())
                     .cosmetics(this::cosmetics, net.tfminecraft.trialrooms.dungeon.loot.Cosmetics::runOnConsole)
                     .accounts(new net.tfminecraft.trialrooms.dungeon.loot.AccountLimits(root.resolve("accounts.yml").toFile(),
                             plugin.getLogger()));
             runs.rewards(rewards);
+            runs.wayOutLook(this::wayOut);
+            startGear(new net.tfminecraft.trialrooms.dungeon.gear.MythicStats());
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
         }
         runs.start();
         plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs), plugin);
         plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
+    }
+
+    /** Starts what another plugin's newer version is for; without it, the rest goes on. */
+    void optional(String what, Runnable start) {
+        try {
+            start.run();
+        } catch (LinkageError e) {
+            plugin.getLogger().warning("[dungeons] " + what + " are off: their plugin is too old (" + e + ")");
+        }
+    }
+
+    private void startMageWeapons() {
+        var forge = new net.tfminecraft.trialrooms.dungeon.loot.MagicForge();
+        forge.archetypes(); // (fails here, not mid-run, when Magic doesn't have them)
+        // what a character trains belongs to the gear they own: casting in a run never moves Equilibrium
+        net.tfminecraft.magic.api.DungeonWeapons.holdEquilibrium(runs::inDungeonWorld);
+        magic = true;
+        loot.maker(new net.tfminecraft.trialrooms.dungeon.loot.MageLoot(forge, MmoLootForge::skin));
+    }
+
+    /** Dungeon guns drop, and keep their dungeon lines when GunsAndGadgets brings their stats up to date. */
+    private void startGuns() {
+        var guns = new net.tfminecraft.trialrooms.dungeon.loot.GunLoot(
+                new net.tfminecraft.trialrooms.dungeon.loot.GgGunForge(), this::lootKit);
+        net.tfminecraft.gunsandgadgets.api.DungeonGuns.onRefresh(guns::refreshed);
+        loot.guns(guns);
+        this.guns = true;
+    }
+
+    /** Starts set bonuses and weapon traits (inside dungeons only). */
+    void startGear(net.tfminecraft.trialrooms.dungeon.gear.GearService.Stats stats) {
+        gear = new net.tfminecraft.trialrooms.dungeon.gear.GearService(plugin.getServer(), runs::inDungeonWorld,
+                java.util.function.Predicate.not(runs::isDowned), this::enemy, this::sets, this::worth, stats,
+                System::currentTimeMillis, this::later);
+        plugin.getServer().getPluginManager().registerEvents(gear, plugin);
+        plugin.getServer().getScheduler().runTaskTimer(plugin, gear::tick, 20L, 10L);
+    }
+
+    void later(Runnable task) {
+        if (plugin.isEnabled()) { // (stopping: what is left of a trait is dropped)
+            plugin.getServer().getScheduler().runTask(plugin, task);
+        }
+    }
+
+    /** Whether an entity is a run's enemy (a player's summon there isn't). */
+    boolean enemy(org.bukkit.entity.Entity e) {
+        return runs.isRunMob(e) && owner.apply(e) == null;
+    }
+
+    /** The player behind a summon (needs MythicMobs running). */
+    java.util.function.Function<org.bukkit.entity.Entity, org.bukkit.entity.Player> owner = AllyFilter::ownerOf;
+
+    /** What ways out look like, or null without the look. */
+    org.bukkit.inventory.ItemStack wayOut() {
+        return lootKit == null ? null : loot.look(lootKit.looks() + "way_out");
+    }
+
+    Map<String, net.tfminecraft.trialrooms.dungeon.gear.GearSet> sets() {
+        return lootKit == null ? Map.of() : lootKit.sets();
+    }
+
+    Map<String, Double> worth() {
+        return lootKit == null ? Map.of() : lootKit.worth();
+    }
+
+    /** Set bonuses at work, or null without loot. */
+    public net.tfminecraft.trialrooms.dungeon.gear.GearService gear() {
+        return gear;
     }
 
     public RunManager runs() {

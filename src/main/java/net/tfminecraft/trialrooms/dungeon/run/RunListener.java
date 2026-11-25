@@ -126,21 +126,32 @@ public final class RunListener implements Listener {
     }
 
     /**
-     * Hits on run enemies: none land on a boss between phases, a shielded elite takes less, and no
-     * single hit takes a boss past its next phase. Staff's /kill always kills.
+     * Hits on run enemies that don't land: on a boss between phases. (HIGH: before MythicLib, which
+     * would set off on-hit passives.) Staff's /kill always kills.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEnemyStruck(EntityDamageEvent event) {
+        if (enemyHurt(event) && (runs.incomingFactor(event.getEntity()) <= 0 || runs.damageCap(event.getEntity()) <= 0)) {
+            event.setCancelled(true);
+        }
+    }
+
+    private boolean enemyHurt(EntityDamageEvent event) {
+        return event.getCause() != EntityDamageEvent.DamageCause.KILL && runs.inDungeonWorld(event.getEntity())
+                && runs.isRunMob(event.getEntity());
+    }
+
+    /**
+     * Hits on run enemies: a shielded elite takes less, and no single hit takes a boss past its next
+     * phase. (HIGHEST, after MythicLib's older listener there: it sets the damage of guns and skills.)
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEnemyHurt(EntityDamageEvent event) {
         Entity mob = event.getEntity();
-        if (event.getCause() == EntityDamageEvent.DamageCause.KILL || !runs.inDungeonWorld(mob)
-                || !runs.isRunMob(mob)) {
+        if (!enemyHurt(event)) {
             return;
         }
         double factor = runs.incomingFactor(mob);
-        if (factor <= 0) {
-            event.setCancelled(true);
-            return;
-        }
         if (factor != 1) {
             event.setDamage(event.getDamage() * factor);
         }

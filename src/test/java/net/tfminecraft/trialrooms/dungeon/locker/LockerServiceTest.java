@@ -656,7 +656,7 @@ class LockerServiceTest {
     org.mockito.Mockito.when(odd.isEnabled()).thenReturn(true);
     Accessories.refill(odd, p); // not MMOInventory's API: nothing happens
     Accessories.refillPlaceholders(p);
-    assertTrue(Accessories.slot(9) && Accessories.slot(10) && !Accessories.slot(11));
+    assertTrue(Accessories.slot(9) && Accessories.slot(10) && Accessories.slot(12) && !Accessories.slot(13));
   }
 
   public abstract static class FakeInventoryPlugin implements org.bukkit.plugin.Plugin {

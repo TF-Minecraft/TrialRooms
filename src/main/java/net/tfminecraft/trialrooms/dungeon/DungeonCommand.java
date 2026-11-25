@@ -31,10 +31,10 @@ public final class DungeonCommand {
             + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>"
             + " | finds | insure | losses <player> | restore <player> <id>";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim", "top", "finds", "insure",
+            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim", "top", "finds", "insure", "sets",
             "losses", "restore");
     /** What players without the staff permission may use. */
-    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim", "top", "finds",
+    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim", "top", "sets", "finds",
             "insure");
 
     private final DungeonModule module;
@@ -71,6 +71,7 @@ public final class DungeonCommand {
                     module.runs().openInsurance(p);
                 }
             }
+            case "sets" -> sets(sender);
             case "losses" -> losses(sender, args);
             case "restore" -> restore(sender, args);
             case "clear" -> sender.sendMessage("§aCleared " + module.clearPreviews() + " dungeon previews.");
@@ -393,6 +394,21 @@ public final class DungeonCommand {
     private static org.bukkit.OfflinePlayer known(String name) {
         Player online = Bukkit.getPlayerExact(name);
         return online != null ? online : Bukkit.getOfflinePlayerIfCached(name);
+    }
+
+    /** The set bonuses and traits a player's dungeon gear gives them now. */
+    private void sets(CommandSender sender) {
+        if (!(sender instanceof Player p)) {
+            sender.sendMessage("§cOnly players wear dungeon gear.");
+            return;
+        }
+        List<String> lines = module.gear() == null ? List.of() : module.gear().result(p).lines();
+        if (lines.isEmpty()) {
+            p.sendMessage("§7No set bonuses: wear dungeon gear in a dungeon.");
+            return;
+        }
+        p.sendMessage("§6Your dungeon gear:");
+        lines.forEach(line -> p.sendMessage("§7" + line));
     }
 
     /** Staff: what a player lost in runs (the latest ten), each with a button to give it back. */

@@ -26,9 +26,9 @@ public final class Locker {
     /**
      * Inventory slots a loadout can fill, by the server's player inventory numbering: hotbar 0-8,
      * boots 36, leggings 37, chestplate 38, helmet 39, off hand 40, and the accessory slots that
-     * MMOInventory keeps in the grid: ring 9, amulet 10.
+     * MMOInventory keeps in the grid: ring 9, amulet 10, artifacts 11 and 12.
      */
-    public static final List<Integer> SLOTS = List.of(39, 38, 37, 36, 40, 9, 10, 0, 1, 2, 3, 4, 5, 6, 7, 8);
+    public static final List<Integer> SLOTS = List.of(39, 38, 37, 36, 40, 9, 10, 11, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8);
 
     private final Map<String, byte[]> items = new LinkedHashMap<>();
     private final List<Map<Integer, String>> loadouts = new ArrayList<>();

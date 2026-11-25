@@ -24,11 +24,12 @@ import net.kyori.adventure.text.format.TextDecoration;
  * carried out of it:
  * <ul>
  * <li>top row: the three loadouts, "wear this loadout" and "wear your own gear";</li>
- * <li>rows two and three: the chosen loadout's slots (armour, off hand, ring, amulet, hotbar);</li>
+ * <li>rows two and three: the chosen loadout's slots (armour, off hand, accessories, hotbar);</li>
  * <li>the bottom three rows: every dungeon item in the locker, a page at a time.</li>
  * </ul>
  * Click an item below, then a loadout slot, to put it there; click a filled slot to empty it.
- * Click a dungeon gem, then a dungeon item, to socket it. The shop button turns the screen into the
+ * Click a dungeon gem, then a dungeon item, to socket it. Click a gun, then shift-click another of its
+ * type, to trade parts between them. The shop button turns the screen into the
  * mark shop: click an item to buy it at the first rarity, shift-click for the second.
  */
 public final class LockerMenu implements InventoryHolder, ClickMenu {
@@ -38,18 +39,21 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
     static final int SHOP = 7;
     static final int BACK = 0;
     static final int OFFERS = 9;
-    static final int PREV = 16;
-    static final int NEXT = 17;
+    static final int OWN_GUN = 20;
+    static final int OTHER_GUN = 24;
+    static final int PARTS = 38;
+    static final int PREV = 3;
+    static final int NEXT = 6;
     static final int STASH = 27;
     static final int PAGE = 27;
     /** Menu slot to inventory slot for a loadout's slots. */
     static final Map<Integer, Integer> LOADOUT_SLOTS = Map.ofEntries(Map.entry(9, 39), Map.entry(10, 38),
             Map.entry(11, 37), Map.entry(12, 36), Map.entry(13, 40), Map.entry(14, 9), Map.entry(15, 10),
-            Map.entry(18, 0), Map.entry(19, 1),
+            Map.entry(16, 11), Map.entry(17, 12), Map.entry(18, 0), Map.entry(19, 1),
             Map.entry(20, 2), Map.entry(21, 3), Map.entry(22, 4), Map.entry(23, 5), Map.entry(24, 6),
             Map.entry(25, 7), Map.entry(26, 8));
     private static final Map<Integer, String> SLOT_NAMES = Map.of(39, "Helmet", 38, "Chestplate", 37, "Leggings",
-            36, "Boots", 40, "Off hand", 9, "Ring", 10, "Amulet");
+            36, "Boots", 40, "Off hand", 9, "Ring", 10, "Amulet", 11, "Artifact", 12, "Artifact");
 
     private final LockerService service;
     private final Player player;
@@ -61,6 +65,9 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
     private int loadout;
     private int page;
     private String selected;
+    /** The gun the selected one trades parts with, or null. */
+    private String trading;
+    private List<LockerExtras.Part> parts = List.of();
 
     /** @param canSwap whether the player stands where loadouts may be put on and taken off */
     public LockerMenu(LockerService service, Player player, Predicate<Player> canSwap) {
@@ -119,6 +126,10 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
             renderShop(l);
             return;
         }
+        if (trading != null) {
+            renderTrade(l);
+            return;
+        }
         if (extras != null) {
             inventory.setItem(SHOP, button(Material.EMERALD, "Mark shop", false, "Dungeon marks: " + l.marks(),
                     "Buy a dungeon item of your choice."));
@@ -138,6 +149,7 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
                 "Click an item below, then a slot above, to put it in this loadout.",
                 "Click a filled slot to empty it. One item can be in several loadouts.",
                 "Click a gem, then an item, to socket it.",
+                "Click a gun, then shift-click another like it, to trade parts.",
                 "Leaving a dungeon puts your own items back, whatever happens."));
         Map<Integer, String> slots = l.loadout(loadout);
         LOADOUT_SLOTS.forEach((menuSlot, invSlot) -> {
@@ -204,6 +216,32 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
         }
     }
 
+    private void renderTrade(Locker l) {
+        parts = extras.parts(player, selected, trading);
+        inventory.setItem(BACK, button(Material.ARROW, "Back to the locker", false));
+        inventory.setItem(4, button(Material.ANVIL, "Trade gun parts", false, "Click a part to trade it between the guns.",
+                "Each gun stays as strong as it is.", "The set with most parts (rarer ones count for more) is the gun's."));
+        if (parts.isEmpty()) { // a gun went away under the menu
+            return;
+        }
+        inventory.setItem(OWN_GUN, service.show(l, selected));
+        inventory.setItem(OTHER_GUN, service.show(l, trading));
+        for (int i = 0; i < parts.size(); i++) {
+            LockerExtras.Part p = parts.get(i);
+            inventory.setItem(PARTS + i, button(Material.PAPER, "Trade parts: " + p.slot(), false, "Left gun: " + p.own(),
+                    "Right gun: " + p.other()));
+        }
+    }
+
+    private void tradeClick(int slot) {
+        int at = slot - PARTS;
+        if (slot == BACK) {
+            trading = null;
+        } else if (at >= 0 && at < parts.size()) {
+            player.sendMessage(extras.trade(player, selected, trading, parts.get(at).slot()));
+        }
+    }
+
     private static ItemStack button(Material type, String name, boolean glint, String... lore) {
         ItemStack it = new ItemStack(type);
         ItemMeta meta = it.getItemMeta();
@@ -235,6 +273,8 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
         }
         if (shopping) {
             shopClick(slot, shift);
+        } else if (trading != null) {
+            tradeClick(slot);
         } else if (slot == SHOP && extras != null) {
             shopping = true;
         } else if (slot < Locker.LOADOUTS) {
@@ -251,13 +291,18 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
             List<String> ids = new ArrayList<>(l.items().keySet());
             int at = page * PAGE + slot - STASH;
             if (at < ids.size()) {
-                stashClick(l, ids.get(at));
+                stashClick(l, ids.get(at), shift);
             }
         }
         render();
     }
 
-    private void stashClick(Locker l, String id) {
+    private void stashClick(Locker l, String id, boolean shift) {
+        if (extras != null && shift && selected != null && !selected.equals(id)
+                && !extras.parts(player, selected, id).isEmpty()) {
+            trading = id;
+            return;
+        }
         if (extras != null && selected != null && !selected.equals(id) && gem(service.show(l, selected))
                 && !gem(service.show(l, id))) {
             player.sendMessage(extras.socket(player, selected, id));
@@ -303,15 +348,16 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
     }
 
     /**
-     * Armour slots take only what is worn there, the ring and amulet slots only MMOItems rings and
-     * amulets (as MMOInventory allows); the off hand and hotbar take anything but dungeon gems.
+     * Armour slots take only what is worn there, the ring, amulet and artifact slots only MMOItems
+     * rings, amulets and artifacts (as MMOInventory allows); the off hand and hotbar take anything but
+     * dungeon gems.
      */
     static boolean fits(ItemStack item, int invSlot) {
         if (gem(item)) {
             return false; // gems are socketed from the locker, never carried
         }
-        if (invSlot == 9 || invSlot == 10) {
-            return (invSlot == 9 ? "RING" : "AMULET").equalsIgnoreCase(itemType.apply(item));
+        if (Accessories.slot(invSlot)) {
+            return (invSlot == 9 ? "RING" : invSlot == 10 ? "AMULET" : "ARTIFACT").equalsIgnoreCase(itemType.apply(item));
         }
         EquipmentSlot need = switch (invSlot) {
             case 39 -> EquipmentSlot.HEAD;
