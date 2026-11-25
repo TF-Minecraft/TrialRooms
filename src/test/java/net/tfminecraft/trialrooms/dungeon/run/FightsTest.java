@@ -44,6 +44,7 @@ import net.tfminecraft.trialrooms.dungeon.fight.FightTuning;
 import net.tfminecraft.trialrooms.dungeon.fight.Mechanic;
 import net.tfminecraft.trialrooms.dungeon.fight.PackTemplate;
 import net.tfminecraft.trialrooms.dungeon.fight.Role;
+import net.tfminecraft.trialrooms.dungeon.fight.Tiers;
 import net.tfminecraft.trialrooms.dungeon.fight.RosterEntry;
 import net.tfminecraft.trialrooms.dungeon.fight.Telegraph;
 import net.tfminecraft.trialrooms.dungeon.generator.DungeonGenerator;
@@ -348,6 +349,34 @@ class FightsTest {
   }
 
   @Test
+  void leadersAndBossesHaveTheirAreasMarked() {
+    Map<String, RosterEntry> roster = new LinkedHashMap<>();
+    roster.put("foot", e("foot", Role.GRUNT, 1));
+    roster.put("halb", new RosterEntry("halb", "mob_halb", Role.BRUISER, 2, 1, Tiers.ALL, true));
+    roster.put("late", new RosterEntry("late", "mob_late", Role.GRUNT, 1, 1, new Tiers(3, 4), false));
+    useKit(new FightKit(roster, List.of(new PackTemplate("p", List.of(Role.BRUISER, Role.GRUNT, Role.GRUNT), 1, 0)),
+        Map.of("warden", warden()), tuning(6, 1)));
+    List<Integer> levels = new ArrayList<>();
+    List<String> types = new ArrayList<>();
+    doAnswer(i -> {
+      types.add(i.getArgument(0));
+      levels.add(i.getArgument(2));
+      return mob(i.getArgument(1), "Skeleton");
+    }).when(mobs).spawn(anyString(), any(), anyInt());
+    PlayerMock a = player("Ann");
+    int fight = room(RoomType.COMBAT);
+    RunManager.ActiveRun ar = enter(a, fight);
+    Fights.Encounter enc = ar.encounters.get(fight);
+    assertEquals(1, enc.leaders.size(), "the halberdier leads, its areas marked");
+    Entity leader = enc.leaders.iterator().next();
+    assertTrue(runs.isMarked(leader));
+    Entity foot = enc.alive.stream().filter(m -> !enc.leaders.contains(m)).findFirst().orElseThrow();
+    assertFalse(runs.isMarked(foot));
+    assertFalse(types.contains("mob_late"), "a Nightmare enemy never comes on Normal");
+    assertTrue(levels.stream().allMatch(l -> l == 1), "level = the recipe's level + tier - 1");
+  }
+
+  @Test
   void elitesShieldRallyAndBurst() {
     useKit(fightKit(tuning(6, 1), warden()));
     PlayerMock a = player("Ann");
@@ -569,6 +598,7 @@ class FightsTest {
     assertNotNull(enc.boss);
     assertTrue(said(a, "The Warden awakens."));
     assertFalse(enc.adds.isEmpty(), "the first phase brings adds");
+    assertTrue(runs.isMarked(mob), "a boss's attack areas are marked on the ground");
     verify(mob.getAttribute(Attribute.MAX_HEALTH), atLeastOnce()).setBaseValue(300);
     // while it wakes it can't be hurt; its own plugin resetting its base health is undone
     assertEquals(0, runs.incomingFactor(mob));

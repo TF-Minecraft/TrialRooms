@@ -12,7 +12,7 @@
 #   much more health and fights this much more threat budget (more enemies), as fractions. Party size
 #   never changes enemy damage.
 # tier: difficulty from 1: bigger fights (the kit's tier-factors) and harder boss mechanics.
-# boss: which of the kit's bosses ends the dungeon (blank for the kit's first).
+# boss: which of the kit's bosses ends the dungeon (blank: one of the kit's bosses for the difficulty).
 # event-chance: chance that a plain fight room gets one of the kit's room events (0 = none).
 # max-events: the most room events in one dungeon.
 delve_greybox:
@@ -63,8 +63,7 @@ delve_seithr:
   mob-level: 1
   health-per-extra-player: 0.5
   enemies-per-extra-player: 0.25
-  tier: 1
-  boss: ice_golem
+  tier: 1
   event-chance: 0.4
   max-events: 2
   # How long a proper party takes for a run, in minutes: its spoils (act materials and rare items
@@ -114,8 +113,7 @@ dungeon_seithr:
   mob-level: 1
   health-per-extra-player: 0.5
   enemies-per-extra-player: 0.3
-  tier: 1
-  boss: ice_golem
+  tier: 1
   boss-health: 1.5
   min-room-cells: 2
   # health-cap: the most an enemy's health is multiplied by (party and elite; 0 or none = the kit's);
@@ -156,8 +154,7 @@ warband_seithr:
   mob-level: 1
   health-per-extra-player: 0.4
   enemies-per-extra-player: 0.35
-  tier: 1
-  boss: ice_golem
+  tier: 1
   boss-health: 2.5
   min-room-cells: 4
   health-cap: 10

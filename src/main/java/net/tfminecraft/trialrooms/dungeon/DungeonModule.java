@@ -77,6 +77,12 @@ public final class DungeonModule {
     private World world;
     private int nextSlot;
     private RunSettings settings = RunSettings.defaults();
+    private net.tfminecraft.trialrooms.dungeon.combat.CombatSettings combat =
+            net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS;
+    private net.tfminecraft.trialrooms.dungeon.combat.Attacks attacks;
+    private Ports.Mobs mobs;
+    /** Enemies staff spawned to watch as leaders (their areas marked on the ground). */
+    private final java.util.Set<java.util.UUID> testLeaders = new java.util.HashSet<>();
     private RunManager runs;
     private AllyFilter allyFilter;
     private LootKit lootKit;
@@ -118,6 +124,9 @@ public final class DungeonModule {
     public void disable() {
         if (gear != null) {
             gear.stop();
+        }
+        if (attacks != null) {
+            attacks.stop();
         }
         if (guns) {
             net.tfminecraft.gunsandgadgets.api.DungeonGuns.onRefresh(null);
@@ -170,6 +179,9 @@ public final class DungeonModule {
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
         }
+        this.mobs = mobs;
+        // (after set bonuses, before the run's own judgement: both act on hits at HIGHEST)
+        startCombat(new net.tfminecraft.trialrooms.dungeon.combat.MythicControl(this::attacks, plugin.getLogger()));
         runs.start();
         plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs), plugin);
         plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
@@ -236,6 +248,44 @@ public final class DungeonModule {
 
     Map<String, Double> worth() {
         return lootKit == null ? Map.of() : lootKit.worth();
+    }
+
+    /** Enemy attacks: windups, strikes, openings (every tick). */
+    void startCombat(net.tfminecraft.trialrooms.dungeon.combat.MobControl control) {
+        attacks = new net.tfminecraft.trialrooms.dungeon.combat.Attacks(control, this::combat, this::marked);
+        var pm = plugin.getServer().getPluginManager();
+        if (control instanceof org.bukkit.event.Listener l) {
+            pm.registerEvents(l, plugin);
+        }
+        pm.registerEvents(attacks, plugin);
+        plugin.getServer().getScheduler().runTaskTimer(plugin, attacks::tick, 1L, 1L);
+    }
+
+    /** Whether an enemy's attack areas are marked on the ground: a run's boss or leader, or a staff test leader. */
+    boolean marked(org.bukkit.entity.Entity e) {
+        return testLeaders.contains(e.getUniqueId()) | runs.isMarked(e); // (both cheap)
+    }
+
+    /** Enemy attacks at work, or null before runs start. */
+    public net.tfminecraft.trialrooms.dungeon.combat.Attacks attacks() {
+        return attacks;
+    }
+
+    /** settings.yml's combat section. */
+    public net.tfminecraft.trialrooms.dungeon.combat.CombatSettings combat() {
+        return combat;
+    }
+
+    /**
+     * Staff: one enemy at a spot to watch its attacks, at a difficulty's level; as a leader its attack
+     * areas are marked on the ground. Null when the type is unknown.
+     */
+    public org.bukkit.entity.Entity mobTest(String type, org.bukkit.Location at, int tier, boolean leader) {
+        org.bukkit.entity.Entity mob = mobs == null ? null : mobs.spawn(type, at, Math.max(1, tier));
+        if (mob != null && leader) {
+            testLeaders.add(mob.getUniqueId());
+        }
+        return mob;
     }
 
     /** Set bonuses at work, or null without loot. */
@@ -339,6 +389,14 @@ public final class DungeonModule {
         settings = settingsFile.isFile()
                 ? RunSettings.from(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile))
                 : RunSettings.defaults();
+        try {
+            combat = net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.from(settingsFile.isFile()
+                    ? org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile).getConfigurationSection("combat")
+                    : null);
+        } catch (IllegalArgumentException e) {
+            problems.add("settings.yml combat: " + e.getMessage());
+            combat = net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS;
+        }
         recipes.values().removeIf(e -> {
             DungeonKit kit = kits.get(e.kit());
             if (kit == null) {

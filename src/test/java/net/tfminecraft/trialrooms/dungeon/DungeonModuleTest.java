@@ -138,6 +138,8 @@ class DungeonModuleTest {
     assertEquals(18.9, m.spoils().perHour().get("m.materials.ignitium"), "and its spoils");
     assertEquals(12, m.cosmetics().trophies().size(), "and its cosmetics");
     assertEquals(5, m.affixes().pool().size(), "and the weekly affixes from settings.yml");
+    assertEquals(List.of(0.4, 0.35, 0.3, 0.25), m.combat().openBonus(), "and the combat section");
+    assertEquals(List.of("Silenced", "Frozen", "Stun_Aura"), m.combat().interruptAuras());
     assertEquals(20, m.recipes().get("delve_seithr").rules().minutes());
     // a second start keeps edited files
     Files.writeString(data.resolve("dungeons/recipes.yml"), "x: 1\n");
@@ -193,6 +195,13 @@ class DungeonModuleTest {
     assertFalse(m.recipes().containsKey("big"));
     assertFalse(m.recipes().containsKey("wide"));
     assertTrue(m.recipes().containsKey("unused"), "a pool the generator never uses is no reason to refuse it");
+    Files.writeString(data.resolve("dungeons/settings.yml"), "combat:\n  open-bonus: []\n");
+    m.reload();
+    assertTrue(m.problems().stream().anyMatch(p -> p.startsWith("settings.yml combat: ")), m.problems().toString());
+    assertSame(net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS, m.combat());
+    Files.delete(data.resolve("dungeons/settings.yml"));
+    m.reload();
+    assertSame(net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS, m.combat(), "no settings.yml: defaults");
     Files.delete(data.resolve("dungeons/loot.yml"));
     m.reload();
     assertNull(m.lootKit(), "no loot.yml: no loot");
@@ -333,7 +342,7 @@ class DungeonModuleTest {
     }
     c.run(console, new String[] {"reload"});
     verify(console).sendMessage(startsWith("§c- recipe bad"));
-    assertEquals(List.of("map", "marks"), c.complete(new String[] {"M"}));
+    assertEquals(List.of("map", "marks", "mobtest"), c.complete(new String[] {"M"}));
     assertEquals(List.of(), c.complete(new String[] {"map", "z"}));
     assertEquals(List.of(), c.complete(new String[] {"clear", ""}));
     assertEquals(List.of(), c.complete(new String[] {"map", "", ""}));

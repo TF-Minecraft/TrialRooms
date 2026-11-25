@@ -39,6 +39,38 @@ public record FightKit(Map<String, RosterEntry> roster, List<PackTemplate> packs
         return out;
     }
 
+    /**
+     * The kit as a difficulty tier sees it: only the enemies and packs of that tier. A tier with no
+     * enemies of its own keeps the whole roster.
+     */
+    public FightKit atTier(int tier) {
+        Map<String, RosterEntry> r = new LinkedHashMap<>();
+        roster.forEach((id, e) -> {
+            if (e.tiers().contains(tier)) {
+                r.put(id, e);
+            }
+        });
+        if (r.isEmpty()) {
+            return this;
+        }
+        return new FightKit(r, packs.stream().filter(p -> p.tiers().contains(tier)).toList(), bosses, tuning);
+    }
+
+    /**
+     * The boss that ends a run: the one named (staff and recipes can fix it), else one of the bosses
+     * of the run's tier, the same for the same seed; else the kit's first. Null when the kit has none.
+     */
+    public BossDef bossFor(String id, int tier, long seed) {
+        if (id != null && !id.isBlank()) {
+            return bosses.get(id);
+        }
+        List<BossDef> pool = bosses.values().stream().filter(b -> b.tiers().contains(tier)).toList();
+        if (pool.isEmpty()) {
+            return boss(null);
+        }
+        return pool.get(new java.util.SplittableRandom(seed).nextInt(pool.size()));
+    }
+
     /** A boss by id; a blank id means the kit's first boss. Null when there is none. */
     public BossDef boss(String id) {
         if (id == null || id.isBlank()) {
@@ -62,7 +94,8 @@ public record FightKit(Map<String, RosterEntry> roster, List<PackTemplate> packs
             try {
                 ConfigurationSection e = section(rs, id);
                 roster.put(id, new RosterEntry(id, e.getString("mob"), Role.parse(e.getString("role", "grunt")),
-                        e.getDouble("cost", 1), e.getInt("weight", 1)));
+                        e.getDouble("cost", 1), e.getInt("weight", 1), Tiers.parse(e.get("tiers")),
+                        e.getBoolean("leader", false)));
             } catch (IllegalArgumentException ex) {
                 problems.add(kitId + ": roster " + id + ": " + ex.getMessage());
             }
@@ -80,7 +113,8 @@ public record FightKit(Map<String, RosterEntry> roster, List<PackTemplate> packs
                 for (String r : p.getStringList("slots")) {
                     slots.add(Role.parse(r));
                 }
-                packs.add(new PackTemplate(id, slots, p.getInt("weight", 1), p.getInt("min-depth", 0)));
+                packs.add(new PackTemplate(id, slots, p.getInt("weight", 1), p.getInt("min-depth", 0),
+                        Tiers.parse(p.get("tiers"))));
             } catch (IllegalArgumentException ex) {
                 problems.add(kitId + ": pack " + id + ": " + ex.getMessage());
             }
@@ -111,7 +145,7 @@ public record FightKit(Map<String, RosterEntry> roster, List<PackTemplate> packs
                     mechanics, number(p, "every", 12).intValue()));
         }
         return new BossDef(id, b.getString("mob"), b.getString("name"), b.getDouble("health", 0), phases,
-                b.getInt("enrage-seconds", 600));
+                b.getInt("enrage-seconds", 600), Tiers.parse(b.get("tiers")));
     }
 
     private static Number number(Map<?, ?> map, String key, Number fallback) {

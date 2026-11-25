@@ -336,10 +336,32 @@ class DungeonRunCommandsTest {
     when(plugin.isEnabled()).thenReturn(true);
     DungeonModule m = new DungeonModule(plugin, x -> null);
     assertNull(m.runs());
+    assertNull(m.mobTest("x", null, 1, true), "no runs yet: no mobs to spawn");
     assertEquals(RunSettings.defaults(), m.settings());
-    m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
+    Ports.Mobs mobs = mock(Ports.Mobs.class);
+    m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mobs);
     assertNotNull(m.runs());
-    verify(pm, times(2)).registerEvents(any(), eq(plugin)); // runs and lockers
+    verify(pm, times(4)).registerEvents(any(), eq(plugin)); // runs, lockers, the attack mechanic and attacks
+    assertNotNull(m.attacks());
+    assertSame(net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS, m.combat());
+    // staff watch an enemy's attacks
+    var spot = new org.bukkit.Location(null, 1, 2, 3);
+    org.bukkit.entity.Zombie z = mock(org.bukkit.entity.Zombie.class);
+    when(z.getUniqueId()).thenReturn(UUID.randomUUID());
+    when(z.getLocation()).thenReturn(spot);
+    when(mobs.spawn("Dungeon_Seithr_Soldier", spot, 3)).thenReturn(z);
+    assertSame(z, m.mobTest("Dungeon_Seithr_Soldier", spot, 3, true));
+    assertTrue(m.marked(z), "a staff test leader");
+    org.bukkit.entity.Zombie plain = mock(org.bukkit.entity.Zombie.class);
+    when(plain.getUniqueId()).thenReturn(UUID.randomUUID());
+    when(mobs.spawn("Dungeon_Seithr_Soldier", spot, 1)).thenReturn(plain);
+    assertSame(plain, m.mobTest("Dungeon_Seithr_Soldier", spot, 1, false));
+    assertFalse(m.marked(plain));
+    m.startCombat(mock(net.tfminecraft.trialrooms.dungeon.combat.MobControl.class));
+    verify(pm, times(5)).registerEvents(any(), eq(plugin)); // a control that listens to nothing: only the attacks
+    assertNull(m.mobTest("Nope", spot, 0, false));
+    m.disable();
+    assertTrue(m.attacks().describe().isEmpty(), "stopped with the module");
     assertNotNull(m.runs().lockers());
     assertNull(m.loot(), "no item plugins here");
     when(pm.isPluginEnabled("MMOItems")).thenReturn(true);
@@ -410,6 +432,35 @@ class DungeonRunCommandsTest {
       verify(staff).sendMessage("§aAlly filter: 1 mechanics: 1 help, 0 harm, 1 filtered");
     }
     m.disable();
+  }
+
+  @Test
+  void staffWatchEnemyAttacks() {
+    CommandSender console = mock(CommandSender.class);
+    c.run(console, new String[] {"mobtest", "x"});
+    verify(console).sendMessage("§eUsage (in game): /tr dungeon mobtest <mob> [tier 1-4] [leader]");
+    Player p = mock(Player.class);
+    when(p.getLocation()).thenReturn(new org.bukkit.Location(null, 0, 64, 0, 0, 0));
+    c.run(p, new String[] {"mobtest"});
+    verify(p).sendMessage("§eUsage (in game): /tr dungeon mobtest <mob> [tier 1-4] [leader]");
+    c.run(p, new String[] {"mobtest", "m", "x"});
+    verify(p).sendMessage("§cThe tier must be a whole number.");
+    c.run(p, new String[] {"mobtest", "Nope"});
+    verify(p).sendMessage("§cThere is no mob Nope.");
+    when(module.mobTest(eq("Dungeon_Seithr_Soldier"), any(), eq(3), eq(true))).thenReturn(mock(org.bukkit.entity.Zombie.class));
+    c.run(p, new String[] {"mobtest", "Dungeon_Seithr_Soldier", "3", "leader"});
+    verify(p).sendMessage("§aDungeon_Seithr_Soldier at level 3 as a leader. §7Its attacks show with /tr dungeon attacks.");
+    when(module.mobTest(eq("Dungeon_Seithr_Soldier"), any(), eq(0), eq(false))).thenReturn(mock(org.bukkit.entity.Zombie.class));
+    c.run(p, new String[] {"mobtest", "Dungeon_Seithr_Soldier", "0", "x"});
+    verify(p).sendMessage("§aDungeon_Seithr_Soldier at level 1. §7Its attacks show with /tr dungeon attacks.");
+    c.run(console, new String[] {"attacks"});
+    verify(console).sendMessage("§a0 enemy attacks under way.");
+    var attacks = mock(net.tfminecraft.trialrooms.dungeon.combat.Attacks.class);
+    when(attacks.describe()).thenReturn(List.of("Soldier: cleave WINDUP"));
+    when(module.attacks()).thenReturn(attacks);
+    c.run(console, new String[] {"attacks"});
+    verify(console).sendMessage("§a1 enemy attacks under way.");
+    verify(console).sendMessage("§7Soldier: cleave WINDUP");
   }
 
   @Test

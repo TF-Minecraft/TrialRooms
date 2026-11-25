@@ -20,8 +20,17 @@ class SeithrKitTest {
     assertEquals(List.of(), problems);
     assertEquals(36, kit.catalog().templates().size());
     assertEquals(16, kit.catalog().cellSize());
-    assertEquals("The Elite Ice Golem", kit.fights().boss("ice_golem").name());
-    assertEquals(10, kit.fights().roster().size());
+    assertEquals("The Ice Golem", kit.fights().boss("ice_golem").name());
+    assertEquals(23, kit.fights().roster().size());
+    assertEquals("vaaramereios", kit.fights().bossFor(null, 4, 99).id(), "Mythic always ends with the general");
+    for (int tier = 1; tier <= 4; tier++) {
+      var fights = kit.fights().atTier(tier);
+      for (var role : List.of(net.tfminecraft.trialrooms.dungeon.fight.Role.GRUNT, net.tfminecraft.trialrooms.dungeon.fight.Role.RANGED,
+          net.tfminecraft.trialrooms.dungeon.fight.Role.SWARM, net.tfminecraft.trialrooms.dungeon.fight.Role.ELITE)) {
+        assertFalse(fights.ofRole(role).isEmpty(), "tier " + tier + " has a " + role);
+      }
+      assertFalse(fights.packs().isEmpty(), "tier " + tier + " has packs");
+    }
     var recipes = RecipeLoader.load(new File(GreyboxKitTest.RES, "recipes.yml"), problems);
     assertEquals(List.of(), problems);
     assertEquals("seithr", recipes.get("delve_seithr").kit());
