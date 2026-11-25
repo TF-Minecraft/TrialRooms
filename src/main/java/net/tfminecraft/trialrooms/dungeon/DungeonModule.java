@@ -87,6 +87,8 @@ public final class DungeonModule {
     private DungeonLoot loot;
     /** Whether GunsAndGadgets was told of dungeon guns. */
     private boolean guns;
+    /** Whether Magic holds Equilibrium in runs. */
+    private boolean magic;
     private DungeonRewards rewards;
     private net.tfminecraft.trialrooms.dungeon.gear.GearService gear;
 
@@ -119,6 +121,9 @@ public final class DungeonModule {
         }
         if (guns) {
             net.tfminecraft.gunsandgadgets.api.DungeonGuns.onRefresh(null);
+        }
+        if (magic) {
+            net.tfminecraft.magic.api.DungeonWeapons.holdEquilibrium(null);
         }
         if (runs != null) {
             runs.stop();
@@ -182,6 +187,9 @@ public final class DungeonModule {
     private void startMageWeapons() {
         var forge = new net.tfminecraft.trialrooms.dungeon.loot.MagicForge();
         forge.archetypes(); // (fails here, not mid-run, when Magic doesn't have them)
+        // what a character trains belongs to the gear they own: casting in a run never moves Equilibrium
+        net.tfminecraft.magic.api.DungeonWeapons.holdEquilibrium(runs::inDungeonWorld);
+        magic = true;
         loot.maker(new net.tfminecraft.trialrooms.dungeon.loot.MageLoot(forge, MmoLootForge::skin));
     }
 
