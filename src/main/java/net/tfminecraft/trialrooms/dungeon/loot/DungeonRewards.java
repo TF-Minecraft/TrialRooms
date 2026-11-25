@@ -242,7 +242,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
                 l.pity(win ? 0 : l.pity() + r.pity());
             }
             if (win) {
-                found = drop(p, r, tier, 0);
+                found = drop(p, r, tier, 0, recipe);
             }
         }
         // the week's count and the pity, in one write (one that isn't saved only costs a little luck)
@@ -440,7 +440,7 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
                 l.pity(win ? 0 : l.pity() + r.pity());
             }
             if (win) {
-                found = drop(p, r, tier, par ? r.parLuck() : 0);
+                found = drop(p, r, tier, par ? r.parLuck() : 0, recipe);
             }
         }
         // The find, the marks and the counters go to disk in one write: none can be kept without the rest.
@@ -460,9 +460,9 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     }
 
     /** An item for the player's class, or a dungeon gem (always a gem when no item fits them), with its value. */
-    private ItemStack drop(Player p, RewardRules r, int tier, double luck) {
+    private ItemStack drop(Player p, RewardRules r, int tier, double luck, String dungeon) {
         boolean gem = rng.nextDouble() < r.gemChance();
-        DungeonLoot.Rolled item = gem ? null : loot.roll(p, tier, luck, null, null);
+        DungeonLoot.Rolled item = gem ? null : loot.roll(p, tier, luck, null, null, dungeon);
         if (item == null || item.item() == null) {
             item = loot.gem(tier, luck, null, r.gemPool(), r.gemTemplate());
             gem = true;

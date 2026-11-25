@@ -57,6 +57,11 @@ public final class DungeonLoot {
 
     /** An item rolled with extra luck for its rarity (a run under par). */
     public Rolled roll(Player p, int tier, double luck, String rarityId, String baseId) {
+        return roll(p, tier, luck, rarityId, baseId, null);
+    }
+
+    /** An item rolled in a dungeon (its recipe id): that dungeon's sets come up too, beside the general ones. */
+    public Rolled roll(Player p, int tier, double luck, String rarityId, String baseId, String dungeon) {
         LootKit k = kit.get();
         if (k == null) {
             return new Rolled(null, "Dungeon loot is off: loot.yml has problems (see /tr dungeon reload).");
@@ -80,7 +85,8 @@ public final class DungeonLoot {
             }
         }
         Source s = source(k, base, sources).orElseThrow();
-        ItemStack item = forge.make(LootRoller.plan(k, base, s.stats(), tier, rarity, rng), s.template(), s.managed(),
+        ItemStack item = forge.make(LootRoller.plan(k, base, s.stats(), tier, rarity,
+                LootRoller.set(k, rarity, dungeon, rng), rng), s.template(), s.managed(),
                 k.socket());
         return item == null ? new Rolled(null, "The item " + base.id() + " could not be built.")
                 : new Rolled(item, null, rarity.id());
@@ -125,6 +131,12 @@ public final class DungeonLoot {
     /** One of an ordinary item (a spoil) by its TLibs item path; null when it doesn't exist. */
     public ItemStack item(String path) {
         return forge.item(path);
+    }
+
+    /** An item whose model is wanted, or null when it doesn't exist (TLibs gives dirt for what it can't find). */
+    public ItemStack look(String path) {
+        ItemStack it = forge.item(path);
+        return it == null || it.getType() == org.bukkit.Material.DIRT ? null : it;
     }
 
     private Optional<Source> source(LootKit k, Base b, Map<String, Optional<Source>> cache) {

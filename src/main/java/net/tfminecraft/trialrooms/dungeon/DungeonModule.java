@@ -86,6 +86,7 @@ public final class DungeonModule {
     private net.tfminecraft.trialrooms.dungeon.run.Affixes affixes;
     private DungeonLoot loot;
     private DungeonRewards rewards;
+    private net.tfminecraft.trialrooms.dungeon.gear.GearService gear;
 
     public DungeonModule(JavaPlugin plugin, Function<WorldCreator, World> creator) {
         this.plugin = plugin;
@@ -111,6 +112,9 @@ public final class DungeonModule {
     }
 
     public void disable() {
+        if (gear != null) {
+            gear.stop();
+        }
         if (runs != null) {
             runs.stop();
         }
@@ -145,12 +149,28 @@ public final class DungeonModule {
                     .accounts(new net.tfminecraft.trialrooms.dungeon.loot.AccountLimits(root.resolve("accounts.yml").toFile(),
                             plugin.getLogger()));
             runs.rewards(rewards);
+            runs.wayOutLook(() -> lootKit == null ? null : loot.look(lootKit.looks() + "way_out"));
+            startGear(new net.tfminecraft.trialrooms.dungeon.gear.MythicStats());
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
         }
         runs.start();
         plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs), plugin);
         plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
+    }
+
+    /** Starts set bonuses and weapon traits (inside dungeons only). */
+    void startGear(net.tfminecraft.trialrooms.dungeon.gear.GearService.Stats stats) {
+        gear = new net.tfminecraft.trialrooms.dungeon.gear.GearService(plugin.getServer(), runs::inDungeonWorld,
+                p -> !runs.isDowned(p), runs::isRunMob, () -> lootKit == null ? Map.of() : lootKit.sets(),
+                () -> lootKit == null ? Map.of() : lootKit.worth(), stats, System::currentTimeMillis);
+        plugin.getServer().getPluginManager().registerEvents(gear, plugin);
+        plugin.getServer().getScheduler().runTaskTimer(plugin, gear::tick, 20L, 10L);
+    }
+
+    /** Set bonuses at work, or null without loot. */
+    public net.tfminecraft.trialrooms.dungeon.gear.GearService gear() {
+        return gear;
     }
 
     public RunManager runs() {

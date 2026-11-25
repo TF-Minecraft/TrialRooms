@@ -24,7 +24,7 @@ import net.kyori.adventure.text.format.TextDecoration;
  * carried out of it:
  * <ul>
  * <li>top row: the three loadouts, "wear this loadout" and "wear your own gear";</li>
- * <li>rows two and three: the chosen loadout's slots (armour, off hand, ring, amulet, hotbar);</li>
+ * <li>rows two and three: the chosen loadout's slots (armour, off hand, accessories, hotbar);</li>
  * <li>the bottom three rows: every dungeon item in the locker, a page at a time.</li>
  * </ul>
  * Click an item below, then a loadout slot, to put it there; click a filled slot to empty it.
@@ -38,18 +38,18 @@ public final class LockerMenu implements InventoryHolder, ClickMenu {
     static final int SHOP = 7;
     static final int BACK = 0;
     static final int OFFERS = 9;
-    static final int PREV = 16;
-    static final int NEXT = 17;
+    static final int PREV = 3;
+    static final int NEXT = 6;
     static final int STASH = 27;
     static final int PAGE = 27;
     /** Menu slot to inventory slot for a loadout's slots. */
     static final Map<Integer, Integer> LOADOUT_SLOTS = Map.ofEntries(Map.entry(9, 39), Map.entry(10, 38),
             Map.entry(11, 37), Map.entry(12, 36), Map.entry(13, 40), Map.entry(14, 9), Map.entry(15, 10),
-            Map.entry(18, 0), Map.entry(19, 1),
+            Map.entry(16, 11), Map.entry(17, 12), Map.entry(18, 0), Map.entry(19, 1),
             Map.entry(20, 2), Map.entry(21, 3), Map.entry(22, 4), Map.entry(23, 5), Map.entry(24, 6),
             Map.entry(25, 7), Map.entry(26, 8));
     private static final Map<Integer, String> SLOT_NAMES = Map.of(39, "Helmet", 38, "Chestplate", 37, "Leggings",
-            36, "Boots", 40, "Off hand", 9, "Ring", 10, "Amulet");
+            36, "Boots", 40, "Off hand", 9, "Ring", 10, "Amulet", 11, "Artifact", 12, "Artifact");
 
     private final LockerService service;
     private final Player player;

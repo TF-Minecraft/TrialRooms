@@ -38,6 +38,7 @@ import net.tfminecraft.advancedcrafting.objects.ingredients.Ingredient;
 import net.tfminecraft.advancedcrafting.objects.stats.StatModifier;
 import net.tfminecraft.advancedcrafting.utils.CraftStatCalculator;
 import net.tfminecraft.tlibs.TLibs;
+import net.tfminecraft.trialrooms.dungeon.gear.GearTags;
 import net.tfminecraft.tlibs.objects.api.subapi.ItemRebuildMerger;
 
 /**
@@ -147,7 +148,16 @@ public final class MmoLootForge implements LootForge {
         mmo.setData(ItemStats.GEM_SOCKETS, new GemSocketsData(new ArrayList<>(Collections.nCopies(plan.sockets(), socket))));
         mmo.setData(ItemStats.UNBREAKABLE, new BooleanData(true));
         ItemStack built = builder.apply(mmo);
-        return plan.look() == null ? built : TLibs.getItemAPI().getArmorMerger().merge(built, Optional.empty(), plan.look());
+        return tagged(plan, plan.look() == null ? built
+                : TLibs.getItemAPI().getArmorMerger().merge(built, Optional.empty(), plan.look()));
+    }
+
+    /** Marks an item as the set piece it is. */
+    static ItemStack tagged(LootRoller.Plan plan, ItemStack item) {
+        if (plan.set() != null) {
+            GearTags.write(item, new GearTags.Piece(plan.set().id(), plan.base().slot().kind(), plan.power()));
+        }
+        return item;
     }
 
     @Override

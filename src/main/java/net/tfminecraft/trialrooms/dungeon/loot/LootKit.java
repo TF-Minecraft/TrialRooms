@@ -10,6 +10,9 @@ import java.util.TreeMap;
 
 import org.bukkit.configuration.ConfigurationSection;
 
+import net.tfminecraft.trialrooms.dungeon.gear.GearSet;
+import net.tfminecraft.trialrooms.dungeon.gear.Trait;
+
 /**
  * Dungeon loot settings from {@code dungeons/loot.yml}: what dungeon items are made of, how much
  * stronger each rarity and tier makes them, their names and looks.
@@ -21,15 +24,16 @@ import org.bukkit.configuration.ConfigurationSection;
  * @param socket    the socket colour dungeon items carry (only dungeon gems fit it)
  * @param pools     bonus stat pools: stat to its range at tier 1 before the rarity's power
  * @param bases     the items that can drop
- * @param prefixes  words that stand in for the material in a base's name
+ * @param prefixes  words for gems' names, and for items of no set (in the material's place)
  * @param suffixes  endings for the rarer items' names
- * @param looks     rarity, then look group (an armour weight), to the skin sets that armour may get
- *                  (ia.tfmc_armor:SET_PIECE)
+ * @param looks     where the sets' looks are (a TLibs item path prefix): LOOKS + set + _ + look
+ * @param sets      the gear sets items come in, by id
+ * @param worth     what one unit of a bonus of each stat is
  * @param unscaled  stats rarity and tier never change (speeds, durability)
  */
 public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<Integer, Tier> tiers, String socket,
         Map<String, Map<String, Range>> pools, List<Base> bases, List<String> prefixes, List<String> suffixes,
-        Map<String, Map<String, List<String>>> looks, Set<String> unscaled) {
+        String looks, Map<String, GearSet> sets, Map<String, Double> worth, Set<String> unscaled) {
 
     /** How rare and how strong. */
     public record Rarity(String id, String name, int weight, double power, int bonus, int sockets, String colour) {
@@ -62,9 +66,9 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
         }
     }
 
-    /** Where an item goes. Armour pieces take skins; the rest keep their template's look. */
+    /** Where an item goes. */
     public enum Slot {
-        HELMET, CHESTPLATE, LEGGINGS, BOOTS, WEAPON, RING, AMULET;
+        HELMET, CHESTPLATE, LEGGINGS, BOOTS, WEAPON, OFF_HAND, RING, AMULET, ARTIFACT;
 
         public boolean armour() {
             return ordinal() <= BOOTS.ordinal();
@@ -73,6 +77,12 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
         public String piece() {
             return name().toLowerCase(Locale.ROOT);
         }
+
+        /** What it counts as in a set. */
+        public GearSet.Kind kind() {
+            return armour() ? GearSet.Kind.ARMOUR : this == WEAPON ? GearSet.Kind.WEAPON
+                    : this == OFF_HAND ? GearSet.Kind.OFF_HAND : GearSet.Kind.JEWELLERY;
+        }
     }
 
     /**
@@ -80,10 +90,11 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
      * with its own stat ranges (jewellery).
      *
      * @param name a name with %material% where a prefix goes
-     * @param look the look group its skins come from (armour weight), or null to keep the template's look
+     * @param looks the looks of a set it may take (an armour weight; a weapon's own); empty keeps the
+     *              template's look
      */
     public record Base(String id, String name, Slot slot, String recipe, String template, String pool,
-            Map<String, Range> stats, String look) {
+            Map<String, Range> stats, List<String> looks) {
         public Base {
             if ((recipe == null) == (template == null)) {
                 throw new IllegalArgumentException("item " + id + ": give a recipe or a template, not both");
@@ -103,9 +114,25 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
                 throw new IllegalArgumentException("item " + b.id() + ": no bonus pool " + b.pool());
             }
         }
+        for (GearSet s : sets.values()) {
+            if (rarity(rarities, s.rarity()) == null) {
+                throw new IllegalArgumentException("set " + s.id() + ": no rarity " + s.rarity());
+            }
+            for (var bonuses : List.of(s.armour(), s.jewellery())) {
+                bonuses.values().forEach(stats -> stats.keySet().forEach(stat -> {
+                    if (!worth.containsKey(stat)) {
+                        throw new IllegalArgumentException("set " + s.id() + ": no worth for " + stat);
+                    }
+                }));
+            }
+        }
     }
 
     public Rarity rarity(String id) {
+        return rarity(rarities, id);
+    }
+
+    private static Rarity rarity(List<Rarity> rarities, String id) {
         return rarities.stream().filter(r -> r.id().equalsIgnoreCase(id)).findFirst().orElse(null);
     }
 
@@ -143,23 +170,49 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
                 ConfigurationSection b = is.getConfigurationSection(id);
                 bases.add(new Base(id, b.getString("name", id), Slot.valueOf(b.getString("slot", "").toUpperCase(Locale.ROOT)),
                         b.getString("recipe"), b.getString("template"), b.getString("pool", ""),
-                        ranges(b.getConfigurationSection("stats")), b.getString("look")));
+                        ranges(b.getConfigurationSection("stats")),
+                        b.isList("look") ? b.getStringList("look") : b.isString("look") ? List.of(b.getString("look")) : List.of()));
             }
-            Map<String, Map<String, List<String>>> looks = new LinkedHashMap<>();
-            ConfigurationSection ls = section(y, "looks");
-            for (String r : ls.getKeys(false)) {
-                ConfigurationSection groups = section(ls, r);
-                Map<String, List<String>> byGroup = new LinkedHashMap<>();
-                groups.getKeys(false).forEach(g -> byGroup.put(g, groups.getStringList(g)));
-                looks.put(r, byGroup);
+            Map<String, Double> worth = new LinkedHashMap<>();
+            ConfigurationSection ws = section(y, "worth");
+            ws.getKeys(false).forEach(k -> worth.put(k.toLowerCase(Locale.ROOT), ws.getDouble(k)));
+            Map<String, GearSet> sets = new LinkedHashMap<>();
+            ConfigurationSection ss = section(y, "sets");
+            for (String id : ss.getKeys(false)) {
+                sets.put(id, set(id, ss.getConfigurationSection(id)));
             }
             return new LootKit(standard, rarities, tiers, y.getString("socket", "Dungeon Gem"), pools, bases,
-                    y.getStringList("names.prefixes"), y.getStringList("names.suffixes"), looks,
+                    y.getStringList("names.prefixes"), y.getStringList("names.suffixes"), y.getString("looks", ""), sets, worth,
                     Set.copyOf(y.getStringList("unscaled").stream().map(s -> s.toLowerCase(Locale.ROOT)).toList()));
         } catch (RuntimeException e) {
             problems.add("loot.yml: " + e.getMessage());
             return null;
         }
+    }
+
+    private static GearSet set(String id, ConfigurationSection s) {
+        return new GearSet(id, s.getString("name", id), s.getString("rarity", ""), s.getStringList("dungeons"),
+                bonuses(s, "armour"), bonuses(s, "jewellery"),
+                new Trait(Trait.Kind.valueOf(s.getString("trait.kind", "").toUpperCase(Locale.ROOT)), s.getDouble("trait.value")));
+    }
+
+    /** pieces: {stat: units}. */
+    private static Map<Integer, Map<String, Double>> bonuses(ConfigurationSection s, String path) {
+        Map<Integer, Map<String, Double>> out = new TreeMap<>();
+        ConfigurationSection b = section(s, path);
+        for (String pieces : b.getKeys(false)) {
+            ConfigurationSection stats = section(b, pieces);
+            Map<String, Double> units = new LinkedHashMap<>();
+            for (String k : stats.getKeys(false)) {
+                if (k.equalsIgnoreCase("damage")) { // whichever kind the class deals: each player has the use of one
+                    GearSet.DAMAGE.forEach(d -> units.put(d, stats.getDouble(k)));
+                } else {
+                    units.put(k.toLowerCase(Locale.ROOT), stats.getDouble(k));
+                }
+            }
+            out.put(Integer.parseInt(pieces), units);
+        }
+        return out;
     }
 
     private static ConfigurationSection section(ConfigurationSection y, String path) {

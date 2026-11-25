@@ -131,7 +131,7 @@ class DungeonModuleTest {
     assertEquals(1, m.cosmetics().skins("dungeon_seithr", "hard").size());
     assertSame(world, m.world());
     assertNotNull(m.lootKit(), "the bundled loot.yml");
-    assertEquals(30, m.lootKit().bases().size());
+    assertEquals(42, m.lootKit().bases().size());
     assertNotNull(m.rewardRules(), "and its rewards");
     assertEquals(18.9, m.spoils().perHour().get("m.materials.ignitium"), "and its spoils");
     assertEquals(12, m.cosmetics().trophies().size(), "and its cosmetics");

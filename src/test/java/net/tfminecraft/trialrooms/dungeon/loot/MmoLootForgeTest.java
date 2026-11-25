@@ -190,7 +190,7 @@ class MmoLootForgeTest {
     planned.put("glow", 1.0);
     MmoLootForge.builder = m -> built;
     LootRoller.Plan plan = new LootRoller.Plan(base, epic, 1, "Heavy Seithr Helmet of the Thaw", planned, 2,
-        "ia.tfmc_armor:x_helmet", List.of("Epic dungeon item, tier 1"));
+        "ia.tfmc_armor:x_helmet", List.of("Epic dungeon item, tier 1"), null, 1);
     try (MockedConstruction<LiveMMOItem> live = mockConstruction(LiveMMOItem.class, (m, c) -> {
       when(m.computeStatHistory(armor)).thenReturn(armorHist);
       when(m.computeStatHistory(health)).thenReturn(null);
@@ -208,7 +208,7 @@ class MmoLootForgeTest {
       verify(m).setData(eq(ItemStats.LORE), argThat(d -> ((StringListData) d).getList().equals(List.of("§7Epic dungeon item, tier 1"))));
     }
     // without a look, or without a template
-    LootRoller.Plan plain = new LootRoller.Plan(base, epic, 1, "Plain", Map.of(), 0, null, List.of());
+    LootRoller.Plan plain = new LootRoller.Plan(base, epic, 1, "Plain", Map.of(), 0, null, List.of(), null, 1);
     try (MockedConstruction<LiveMMOItem> live = mockConstruction(LiveMMOItem.class, (m, c) -> {
       when(m.computeStatHistory(ItemStats.NAME)).thenReturn(null);
       when(m.computeStatHistory(armor)).thenReturn(mock(StatHistory.class));

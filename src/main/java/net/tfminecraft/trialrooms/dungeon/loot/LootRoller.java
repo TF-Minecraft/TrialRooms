@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.function.Predicate;
 
+import net.tfminecraft.trialrooms.dungeon.gear.GearSet;
 import net.tfminecraft.trialrooms.dungeon.loot.LootKit.Base;
 import net.tfminecraft.trialrooms.dungeon.loot.LootKit.Range;
 import net.tfminecraft.trialrooms.dungeon.loot.LootKit.Rarity;
@@ -21,9 +22,11 @@ public final class LootRoller {
      * @param stats   final stat values (the base's, scaled, plus the bonus stats)
      * @param look    a skin path, or null to keep the template's look
      * @param lore    lines under the item's stats
+     * @param set     the gear set it belongs to, or null
+     * @param power   how strong it is (tier times rarity)
      */
     public record Plan(Base base, Rarity rarity, int tier, String name, Map<String, Double> stats, int sockets,
-            String look, List<String> lore) {
+            String look, List<String> lore, GearSet set, double power) {
     }
 
     /** A rolled dungeon gem: one stat, for a dungeon socket. */
@@ -38,7 +41,7 @@ public final class LootRoller {
         List<Map.Entry<String, Range>> stats = new ArrayList<>(kit.pools().get(pool).entrySet());
         Map.Entry<String, Range> e = stats.get(rng.nextInt(stats.size()));
         double value = round(e.getValue().roll(rng.nextDouble()) * kit.tier(tier).power() * rarity.power());
-        String name = kit.prefixes().get(rng.nextInt(kit.prefixes().size())) + " Rimestone";
+        String name = kit.prefixes().get(rng.nextInt(kit.prefixes().size())) + " Delvestone";
         return new GemPlan(rarity, tier, name, e.getKey(), value, List.of(rarity.name() + " dungeon gem, tier " + tier,
                 "Socket it into a dungeon item from the locker.", "Stays in the dungeons."));
     }
@@ -69,6 +72,13 @@ public final class LootRoller {
         return rs.get(i);
     }
 
+    /** One of the sets of a rarity that drop in a dungeon (null: those that drop anywhere); null when there is none. */
+    public static GearSet set(LootKit kit, Rarity rarity, String dungeon, Random rng) {
+        List<GearSet> fits = kit.sets().values().stream()
+                .filter(s -> s.rarity().equalsIgnoreCase(rarity.id()) && s.drops(dungeon)).toList();
+        return fits.isEmpty() ? null : fits.get(rng.nextInt(fits.size()));
+    }
+
     /** One of the items a player can use, or null when none fits. */
     public static Base base(LootKit kit, Predicate<Base> usable, Random rng) {
         List<Base> fits = kit.bases().stream().filter(usable).toList();
@@ -79,7 +89,8 @@ public final class LootRoller {
      * Rolls an item of a base and rarity. {@code baseStats} are the base's own numbers (for a recipe,
      * what it gives made of the act's standard material); jewellery rolls its own from its ranges.
      */
-    public static Plan plan(LootKit kit, Base base, Map<String, Double> baseStats, int tier, Rarity rarity, Random rng) {
+    public static Plan plan(LootKit kit, Base base, Map<String, Double> baseStats, int tier, Rarity rarity,
+            GearSet set, Random rng) {
         Tier t = kit.tier(tier);
         double power = t.power() * rarity.power();
         Map<String, Double> stats = new LinkedHashMap<>();
@@ -91,20 +102,23 @@ public final class LootRoller {
             stats.merge(e.getKey(), round(e.getValue().roll(rng.nextDouble()) * power), (a, b) -> round(a + b));
         }
         int step = kit.rarities().indexOf(rarity);
-        String prefix = kit.prefixes().get(rng.nextInt(kit.prefixes().size()));
+        String prefix = set != null ? set.name() : kit.prefixes().get(rng.nextInt(kit.prefixes().size()));
         String name = base.name().contains("%material%") ? base.name().replace("%material%", prefix)
                 : prefix + " " + base.name();
         if (step >= 2) {
             name += " " + kit.suffixes().get(rng.nextInt(kit.suffixes().size()));
         }
         String look = null;
-        List<String> sets = base.look() == null ? List.of()
-                : kit.looks().getOrDefault(rarity.id(), Map.of()).getOrDefault(base.look(), List.of());
-        if (base.slot().armour() && !sets.isEmpty()) {
-            look = "ia.tfmc_armor:" + sets.get(rng.nextInt(sets.size())) + "_" + base.slot().piece();
+        if (set != null && !base.looks().isEmpty()) {
+            look = kit.looks() + set.id() + "_" + base.looks().get(rng.nextInt(base.looks().size()))
+                    + (base.slot().armour() ? "_" + base.slot().piece() : "");
         }
-        List<String> lore = List.of(rarity.name() + " dungeon item, tier " + tier, "Stays in the dungeons.");
-        return new Plan(base, rarity, tier, name, stats, rarity.sockets(), look, lore);
+        List<String> lore = new ArrayList<>(List.of(rarity.name() + " dungeon item, tier " + tier));
+        if (set != null) {
+            lore.addAll(set.lore(base.slot().kind(), power, kit.worth()));
+        }
+        lore.add("Stays in the dungeons.");
+        return new Plan(base, rarity, tier, name, stats, rarity.sockets(), look, lore, set, power);
     }
 
     static double round(double v) {

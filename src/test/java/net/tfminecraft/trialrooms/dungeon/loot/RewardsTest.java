@@ -77,7 +77,7 @@ public class RewardsTest {
     when(lockers.saveLocker(ann, locker)).thenReturn(true);
     when(sword.effectiveName()).thenReturn(Component.text("Rimebound Sword"));
     when(gem.effectiveName()).thenReturn(Component.text("Glacial Rimestone"));
-    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any())).thenReturn(new DungeonLoot.Rolled(sword, null));
+    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any(), any())).thenReturn(new DungeonLoot.Rolled(sword, null));
     when(loot.gem(anyInt(), anyDouble(), any(), any(), any())).thenReturn(new DungeonLoot.Rolled(gem, null));
   }
 
@@ -156,7 +156,7 @@ public class RewardsTest {
   void aVaultUnderParPaysMoreAndRollsLuckier() {
     rewards(doubles(0.9)).reward(ann, "delve_seithr", 1, Moment.VAULT, run, true);
     assertEquals(15, locker.marks(), "10 for the vault, 5 for par");
-    verify(loot).roll(ann, 1, 0.5, null, null);
+    verify(loot).roll(ann, 1, 0.5, null, null, "delve_seithr");
     rewards(doubles(0.9)).reward(ann, "delve_seithr", 1, Moment.BOSS, run, true);
     assertEquals(20, locker.marks(), "par never betters another moment: the boss's 5 only");
   }
@@ -179,8 +179,8 @@ public class RewardsTest {
   void someWinsAreGemsAndClassesWithNoItemGetGems() {
     rewards(doubles(0.0, 0.1)).reward(ann, "d", 1, Moment.VAULT, run); // vault (no chance roll), 0.0 < gem-chance
     verify(lockers).file(locker, gem);
-    verify(loot, never()).roll(any(), anyInt(), anyDouble(), any(), any());
-    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any())).thenReturn(new DungeonLoot.Rolled(null, "No dungeon item fits"));
+    verify(loot, never()).roll(any(), anyInt(), anyDouble(), any(), any(), any());
+    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any(), any())).thenReturn(new DungeonLoot.Rolled(null, "No dungeon item fits"));
     rewards(doubles(0.9)).reward(ann, "d", 1, Moment.VAULT, UUID.randomUUID());
     verify(lockers, times(2)).file(locker, gem);
   }
@@ -474,7 +474,7 @@ public class RewardsTest {
 
   @Test
   void findsAreRolledWhenFoundAndHandedOverWhenTheyComeHome() {
-    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any())).thenReturn(new DungeonLoot.Rolled(sword, null, "epic"));
+    when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any(), any())).thenReturn(new DungeonLoot.Rolled(sword, null, "epic"));
     when(loot.power(anyInt())).thenReturn(1.25);
     when(lockers.encode(sword)).thenReturn(new byte[] {7});
     when(lockers.decode(any())).thenReturn(sword);
@@ -612,7 +612,7 @@ public class RewardsTest {
       // a drop of a known rarity is tagged with its value
       ItemStack iron = spy(new ItemStack(org.bukkit.Material.IRON_SWORD));
       doReturn(Component.text("Iron Edge")).when(iron).effectiveName(); // (MockBukkit has no effective names)
-      when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any())).thenReturn(new DungeonLoot.Rolled(iron, null, "rare"));
+      when(loot.roll(eq(ann), anyInt(), anyDouble(), any(), any(), any())).thenReturn(new DungeonLoot.Rolled(iron, null, "rare"));
       when(loot.power(anyInt())).thenReturn(1.0);
       when(lockers.encode(any())).thenReturn(new byte[] {7});
       var held = org.mockito.ArgumentCaptor.forClass(ItemStack.class);

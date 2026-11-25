@@ -56,6 +56,7 @@ bonus:
   armour: [max_health, armor, physical_damage_reduction, projectile_damage_reduction, magic_damage_reduction]
   melee: [physical_damage, max_health, lifesteal, physical_damage_reduction]
   ranged: [projectile_damage, max_health, lifesteal, projectile_damage_reduction]
+  bard: [magic_damage, max_health, magic_damage_reduction, physical_damage_reduction]
   jewellery: [max_health, physical_damage, projectile_damage, magic_damage, physical_damage_reduction,
     projectile_damage_reduction, magic_damage_reduction]
 
@@ -119,24 +120,22 @@ spoils:
 # item (TLibs path; meant to be ItemsAdder trophy furniture) named for the feat, with the date and
 # the party; it waits in the locker like spoils. skins: the vault may unlock an ArmourShop set the
 # player doesn't have yet, by running unlock-command ({player}, {permission}) on the console.
-# The items and permissions below are placeholders until the trophy furniture and the dungeon skin
-# sets exist.
 cosmetics:
   unlock-command: "lp user {player} permission set {permission} true"
   trophies:
-    - {recipe: delve_seithr, difficulty: normal, chance: 0.05, item: v.skeleton_skull, name: "Ice Golem Trophy"}
-    - {recipe: delve_seithr, difficulty: hard, chance: 0.08, item: v.skeleton_skull, name: "Ice Golem Trophy (Hard)"}
-    - {recipe: delve_seithr, difficulty: nightmare, chance: 0.12, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Nightmare)"}
+    - {recipe: delve_seithr, difficulty: normal, chance: 0.05, item: ia.tfmc_dungeons:golem_head_normal, name: "Ice Golem Trophy"}
+    - {recipe: delve_seithr, difficulty: hard, chance: 0.08, item: ia.tfmc_dungeons:golem_head_hard, name: "Ice Golem Trophy (Hard)"}
+    - {recipe: delve_seithr, difficulty: nightmare, chance: 0.12, item: ia.tfmc_dungeons:golem_head_nightmare, name: "Ice Golem Trophy (Nightmare)"}
   # (the bigger parties' trophies, from the same boss for now)
-    - {recipe: dungeon_seithr, difficulty: normal, chance: 0.05, item: v.skeleton_skull, name: "Ice Golem Trophy"}
-    - {recipe: dungeon_seithr, difficulty: hard, chance: 0.08, item: v.skeleton_skull, name: "Ice Golem Trophy (Hard)"}
-    - {recipe: dungeon_seithr, difficulty: nightmare, chance: 0.12, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Nightmare)"}
-    - {recipe: warband_seithr, difficulty: normal, chance: 0.05, item: v.skeleton_skull, name: "Ice Golem Trophy"}
-    - {recipe: warband_seithr, difficulty: hard, chance: 0.08, item: v.skeleton_skull, name: "Ice Golem Trophy (Hard)"}
-    - {recipe: warband_seithr, difficulty: nightmare, chance: 0.12, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Nightmare)"}
-    - {recipe: delve_seithr, difficulty: mythic, chance: 0.2, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Mythic)"}
-    - {recipe: dungeon_seithr, difficulty: mythic, chance: 0.2, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Mythic)"}
-    - {recipe: warband_seithr, difficulty: mythic, chance: 0.2, item: v.wither_skeleton_skull, name: "Ice Golem Trophy (Mythic)"}
+    - {recipe: dungeon_seithr, difficulty: normal, chance: 0.05, item: ia.tfmc_dungeons:golem_head_normal, name: "Ice Golem Trophy"}
+    - {recipe: dungeon_seithr, difficulty: hard, chance: 0.08, item: ia.tfmc_dungeons:golem_head_hard, name: "Ice Golem Trophy (Hard)"}
+    - {recipe: dungeon_seithr, difficulty: nightmare, chance: 0.12, item: ia.tfmc_dungeons:golem_head_nightmare, name: "Ice Golem Trophy (Nightmare)"}
+    - {recipe: warband_seithr, difficulty: normal, chance: 0.05, item: ia.tfmc_dungeons:golem_head_normal, name: "Ice Golem Trophy"}
+    - {recipe: warband_seithr, difficulty: hard, chance: 0.08, item: ia.tfmc_dungeons:golem_head_hard, name: "Ice Golem Trophy (Hard)"}
+    - {recipe: warband_seithr, difficulty: nightmare, chance: 0.12, item: ia.tfmc_dungeons:golem_head_nightmare, name: "Ice Golem Trophy (Nightmare)"}
+    - {recipe: delve_seithr, difficulty: mythic, chance: 0.2, item: ia.tfmc_dungeons:golem_head_mythic, name: "Ice Golem Trophy (Mythic)"}
+    - {recipe: dungeon_seithr, difficulty: mythic, chance: 0.2, item: ia.tfmc_dungeons:golem_head_mythic, name: "Ice Golem Trophy (Mythic)"}
+    - {recipe: warband_seithr, difficulty: mythic, chance: 0.2, item: ia.tfmc_dungeons:golem_head_mythic, name: "Ice Golem Trophy (Mythic)"}
   skins:
     - {recipe: delve_seithr, difficulty: mythic, chance: 0.1, permission: armourshop.dungeon.seithr_mythic, name: "Seithr Mythic"}
     - {recipe: dungeon_seithr, difficulty: mythic, chance: 0.1, permission: armourshop.dungeon.seithr_mythic, name: "Seithr Mythic"}
@@ -150,7 +149,8 @@ cosmetics:
     - {recipe: delve_seithr, difficulty: nightmare, chance: 0.03, permission: armourshop.dungeon.seithr_glacial, name: "Seithr Glacial"}
 
 # What can drop. recipe: an AdvancedCrafting recipe; template: an MMOItems template (file.id) with
-# its own stats: [min, max]. %material% in the name is where a prefix goes.
+# its own stats: [min, max]. %material% in the name is where the set's name goes. look: what it looks
+# like in its set (an armour weight, or a weapon's look; several: one by chance).
 items:
   light_helmet: {recipe: light_helmet, slot: helmet, pool: armour, look: light, name: "Light %material% Helmet"}
   light_chestplate: {recipe: light_chestplate, slot: chestplate, pool: armour, look: light, name: "Light %material% Chestplate"}
@@ -168,46 +168,130 @@ items:
   infantry_chestplate: {recipe: infantry_chestplate, slot: chestplate, pool: armour, look: infantry, name: "Infantry %material% Jacket"}
   infantry_leggings: {recipe: infantry_leggings, slot: leggings, pool: armour, look: infantry, name: "Infantry %material% Leggings"}
   infantry_boots: {recipe: infantry_boots, slot: boots, pool: armour, look: infantry, name: "Infantry %material% Boots"}
-  sword: {recipe: sword, slot: weapon, pool: melee, name: "%material% Sword"}
-  battleaxe: {recipe: battleaxe, slot: weapon, pool: melee, name: "%material% Battleaxe"}
-  dagger: {recipe: dagger, slot: weapon, pool: melee, name: "%material% Dagger"}
-  warhammer: {recipe: warhammer, slot: weapon, pool: melee, name: "%material% Warhammer"}
-  spear: {recipe: spear, slot: weapon, pool: melee, name: "%material% Spear"}
-  polearm: {recipe: polearm, slot: weapon, pool: melee, name: "%material% Polearm"}
-  longsword: {recipe: longsword, slot: weapon, pool: melee, name: "%material% Longsword"}
-  greathammer: {recipe: greathammer, slot: weapon, pool: melee, name: "%material% Greathammer"}
-  greataxe: {recipe: greataxe, slot: weapon, pool: melee, name: "%material% Greataxe"}
-  shortbow: {recipe: shortbow, slot: weapon, pool: ranged, name: "%material% Shortbow"}
-  crossbow: {recipe: crossbow, slot: weapon, pool: ranged, name: "%material% Crossbow"}
-  longbow: {recipe: longbow, slot: weapon, pool: ranged, name: "%material% Longbow"}
-  ring: {template: ring.fine_jeweled_ring, slot: ring, pool: jewellery, name: "%material% Ring", stats: {max_health: [0.4, 0.8]}}
-  amulet: {template: amulet.fine_pendant_amulet, slot: amulet, pool: jewellery, name: "%material% Amulet", stats: {max_health: [0.4, 0.8]}}
+  mage_helmet: {recipe: mage_helmet, slot: helmet, pool: armour, look: mage, name: "Mage %material% Hood"}
+  mage_chestplate: {recipe: mage_chestplate, slot: chestplate, pool: armour, look: mage, name: "Mage %material% Robes"}
+  mage_leggings: {recipe: mage_leggings, slot: leggings, pool: armour, look: mage, name: "Mage %material% Leggings"}
+  mage_boots: {recipe: mage_boots, slot: boots, pool: armour, look: mage, name: "Mage %material% Boots"}
+  sword: {recipe: sword, slot: weapon, pool: melee, look: sword, name: "%material% Sword"}
+  shortsword: {recipe: shortswords, slot: weapon, pool: melee, look: shortsword, name: "%material% Shortsword"}
+  battleaxe: {recipe: battleaxe, slot: weapon, pool: melee, look: battleaxe, name: "%material% Battleaxe"}
+  dagger: {recipe: dagger, slot: weapon, pool: melee, look: dagger, name: "%material% Dagger"}
+  warhammer: {recipe: warhammer, slot: weapon, pool: melee, look: warhammer, name: "%material% Warhammer"}
+  spear: {recipe: spear, slot: weapon, pool: melee, look: spear, name: "%material% Spear"}
+  polearm: {recipe: polearm, slot: weapon, pool: melee, look: polearm, name: "%material% Polearm"}
+  longsword: {recipe: longsword, slot: weapon, pool: melee, look: longsword, name: "%material% Longsword"}
+  greathammer: {recipe: greathammer, slot: weapon, pool: melee, look: greathammer, name: "%material% Greathammer"}
+  greataxe: {recipe: greataxe, slot: weapon, pool: melee, look: greataxe, name: "%material% Greataxe"}
+  lute: {recipe: lute, slot: weapon, pool: bard, look: lute, name: "%material% Lute"}
+  shortbow: {recipe: shortbow, slot: weapon, pool: ranged, look: shortbow, name: "%material% Shortbow"}
+  crossbow: {recipe: crossbow, slot: weapon, pool: ranged, look: crossbow, name: "%material% Crossbow"}
+  longbow: {recipe: longbow, slot: weapon, pool: ranged, look: longbow, name: "%material% Longbow"}
+  shield: {recipe: shield, slot: off_hand, pool: armour, look: shield, name: "%material% Shield"}
+  banner: {recipe: banner, slot: off_hand, pool: armour, look: standard, name: "%material% Battle Standard"}
+  ring: {template: ring.fine_jeweled_ring, slot: ring, pool: jewellery, look: [ring_1, ring_2], name: "%material% Ring", stats: {max_health: [0.4, 0.8]}}
+  amulet: {template: amulet.fine_pendant_amulet, slot: amulet, pool: jewellery, look: [amulet_1, amulet_2], name: "%material% Amulet", stats: {max_health: [0.4, 0.8]}}
+  artifact: {template: artifact.good_bracelet, slot: artifact, pool: jewellery, look: [bracelet], name: "%material% Bracelet", stats: {max_health: [0.4, 0.8]}}
+  medal: {template: artifact.good_medal, slot: artifact, pool: jewellery, look: [medal], name: "%material% Medal", stats: {max_health: [0.4, 0.8]}}
+  chalice: {template: artifact.good_chalice, slot: artifact, pool: jewellery, look: [chalice], name: "%material% Chalice", stats: {max_health: [0.4, 0.8]}}
+  mirror: {template: artifact.good_mirror, slot: artifact, pool: jewellery, look: [mirror], name: "%material% Mirror", stats: {max_health: [0.4, 0.8]}}
 
-# Names: a prefix in place of the material; epic and legendary items also get a suffix.
+# Names: prefixes are for gems (items take their set's name); epic and legendary items also get a suffix.
 names:
-  prefixes: [Rimebound, Frostwoven, Seithr, Hoarfrost, Glacial, Winterborn, Icebound, Palefrost, Snowmantled, Coldiron]
-  suffixes: [of the Thaw, of the Long Night, of Frozen Oaths, of the Frost Host, of Seithrin, of the Still Wind, of the White Silence, of Bitter Winds]
+  prefixes: [Deepstone, Lanternlit, Vaultborn, Sealed, Hollow, Buried, Forgotten, Candleworn, Ironbound, Dustbound]
+  suffixes: [of the Long Dark, of the Last Lantern, of Sealed Doors, of the Deep Vault, of Old Oaths, of the Quiet Halls, of Fallen Stone, of the Unopened Gate]
 
-# Armour skins: for each rarity and armour weight (an item's look), the ItemsAdder sets it may wear
-# (ia.tfmc_armor:<set>_<piece>). Rarer items get the finer metals.
-looks:
-  uncommon:
-    light: [hraftar_iron_light, imperial_iron_light, forestman_steel_light]
-    medium: [hraftar_iron_medium, imperial_iron_medium, forestman_steel_medium]
-    heavy: [hraftar_iron_heavy, imperial_iron_heavy, forestman_steel_heavy]
-    infantry: [base_metal_steel_infantry]
-  rare:
-    light: [hraftar_abyssalite_light, imperial_abyssalite_light, forestman_abyssalite_light]
-    medium: [hraftar_abyssalite_medium, imperial_abyssalite_medium, forestman_abyssalite_medium]
-    heavy: [hraftar_abyssalite_heavy, imperial_abyssalite_heavy, forestman_abyssalite_heavy]
-    infantry: [base_metal_abyssalite_infantry]
-  epic:
-    light: [hraftar_mythril_light, imperial_mythril_light, forestman_mythril_light, scale_light]
-    medium: [hraftar_mythril_medium, imperial_mythril_medium, forestman_mythril_medium]
-    heavy: [hraftar_mythril_heavy, imperial_mythril_heavy, forestman_mythril_heavy, scale_heavy]
-    infantry: [base_metal_mythril_infantry]
-  legendary:
-    light: [dwarven_light, malevorian_light, brightsteel_light]
-    medium: [dwarven_medium, cervalic_order_medium, malevorian_medium]
-    heavy: [dwarven, cervalic_order_heavy, malevorian, brightsteel_heavy]
-    infantry: [base_metal_mythril_infantry]
+# Looks: where a set's looks are (TLibs item paths): this, the set's id, _ and the item's look.
+looks: "ia.tfmc_dungeons:"
+
+# Gear sets. An item belongs to a set of its rarity. dungeons: the recipes it drops in (none: any).
+# armour and jewellery: bonuses at so many pieces, in bonus units (worth, above) times the pieces'
+# power; armour at 2 and 4 of its helmet, chestplate, leggings and boots, jewellery at 2 and 4 of its
+# ring, amulet and two artifacts. trait: what its weapons do (kind and how much), stronger by half
+# with 2 pieces of its armour; off-hand pieces give two fifths of it. Every set's bonuses add up to the
+# same units (damage raises physical, projectile and magic damage alike and counts once, as each class
+# deals one), and the traits are meant to be worth the same.
+sets:
+  delver:
+    name: Delver
+    rarity: uncommon
+    dungeons: []
+    armour: {2: {max_health: 3}, 4: {armor: 3, max_health: 3}}
+    jewellery: {2: {max_health: 2}, 4: {lifesteal: 2, max_health: 2}}
+    trait: {kind: opening, value: 0.15}
+  sellsword:
+    name: Sellsword
+    rarity: uncommon
+    dungeons: []
+    armour: {2: {damage: 3}, 4: {damage: 6}}
+    jewellery: {2: {lifesteal: 2}, 4: {damage: 4}}
+    trait: {kind: execute, value: 0.12}
+  warden:
+    name: Warden
+    rarity: rare
+    dungeons: []
+    armour: {2: {armor: 3}, 4: {physical_damage_reduction: 3, max_health: 3}}
+    jewellery: {2: {physical_damage_reduction: 2}, 4: {max_health: 4}}
+    trait: {kind: ward, value: 0.1}
+  gravebound:
+    name: Gravebound
+    rarity: rare
+    dungeons: []
+    armour: {2: {lifesteal: 3}, 4: {max_health: 4, lifesteal: 2}}
+    jewellery: {2: {lifesteal: 2}, 4: {magic_damage_reduction: 2, max_health: 2}}
+    trait: {kind: mend, value: 0.05}
+  ember:
+    name: Emberforged
+    rarity: epic
+    dungeons: []
+    armour: {2: {damage: 3}, 4: {damage: 6}}
+    jewellery: {2: {damage: 2}, 4: {damage: 4}}
+    trait: {kind: burn, value: 0.4}
+  duskwoven:
+    name: Duskwoven
+    rarity: epic
+    dungeons: []
+    armour: {2: {damage: 3}, 4: {damage: 4, projectile_damage_reduction: 2}}
+    jewellery: {2: {damage: 2}, 4: {damage: 2, max_health: 2}}
+    trait: {kind: composed, value: 0.1}
+  drowned:
+    name: Drowned Crown
+    rarity: legendary
+    dungeons: []
+    armour: {2: {magic_damage_reduction: 3}, 4: {max_health: 4, armor: 2}}
+    jewellery: {2: {magic_damage_reduction: 2}, 4: {max_health: 2, armor: 2}}
+    trait: {kind: chill, value: 2}
+  firstlight:
+    name: Firstlight
+    rarity: legendary
+    dungeons: []
+    armour: {2: {max_health: 3}, 4: {max_health: 3, damage: 3}}
+    jewellery: {2: {max_health: 2}, 4: {damage: 4}}
+    trait: {kind: radiance, value: 0.02}
+  garrison:
+    name: Seithr Garrison
+    rarity: uncommon
+    dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
+    armour: {2: {armor: 3}, 4: {armor: 3, projectile_damage_reduction: 3}}
+    jewellery: {2: {armor: 2}, 4: {max_health: 4}}
+    trait: {kind: brace, value: 0.08}
+  court:
+    name: Seithr Court
+    rarity: rare
+    dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
+    armour: {2: {damage: 3}, 4: {damage: 3, armor: 3}}
+    jewellery: {2: {damage: 2}, 4: {lifesteal: 4}}
+    trait: {kind: duel, value: 0.12}
+  marquis:
+    name: Seithr Marquis
+    rarity: epic
+    dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
+    armour: {2: {physical_damage_reduction: 3}, 4: {magic_damage_reduction: 3, max_health: 3}}
+    jewellery: {2: {projectile_damage_reduction: 2}, 4: {max_health: 2, armor: 2}}
+    trait: {kind: rime, value: 2}
+  royal:
+    name: Seithr Royal
+    rarity: legendary
+    dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
+    armour: {2: {damage: 3}, 4: {damage: 6}}
+    jewellery: {2: {max_health: 2}, 4: {damage: 4}}
+    trait: {kind: shards, value: 0.4}
