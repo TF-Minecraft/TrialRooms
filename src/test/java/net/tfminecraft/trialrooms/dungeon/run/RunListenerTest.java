@@ -174,6 +174,9 @@ class RunListenerTest {
     assertEquals(5, capped.getDamage(), 1e-9);
     when(runs.damageCap(mob)).thenReturn(0.0);
     EntityDamageEvent none = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
+    l.onEnemyStruck(none);
+    assertTrue(none.isCancelled(), "a boss at its phase floor takes nothing (before MythicLib sees the hit)");
+    none = damage(mob, p, DamageCause.ENTITY_ATTACK, 10);
     l.onEnemyHurt(none);
     assertTrue(none.isCancelled());
     // /kill always kills

@@ -131,7 +131,7 @@ public final class RunListener implements Listener {
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEnemyStruck(EntityDamageEvent event) {
-        if (enemyHurt(event) && runs.incomingFactor(event.getEntity()) <= 0) {
+        if (enemyHurt(event) && (runs.incomingFactor(event.getEntity()) <= 0 || runs.damageCap(event.getEntity()) <= 0)) {
             event.setCancelled(true);
         }
     }

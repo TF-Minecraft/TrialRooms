@@ -57,8 +57,21 @@ public final class GearService implements Listener {
         long hurtAt;
         long wardUntil;
         long radianceAt;
-        long hitAt = -1;
-        UUID hit;
+        Shot shot = new Shot(-1, null, 1);
+    }
+
+    /** One hit as traits count it: a gun's armour-piercing part lands in the same tick as a hit of its own. */
+    private static final class Shot {
+        final long tick;
+        final UUID victim;
+        final double factor;
+        double damage;
+
+        Shot(long tick, UUID victim, double factor) {
+            this.tick = tick;
+            this.victim = victim;
+            this.factor = factor;
+        }
     }
 
     private final Predicate<Player> inDungeon;
@@ -183,14 +196,26 @@ public final class GearService implements Listener {
     public void onDealt(EntityDamageByEntityEvent event) {
         Entity by = attacker(event);
         State out = active(by);
-        if (out != null && event.getEntity() instanceof LivingEntity victim && enemy.test(victim)) {
-            event.setDamage(event.getDamage() * dealt(out, victim));
-            hit((Player) by, out, victim, event.getDamage());
+        if (out == null || !(event.getEntity() instanceof LivingEntity victim) || !enemy.test(victim)) {
+            return;
+        }
+        int tick = server.getCurrentTick();
+        boolean again = out.shot.tick == tick && victim.getUniqueId().equals(out.shot.victim);
+        if (!again) {
+            out.shot = new Shot(tick, victim.getUniqueId(), dealt(out, victim));
+        }
+        event.setDamage(event.getDamage() * out.shot.factor);
+        out.shot.damage += event.getDamage();
+        if (!again) {
+            hit((Player) by, out, victim, out.shot);
         }
     }
 
-    /** Hits by enemies, before anything asks whether they kill. */
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    /**
+     * Hits by enemies (HIGHEST, after MythicLib, which sets the damage of mobs' skill hits there), before
+     * the run asks whether they down a player.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onTaken(EntityDamageByEntityEvent event) {
         Entity by = attacker(event);
         State in = active(event.getEntity());
@@ -220,26 +245,21 @@ public final class GearService implements Listener {
     }
 
     /** What a hit sets off. */
-    private void hit(Player by, State s, LivingEntity victim, double damage) {
+    private void hit(Player by, State s, LivingEntity victim, Shot shot) {
         GearBonuses.Result r = s.result;
         long now = clock.getAsLong();
-        if (now == s.hitAt && victim.getUniqueId().equals(s.hit)) {
-            return; // the same shot again (a gun's armour-piercing part lands as a hit of its own)
-        }
-        s.hitAt = now;
-        s.hit = victim.getUniqueId();
         s.hits++;
         double burn = r.value(Trait.Kind.BURN);
         if (burn > 0 && s.hits % 4 == 0) {
             victim.setFireTicks(Math.max(victim.getFireTicks(), 40));
             // (after this hit: MythicLib takes a second hit on a victim within one for the same attack)
-            later.accept(() -> harm(victim, damage * burn));
+            later.accept(() -> harm(victim, shot.damage * burn)); // (the whole shot by then)
         }
         double shards = r.value(Trait.Kind.SHARDS);
         if (shards > 0 && s.hits % 5 == 0) {
             for (Entity e : victim.getNearbyEntities(3, 2, 3)) {
                 if (e instanceof LivingEntity near && enemy.test(near)) {
-                    later.accept(() -> harm(near, damage * shards));
+                    later.accept(() -> harm(near, shot.damage * shards));
                 }
             }
         }

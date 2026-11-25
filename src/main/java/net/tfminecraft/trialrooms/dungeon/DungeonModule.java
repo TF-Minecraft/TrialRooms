@@ -204,7 +204,9 @@ public final class DungeonModule {
     }
 
     void later(Runnable task) {
-        plugin.getServer().getScheduler().runTask(plugin, task);
+        if (plugin.isEnabled()) { // (stopping: what is left of a trait is dropped)
+            plugin.getServer().getScheduler().runTask(plugin, task);
+        }
     }
 
     /** Whether an entity is a run's enemy (a player's summon there isn't). */

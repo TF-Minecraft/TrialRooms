@@ -364,6 +364,10 @@ class DungeonRunCommandsTest {
     m.later(() -> ran[0] = true);
     server.getScheduler().performTicks(1);
     assertTrue(ran[0]);
+    when(plugin.isEnabled()).thenReturn(false);
+    m.later(() -> fail("stopping"));
+    server.getScheduler().performTicks(1);
+    when(plugin.isEnabled()).thenReturn(true);
     m.optional("x", () -> {
       throw new NoClassDefFoundError("api");
     });
