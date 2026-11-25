@@ -57,6 +57,8 @@ public final class GearService implements Listener {
         long hurtAt;
         long wardUntil;
         long radianceAt;
+        long hitAt = -1;
+        UUID hit;
     }
 
     private final Predicate<Player> inDungeon;
@@ -220,6 +222,12 @@ public final class GearService implements Listener {
     /** What a hit sets off. */
     private void hit(Player by, State s, LivingEntity victim, double damage) {
         GearBonuses.Result r = s.result;
+        long now = clock.getAsLong();
+        if (now == s.hitAt && victim.getUniqueId().equals(s.hit)) {
+            return; // the same shot again (a gun's armour-piercing part lands as a hit of its own)
+        }
+        s.hitAt = now;
+        s.hit = victim.getUniqueId();
         s.hits++;
         double burn = r.value(Trait.Kind.BURN);
         if (burn > 0 && s.hits % 4 == 0) {
@@ -240,7 +248,6 @@ public final class GearService implements Listener {
             slow(victim, chill);
         }
         double radiance = r.value(Trait.Kind.RADIANCE);
-        long now = clock.getAsLong();
         if (radiance > 0 && now - s.radianceAt >= RADIANCE_MS) {
             s.radianceAt = now;
             heal(mostHurt(by), radiance);

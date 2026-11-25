@@ -93,6 +93,7 @@ class GearTest {
   }
 
   double hit(Entity by, LivingEntity victim, double damage) {
+    now++; // each a hit of its own
     EntityDamageByEntityEvent e = new EntityDamageByEntityEvent(by, victim, EntityDamageEvent.DamageCause.ENTITY_ATTACK, damage);
     gear.onDealt(e);
     gear.onTaken(e);
@@ -151,6 +152,7 @@ class GearTest {
     slow.tick();
     Zombie z = zombie(1);
     for (int i = 0; i < 3; i++) {
+      now += 50;
       slow.onDealt(new EntityDamageByEntityEvent(p, z, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4));
     }
     p.getInventory().setItemInMainHand(item("ward", Kind.WEAPON, 1));
@@ -159,14 +161,25 @@ class GearTest {
     slow.tick();
     for (int i = 0; i < 4; i++) {
       assertTrue(queued.isEmpty(), "the first three were another time's");
+      now += 50;
       slow.onDealt(new EntityDamageByEntityEvent(p, z, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4));
+      // the same shot's armour-piercing part: not another hit
+      slow.onDealt(new EntityDamageByEntityEvent(p, z, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 1));
     }
+    // another enemy in the same moment (a sweep): a hit of its own
+    for (int i = 0; i < 4; i++) {
+      slow.onDealt(new EntityDamageByEntityEvent(p, zombie(2 + i), EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4));
+    }
+    assertEquals(2, queued.size(), "hits 5 to 8");
+    queued.removeLast();
     double before = z.getHealth();
     assertEquals(1, queued.size());
     queued.getFirst().run();
     assertEquals(before - 2, z.getHealth(), 1e-9);
     z.setHealth(0);
+    double after = z.getHealth();
     queued.getFirst().run(); // it died meanwhile
+    assertEquals(after, z.getHealth());
   }
 
   @Test
