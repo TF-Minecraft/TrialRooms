@@ -24,7 +24,8 @@ import java.util.Locale;
  * @param forceGround mark the area for any enemy, not only bosses and leaders
  * @param strike      the MythicMobs skill that lands the hit
  * @param start       the skill that starts it (animation and sound), or null
- * @param interrupted the skill it falls back on when broken off (its alternative), or null
+ * @param interrupted the skill it falls back on when broken off, by a silence, a freeze or a stagger (its
+ *                    alternative), or null
  */
 public record AttackSpec(String id, int windup, int recover, double guard, double poise, boolean magic, Shape ground,
         double radius, double angle, boolean leave, boolean root, boolean forceGround, String strike, String start,

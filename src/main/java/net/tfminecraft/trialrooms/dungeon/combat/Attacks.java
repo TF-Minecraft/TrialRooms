@@ -216,6 +216,9 @@ public final class Attacks implements Listener {
         Active a = active.get(event.getEntity().getUniqueId());
         if (a != null && a.state.hurt(event.getFinalDamage(), maxHealth(a.mob))) {
             brokeOff(a);
+            if (a.state.spec().interrupted() != null) { // (what it does when broken off, by a stagger too)
+                control.cast(a.mob, a.state.spec().interrupted(), a.target);
+            }
         }
     }
 

@@ -321,6 +321,10 @@ class CombatTest {
     Zombie z = zombie();
     Zombie by = zombie();
     attacks.start(z, null, spec("windup=10;recover=4;guard=0;poise=0.2;strike=Hit"));
+    attacks.onHurtDone(new EntityDamageEvent(z, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 30));
+    assertEquals(Phase.OPEN, attacks.phase(z), "staggered, no fallback");
+    attacks.stop();
+    attacks.start(z, null, spec("windup=10;recover=4;guard=0;poise=0.2;strike=Hit"));
     EntityDamageEvent e = new EntityDamageEvent(z, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4);
     attacks.onStruck(e);
     assertTrue(e.isCancelled(), "immune in this windup");
@@ -331,7 +335,7 @@ class CombatTest {
     assertEquals(4, kill.getDamage());
     // a braced one: half, and poise counts what landed
     Zombie b = zombie();
-    attacks.start(b, null, spec("windup=10;recover=4;guard=0.5;poise=0.2;strike=Hit"));
+    attacks.start(b, null, spec("windup=10;recover=4;guard=0.5;poise=0.2;strike=Hit;interrupted=Free"));
     EntityDamageEvent half = new EntityDamageEvent(b, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4);
     attacks.onStruck(half);
     attacks.onHurt(half);
@@ -341,7 +345,7 @@ class CombatTest {
     control.cast.clear();
     attacks.onHurtDone(new EntityDamageEvent(b, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 3));
     assertEquals(Phase.OPEN, attacks.phase(b), "20% of 20 health: staggered");
-    assertEquals(List.of("TR_Cue_Clear", "TR_Cue_Open"), control.cast);
+    assertEquals(List.of("TR_Cue_Clear", "TR_Cue_Open", "Free"), control.cast, "its fallback, on a stagger too");
     EntityDamageEvent open = new EntityDamageEvent(b, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 10);
     attacks.onHurt(open);
     assertEquals(14, open.getDamage(), 1e-9);
