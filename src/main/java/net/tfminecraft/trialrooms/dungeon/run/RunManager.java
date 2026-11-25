@@ -1629,12 +1629,12 @@ public final class RunManager {
         // its model stands in a barrier (so it can be clicked); without the model, a glowing block
         world().getBlockAt(b[0], b[1], b[2]).setType(look == null ? Material.CRYING_OBSIDIAN : Material.BARRIER, false);
         if (look != null) {
-            world().spawn(new Location(world(), b[0] + 0.5, b[1] + 0.5, b[2] + 0.5), org.bukkit.entity.ItemDisplay.class, d -> {
+            ar.extras.add(world().spawn(new Location(world(), b[0] + 0.5, b[1] + 0.5, b[2] + 0.5), org.bukkit.entity.ItemDisplay.class, d -> {
                 d.setItemStack(look);
                 d.setItemDisplayTransform(org.bukkit.entity.ItemDisplay.ItemDisplayTransform.FIXED);
                 d.setBrightness(new org.bukkit.entity.Display.Brightness(15, 15));
                 d.setPersistent(false);
-            });
+            }));
         }
         tell(ar, "§5A way out glimmers in the treasure room. §7Right-click it to leave alone, taking some of your finds.");
     }

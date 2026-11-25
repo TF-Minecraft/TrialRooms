@@ -149,11 +149,10 @@ public final class DungeonModule {
         if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
             if (plugins.isPluginEnabled("GunsAndGadgets")) {
-                startGuns();
+                optional("dungeon guns", this::startGuns);
             }
             if (plugins.isPluginEnabled("Magic")) {
-                loot.maker(new net.tfminecraft.trialrooms.dungeon.loot.MageLoot(
-                        new net.tfminecraft.trialrooms.dungeon.loot.MagicForge(), MmoLootForge::skin));
+                optional("dungeon mage weapons", this::startMageWeapons);
             }
             rewards = new DungeonRewards(loot, lockers, this::rewardRules, new java.util.Random(),
                     System::currentTimeMillis, java.time.ZoneId.systemDefault(), this::spoils, plugin.getLogger())
@@ -171,23 +170,50 @@ public final class DungeonModule {
         plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
     }
 
+    /** Starts what another plugin's newer version is for; without it, the rest goes on. */
+    void optional(String what, Runnable start) {
+        try {
+            start.run();
+        } catch (LinkageError e) {
+            plugin.getLogger().warning("[dungeons] " + what + " are off: their plugin is too old (" + e + ")");
+        }
+    }
+
+    private void startMageWeapons() {
+        var forge = new net.tfminecraft.trialrooms.dungeon.loot.MagicForge();
+        forge.archetypes(); // (fails here, not mid-run, when Magic doesn't have them)
+        loot.maker(new net.tfminecraft.trialrooms.dungeon.loot.MageLoot(forge, MmoLootForge::skin));
+    }
+
     /** Dungeon guns drop, and keep their dungeon lines when GunsAndGadgets brings their stats up to date. */
     private void startGuns() {
         var guns = new net.tfminecraft.trialrooms.dungeon.loot.GunLoot(
                 new net.tfminecraft.trialrooms.dungeon.loot.GgGunForge(), this::lootKit);
+        net.tfminecraft.gunsandgadgets.api.DungeonGuns.onRefresh(guns::refreshed);
         loot.guns(guns);
         this.guns = true;
-        net.tfminecraft.gunsandgadgets.api.DungeonGuns.onRefresh(guns::refreshed);
     }
 
     /** Starts set bonuses and weapon traits (inside dungeons only). */
     void startGear(net.tfminecraft.trialrooms.dungeon.gear.GearService.Stats stats) {
         gear = new net.tfminecraft.trialrooms.dungeon.gear.GearService(plugin.getServer(), runs::inDungeonWorld,
-                java.util.function.Predicate.not(runs::isDowned), runs::isRunMob, this::sets, this::worth, stats,
-                System::currentTimeMillis);
+                java.util.function.Predicate.not(runs::isDowned), this::enemy, this::sets, this::worth, stats,
+                System::currentTimeMillis, this::later);
         plugin.getServer().getPluginManager().registerEvents(gear, plugin);
         plugin.getServer().getScheduler().runTaskTimer(plugin, gear::tick, 20L, 10L);
     }
+
+    void later(Runnable task) {
+        plugin.getServer().getScheduler().runTask(plugin, task);
+    }
+
+    /** Whether an entity is a run's enemy (a player's summon there isn't). */
+    boolean enemy(org.bukkit.entity.Entity e) {
+        return runs.isRunMob(e) && owner.apply(e) == null;
+    }
+
+    /** The player behind a summon (needs MythicMobs running). */
+    java.util.function.Function<org.bukkit.entity.Entity, org.bukkit.entity.Player> owner = AllyFilter::ownerOf;
 
     /** What ways out look like, or null without the look. */
     org.bukkit.inventory.ItemStack wayOut() {

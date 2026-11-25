@@ -63,7 +63,7 @@ class GearTest {
     }
     gear = new GearService(server, p -> inside.contains(p.getUniqueId()), p -> !downed.contains(p.getUniqueId()),
         e -> e instanceof Zombie && !friendly.contains(e.getUniqueId()), () -> sets, () -> worth, (p, s) -> put.put(p.getUniqueId(), s),
-        () -> now);
+        () -> now, Runnable::run);
   }
 
   @AfterEach
@@ -94,7 +94,8 @@ class GearTest {
 
   double hit(Entity by, LivingEntity victim, double damage) {
     EntityDamageByEntityEvent e = new EntityDamageByEntityEvent(by, victim, EntityDamageEvent.DamageCause.ENTITY_ATTACK, damage);
-    gear.onDamage(e);
+    gear.onDealt(e);
+    gear.onTaken(e);
     return e.getDamage();
   }
 
@@ -141,6 +142,34 @@ class GearTest {
   }
 
   @Test
+  void burnsComeAfterTheHitAndHitsBelongToTheWeapon() {
+    List<Runnable> queued = new java.util.ArrayList<>();
+    GearService slow = new GearService(server, x -> true, x -> true, x -> x instanceof Zombie, () -> sets, () -> worth,
+        (x, st) -> {
+        }, () -> now, queued::add);
+    PlayerMock p = player("Ann", "burn");
+    slow.tick();
+    Zombie z = zombie(1);
+    for (int i = 0; i < 3; i++) {
+      slow.onDealt(new EntityDamageByEntityEvent(p, z, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4));
+    }
+    p.getInventory().setItemInMainHand(item("ward", Kind.WEAPON, 1));
+    slow.tick();
+    p.getInventory().setItemInMainHand(item("burn", Kind.WEAPON, 1));
+    slow.tick();
+    for (int i = 0; i < 4; i++) {
+      assertTrue(queued.isEmpty(), "the first three were another time's");
+      slow.onDealt(new EntityDamageByEntityEvent(p, z, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4));
+    }
+    double before = z.getHealth();
+    assertEquals(1, queued.size());
+    queued.getFirst().run();
+    assertEquals(before - 2, z.getHealth(), 1e-9);
+    z.setHealth(0);
+    queued.getFirst().run(); // it died meanwhile
+  }
+
+  @Test
   void whatTraitsLeaveAlone() {
     PlayerMock p = player("Ann", "rime");
     assertEquals(1, gear.result(p).traits().size());
@@ -148,7 +177,8 @@ class GearTest {
     // a thing that isn't alive, and shards near one
     var stand = world.spawn(new Location(world, 1, 5, 0), org.bukkit.entity.Arrow.class);
     EntityDamageByEntityEvent e = new EntityDamageByEntityEvent(p, stand, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4);
-    gear.onDamage(e);
+    gear.onDealt(e);
+    gear.onTaken(e);
     assertEquals(4, e.getDamage());
     PlayerMock s = player("Sid", "shards");
     Zombie z = zombie(1);
@@ -162,10 +192,11 @@ class GearTest {
     // hurt by an enemy that is no creature: not slowed
     Entity cloud = org.mockito.Mockito.mock(Entity.class);
     GearService any = new GearService(server, x -> true, x -> true, x -> true, () -> sets, () -> worth, (x, st) -> {
-    }, () -> now);
+    }, () -> now, Runnable::run);
     any.tick();
     EntityDamageByEntityEvent by = new EntityDamageByEntityEvent(cloud, p, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4);
-    any.onDamage(by);
+    any.onDealt(by);
+    any.onTaken(by);
     assertEquals(4, by.getDamage());
     // the dead aren't healed
     PlayerMock r = player("Ray", "mend");

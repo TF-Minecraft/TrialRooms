@@ -353,6 +353,20 @@ class DungeonRunCommandsTest {
     assertNull(m.wayOut(), "nothing loaded in this module yet");
     assertEquals(Map.of(), m.sets());
     assertEquals(Map.of(), m.worth());
+    assertFalse(m.enemy(mock(org.bukkit.entity.Entity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS)), "no run's");
+    var tagged = mock(org.bukkit.entity.Entity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+    when(tagged.getPersistentDataContainer().has(any(), any())).thenReturn(true);
+    m.owner = e -> null;
+    assertTrue(m.enemy(tagged));
+    m.owner = e -> mock(Player.class);
+    assertFalse(m.enemy(tagged), "a player's summon");
+    boolean[] ran = {false};
+    m.later(() -> ran[0] = true);
+    server.getScheduler().performTicks(1);
+    assertTrue(ran[0]);
+    m.optional("x", () -> {
+      throw new NoClassDefFoundError("api");
+    });
     assertNotNull(m.rewards());
     when(pm.isPluginEnabled("Magic")).thenReturn(true);
     when(pm.isPluginEnabled("GunsAndGadgets")).thenReturn(true);

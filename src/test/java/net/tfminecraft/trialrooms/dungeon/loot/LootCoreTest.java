@@ -141,7 +141,11 @@ public class LootCoreTest {
         new String[] {pool + "bonus: {p: [hp]}" + NL + "items: {b: {slot: weapon, recipe: r, pool: p}}" + NL
             + "names: {prefixes: [x], suffixes: [y]}" + NL
             + "sets: {s: {rarity: a, armour: {2: {mana: 1}}, jewellery: {2: {}}, trait: {kind: ward, value: 1}}}",
-            "set s: no worth for mana"})) {
+            "set s: no worth for mana"},
+        new String[] {pool + "bonus: {p: [hp]}" + NL + "items: {b: {slot: weapon, recipe: r, pool: p}}" + NL
+            + "names: {prefixes: [x], suffixes: [y]}" + NL
+            + "sets: {s-t: {rarity: a, armour: {2: {}}, jewellery: {2: {}}, trait: {kind: ward, value: 1}}}",
+            "set s-t: letters"})) {
       YamlConfiguration y = new YamlConfiguration();
       y.loadFromString(head + bad[0] + NL);
       problems.clear();

@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -65,6 +66,7 @@ public final class GearService implements Listener {
     private final Supplier<Map<String, Double>> worth;
     private final Stats stats;
     private final LongSupplier clock;
+    private final Consumer<Runnable> later;
     private final Server server;
     private final Map<UUID, State> states = new HashMap<>();
 
@@ -72,9 +74,11 @@ public final class GearService implements Listener {
      * @param inDungeon whether a player is inside a dungeon
      * @param up        whether a player can be healed (not downed)
      * @param enemy     whether an entity is a dungeon's enemy
+     * @param later     runs something next tick
      */
     public GearService(Server server, Predicate<Player> inDungeon, Predicate<Player> up, Predicate<Entity> enemy,
-            Supplier<Map<String, GearSet>> sets, Supplier<Map<String, Double>> worth, Stats stats, LongSupplier clock) {
+            Supplier<Map<String, GearSet>> sets, Supplier<Map<String, Double>> worth, Stats stats, LongSupplier clock,
+            Consumer<Runnable> later) {
         this.server = server;
         this.inDungeon = inDungeon;
         this.up = up;
@@ -83,6 +87,7 @@ public final class GearService implements Listener {
         this.worth = worth;
         this.stats = stats;
         this.clock = clock;
+        this.later = later;
     }
 
     /** Looks at every player again (run twice a second). */
@@ -108,6 +113,9 @@ public final class GearService implements Listener {
             return;
         }
         State s = states.computeIfAbsent(p.getUniqueId(), id -> new State());
+        if (!r.traits().equals(s.result.traits())) {
+            s.hits = 0; // another weapon's hits don't count for this one
+        }
         s.result = r;
         if (!s.applied.equals(r.stats())) {
             s.applied = r.stats();
@@ -165,15 +173,24 @@ public final class GearService implements Listener {
         return event.getDamager() instanceof Projectile shot && shot.getShooter() instanceof Entity by ? by : event.getDamager();
     }
 
-    /** Before a fight judges the hit (shielded elites, boss phases: HIGH), after its own say over enemies (LOWEST). */
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
-    public void onDamage(EntityDamageByEntityEvent event) {
+    /**
+     * Hits on enemies, once MythicLib has had its say (HIGHEST too, but its listener is older): it sets
+     * the damage of guns and skills there. The fight judges after it (boss phases, shielded elites).
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onDealt(EntityDamageByEntityEvent event) {
         Entity by = attacker(event);
         State out = active(by);
         if (out != null && event.getEntity() instanceof LivingEntity victim && enemy.test(victim)) {
             event.setDamage(event.getDamage() * dealt(out, victim));
             hit((Player) by, out, victim, event.getDamage());
         }
+    }
+
+    /** Hits by enemies, before anything asks whether they kill. */
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onTaken(EntityDamageByEntityEvent event) {
+        Entity by = attacker(event);
         State in = active(event.getEntity());
         if (in != null && enemy.test(by)) {
             event.setDamage(event.getDamage() * taken((Player) event.getEntity(), in));
@@ -207,13 +224,14 @@ public final class GearService implements Listener {
         double burn = r.value(Trait.Kind.BURN);
         if (burn > 0 && s.hits % 4 == 0) {
             victim.setFireTicks(Math.max(victim.getFireTicks(), 40));
-            harm(victim, damage * burn);
+            // (after this hit: MythicLib takes a second hit on a victim within one for the same attack)
+            later.accept(() -> harm(victim, damage * burn));
         }
         double shards = r.value(Trait.Kind.SHARDS);
         if (shards > 0 && s.hits % 5 == 0) {
             for (Entity e : victim.getNearbyEntities(3, 2, 3)) {
                 if (e instanceof LivingEntity near && enemy.test(near)) {
-                    harm(near, damage * shards);
+                    later.accept(() -> harm(near, damage * shards));
                 }
             }
         }
@@ -263,8 +281,10 @@ public final class GearService implements Listener {
 
     /** Damage with no attacker, so it never sets off traits again. */
     private static void harm(LivingEntity e, double damage) {
-        e.setNoDamageTicks(0);
-        e.damage(damage);
+        if (!e.isDead()) {
+            e.setNoDamageTicks(0);
+            e.damage(damage);
+        }
     }
 
     private static void slow(LivingEntity e, double seconds) {

@@ -130,6 +130,9 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
             }
         }
         for (GearSet s : sets.values()) {
+            if (!s.id().matches("\\w+")) {
+                throw new IllegalArgumentException("set " + s.id() + ": letters, digits and _ only");
+            }
             if (rarity(rarities, s.rarity()) == null) {
                 throw new IllegalArgumentException("set " + s.id() + ": no rarity " + s.rarity());
             }
