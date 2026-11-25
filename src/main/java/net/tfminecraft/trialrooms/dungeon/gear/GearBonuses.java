@@ -58,7 +58,7 @@ public final class GearBonuses {
                 continue;
             }
             boolean resonates = armour.getOrDefault(p.set(), List.of()).size() >= 2;
-            double strength = (p.kind() == Kind.OFF_HAND ? Trait.OFF_HAND : 1) * (resonates ? Trait.RESONANCE : 1);
+            double strength = p.share() * (p.kind() == Kind.OFF_HAND ? Trait.OFF_HAND : 1) * (resonates ? Trait.RESONANCE : 1);
             traits.add(new Active(set.trait(), strength));
             lines.add(set.name() + (p.kind() == Kind.OFF_HAND ? " off hand" : " weapon") + (resonates ? " (resonating)" : "")
                     + ": " + set.trait().text(strength));

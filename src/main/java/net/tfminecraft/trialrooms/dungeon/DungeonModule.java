@@ -85,6 +85,8 @@ public final class DungeonModule {
     private net.tfminecraft.trialrooms.dungeon.loot.Cosmetics cosmetics;
     private net.tfminecraft.trialrooms.dungeon.run.Affixes affixes;
     private DungeonLoot loot;
+    /** Whether GunsAndGadgets was told of dungeon guns. */
+    private boolean guns;
     private DungeonRewards rewards;
     private net.tfminecraft.trialrooms.dungeon.gear.GearService gear;
 
@@ -115,6 +117,9 @@ public final class DungeonModule {
         if (gear != null) {
             gear.stop();
         }
+        if (guns) {
+            net.tfminecraft.gunsandgadgets.api.DungeonGuns.onRefresh(null);
+        }
         if (runs != null) {
             runs.stop();
         }
@@ -143,13 +148,20 @@ public final class DungeonModule {
         }
         if (plugins.isPluginEnabled("MMOItems") && plugins.isPluginEnabled("AdvancedCrafting")) {
             loot = new DungeonLoot(new MmoLootForge(plugin.getLogger()), this::lootKit, new java.util.Random());
+            if (plugins.isPluginEnabled("GunsAndGadgets")) {
+                startGuns();
+            }
+            if (plugins.isPluginEnabled("Magic")) {
+                loot.maker(new net.tfminecraft.trialrooms.dungeon.loot.MageLoot(
+                        new net.tfminecraft.trialrooms.dungeon.loot.MagicForge(), MmoLootForge::skin));
+            }
             rewards = new DungeonRewards(loot, lockers, this::rewardRules, new java.util.Random(),
                     System::currentTimeMillis, java.time.ZoneId.systemDefault(), this::spoils, plugin.getLogger())
                     .cosmetics(this::cosmetics, net.tfminecraft.trialrooms.dungeon.loot.Cosmetics::runOnConsole)
                     .accounts(new net.tfminecraft.trialrooms.dungeon.loot.AccountLimits(root.resolve("accounts.yml").toFile(),
                             plugin.getLogger()));
             runs.rewards(rewards);
-            runs.wayOutLook(() -> lootKit == null ? null : loot.look(lootKit.looks() + "way_out"));
+            runs.wayOutLook(this::wayOut);
             startGear(new net.tfminecraft.trialrooms.dungeon.gear.MythicStats());
         } else {
             plugin.getLogger().warning("[dungeons] dungeon loot is off: it needs MMOItems and AdvancedCrafting");
@@ -159,13 +171,35 @@ public final class DungeonModule {
         plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
     }
 
+    /** Dungeon guns drop, and keep their dungeon lines when GunsAndGadgets brings their stats up to date. */
+    private void startGuns() {
+        var guns = new net.tfminecraft.trialrooms.dungeon.loot.GunLoot(
+                new net.tfminecraft.trialrooms.dungeon.loot.GgGunForge(), this::lootKit);
+        loot.guns(guns);
+        this.guns = true;
+        net.tfminecraft.gunsandgadgets.api.DungeonGuns.onRefresh(guns::refreshed);
+    }
+
     /** Starts set bonuses and weapon traits (inside dungeons only). */
     void startGear(net.tfminecraft.trialrooms.dungeon.gear.GearService.Stats stats) {
         gear = new net.tfminecraft.trialrooms.dungeon.gear.GearService(plugin.getServer(), runs::inDungeonWorld,
-                p -> !runs.isDowned(p), runs::isRunMob, () -> lootKit == null ? Map.of() : lootKit.sets(),
-                () -> lootKit == null ? Map.of() : lootKit.worth(), stats, System::currentTimeMillis);
+                java.util.function.Predicate.not(runs::isDowned), runs::isRunMob, this::sets, this::worth, stats,
+                System::currentTimeMillis);
         plugin.getServer().getPluginManager().registerEvents(gear, plugin);
         plugin.getServer().getScheduler().runTaskTimer(plugin, gear::tick, 20L, 10L);
+    }
+
+    /** What ways out look like, or null without the look. */
+    org.bukkit.inventory.ItemStack wayOut() {
+        return lootKit == null ? null : loot.look(lootKit.looks() + "way_out");
+    }
+
+    Map<String, net.tfminecraft.trialrooms.dungeon.gear.GearSet> sets() {
+        return lootKit == null ? Map.of() : lootKit.sets();
+    }
+
+    Map<String, Double> worth() {
+        return lootKit == null ? Map.of() : lootKit.worth();
     }
 
     /** Set bonuses at work, or null without loot. */

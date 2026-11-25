@@ -515,6 +515,42 @@ public final class DungeonRewards implements RunRewards, LockerExtras {
     }
 
     @Override
+    public List<Part> parts(Player p, String item, String other) {
+        Locker l = lockers.locker(p);
+        if (loot.guns() == null || l == null || l.item(item) == null || l.item(other) == null) {
+            return List.of();
+        }
+        return loot.guns().trades(lockers.show(l, item), lockers.show(l, other)).stream()
+                .map(t -> new Part(t.slot(), t.own(), t.other())).toList();
+    }
+
+    @Override
+    public String trade(Player p, String item, String other, String slot) {
+        if (parts(p, item, other).isEmpty()) {
+            return "§cThat gun is gone.";
+        }
+        Locker l = lockers.locker(p);
+        if (l.wornSlots().containsValue(item) || l.wornSlots().containsValue(other)) {
+            return "§cTake the worn loadout off first.";
+        }
+        ItemStack own = lockers.show(l, item);
+        ItemStack from = lockers.show(l, other);
+        ItemStack[] both = loot.guns().trade(own, from, slot);
+        if (both == null) {
+            return "§cThose parts don't work together.";
+        }
+        // Both guns go to disk in one write (a rebuilt gun keeps its value).
+        lockers.replace(l, item, valued(both[0], value(own)));
+        lockers.replace(l, other, valued(both[1], value(from)));
+        if (!lockers.saveLocker(p, l)) {
+            lockers.replace(l, item, own);
+            lockers.replace(l, other, from);
+            return "§cThe locker could not keep it, so nothing changed. Tell staff if this keeps happening.";
+        }
+        return "§aThe guns traded parts: " + slot + ".";
+    }
+
+    @Override
     public String socket(Player p, String gem, String item) {
         Locker l = lockers.locker(p);
         if (l == null || l.item(gem) == null || l.item(item) == null) {

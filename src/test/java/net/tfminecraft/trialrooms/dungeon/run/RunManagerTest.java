@@ -2226,8 +2226,18 @@ class RunManagerTest {
     clearCombat(ar, a);
     runs.openExit(a);
     assertTrue(nextMatching(a, "Stand by a way out in a treasure room"), "not shown yet");
+    org.bukkit.inventory.ItemStack look = new org.bukkit.inventory.ItemStack(org.bukkit.Material.PAPER);
+    runs.wayOutLook(() -> look);
+    org.bukkit.entity.ItemDisplay display = mock(org.bukkit.entity.ItemDisplay.class);
+    doAnswer(i -> {
+      i.<java.util.function.Consumer<org.bukkit.entity.ItemDisplay>>getArgument(2).accept(display);
+      return display;
+    }).when(dungeon).spawn(any(Location.class), eq(org.bukkit.entity.ItemDisplay.class),
+        org.mockito.ArgumentMatchers.<java.util.function.Consumer<? super org.bukkit.entity.ItemDisplay>>any());
     into(a, RoomType.TREASURE);
     ticks(2);
+    verify(display).setItemStack(look);
+    verify(display).setPersistent(false);
     assertTrue(nextMatching(a, "A way out glimmers"));
     assertEquals(2, store.pouch(a.getUniqueId()).banked().size(), "the treasure room banked");
     double[] c = ar.geometry().markers(t, "chest").get(0);

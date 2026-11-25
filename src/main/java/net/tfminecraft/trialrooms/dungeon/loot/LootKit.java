@@ -5,8 +5,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 import org.bukkit.configuration.ConfigurationSection;
 
@@ -86,19 +88,32 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
     }
 
     /**
-     * An item that can drop: an AdvancedCrafting recipe (armour and weapons), or an MMOItems template
-     * with its own stat ranges (jewellery).
+     * An item that can drop: an AdvancedCrafting recipe (armour and weapons), an MMOItems template
+     * with its own stat ranges (jewellery), or a weapon another plugin builds ({@link WeaponMaker}).
      *
      * @param name a name with %material% where a prefix goes
      * @param looks the looks of a set it may take (an armour weight; a weapon's own); empty keeps the
      *              template's look
+     * @param weapon  what another plugin builds: gun.TYPE or magic.ARCHETYPE
+     * @param classes who can use such a weapon (for the others their template says)
+     * @param runes   how many runes a mage weapon has at the least
      */
     public record Base(String id, String name, Slot slot, String recipe, String template, String pool,
-            Map<String, Range> stats, List<String> looks) {
+            Map<String, Range> stats, List<String> looks, String weapon, List<String> classes, int runes) {
         public Base {
-            if ((recipe == null) == (template == null)) {
-                throw new IllegalArgumentException("item " + id + ": give a recipe or a template, not both");
+            if (Stream.of(recipe, template, weapon).filter(Objects::nonNull).count() != 1) {
+                throw new IllegalArgumentException("item " + id + ": give a recipe, a template or a weapon (one of them)");
             }
+        }
+
+        public Base(String id, String name, Slot slot, String recipe, String template, String pool,
+                Map<String, Range> stats, List<String> looks) {
+            this(id, name, slot, recipe, template, pool, stats, looks, null, List.of(), 0);
+        }
+
+        /** Whether it gets bonus stats (a gun's go into its power). */
+        boolean bonuses() {
+            return weapon == null || !weapon.startsWith(GunLoot.PREFIX);
         }
     }
 
@@ -110,7 +125,7 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
             throw new IllegalArgumentException("loot: the rarity weights add up to nothing");
         }
         for (Base b : bases) {
-            if (!pools.containsKey(b.pool())) {
+            if (b.bonuses() && !pools.containsKey(b.pool())) {
                 throw new IllegalArgumentException("item " + b.id() + ": no bonus pool " + b.pool());
             }
         }
@@ -171,7 +186,8 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
                 bases.add(new Base(id, b.getString("name", id), Slot.valueOf(b.getString("slot", "").toUpperCase(Locale.ROOT)),
                         b.getString("recipe"), b.getString("template"), b.getString("pool", ""),
                         ranges(b.getConfigurationSection("stats")),
-                        b.isList("look") ? b.getStringList("look") : b.isString("look") ? List.of(b.getString("look")) : List.of()));
+                        b.isList("look") ? b.getStringList("look") : b.isString("look") ? List.of(b.getString("look")) : List.of(),
+                        b.getString("weapon"), b.getStringList("classes"), b.getInt("runes")));
             }
             Map<String, Double> worth = new LinkedHashMap<>();
             ConfigurationSection ws = section(y, "worth");
@@ -193,7 +209,8 @@ public record LootKit(Map<String, String> standard, List<Rarity> rarities, Map<I
     private static GearSet set(String id, ConfigurationSection s) {
         return new GearSet(id, s.getString("name", id), s.getString("rarity", ""), s.getStringList("dungeons"),
                 bonuses(s, "armour"), bonuses(s, "jewellery"),
-                new Trait(Trait.Kind.valueOf(s.getString("trait.kind", "").toUpperCase(Locale.ROOT)), s.getDouble("trait.value")));
+                new Trait(Trait.Kind.valueOf(s.getString("trait.kind", "").toUpperCase(Locale.ROOT)), s.getDouble("trait.value")),
+                s.isList("gun") ? GearSet.Tints.of(id, s.getStringList("gun")) : null);
     }
 
     /** pieces: {stat: units}. */

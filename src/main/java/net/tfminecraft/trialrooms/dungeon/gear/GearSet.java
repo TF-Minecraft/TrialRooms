@@ -13,9 +13,10 @@ import java.util.TreeMap;
  * @param dungeons  the dungeons (recipe ids) it drops in; empty: any
  * @param armour    armour pieces to the stats they give (in bonus units: worth times power)
  * @param jewellery jewellery pieces to the stats they give
+ * @param tints     the colours of its gun parts, or null for plain ones
  */
 public record GearSet(String id, String name, String rarity, List<String> dungeons,
-        Map<Integer, Map<String, Double>> armour, Map<Integer, Map<String, Double>> jewellery, Trait trait) {
+        Map<Integer, Map<String, Double>> armour, Map<Integer, Map<String, Double>> jewellery, Trait trait, Tints tints) {
 
     /** The damage stats a "damage" bonus raises together. */
     public static final List<String> DAMAGE = List.of("physical_damage", "projectile_damage", "magic_damage");
@@ -23,6 +24,37 @@ public record GearSet(String id, String name, String rarity, List<String> dungeo
     /** What a piece counts as. */
     public enum Kind {
         ARMOUR, JEWELLERY, WEAPON, OFF_HAND
+    }
+
+    /** What colour a set's metal, wood and fittings are on a gun. */
+    public record Tints(int metal, int wood, int fittings) {
+
+        /** [metal, wood, fittings], each #rrggbb. */
+        public static Tints of(String set, List<String> hex) {
+            if (hex.size() != 3 || !hex.stream().allMatch(h -> h.matches("#[0-9a-fA-F]{6}"))) {
+                throw new IllegalArgumentException("set " + set + ": gun needs three #rrggbb colours");
+            }
+            return new Tints(rgb(hex.get(0)), rgb(hex.get(1)), rgb(hex.get(2)));
+        }
+
+        private static int rgb(String hex) {
+            return Integer.parseInt(hex.substring(1), 16);
+        }
+
+        /** The colour of a gun's slot. */
+        public int of(String slot) {
+            return switch (slot) {
+                case "stock" -> wood;
+                case "action", "loader" -> fittings;
+                default -> metal;
+            };
+        }
+    }
+
+    /** A set whose gun parts are plain. */
+    public GearSet(String id, String name, String rarity, List<String> dungeons, Map<Integer, Map<String, Double>> armour,
+            Map<Integer, Map<String, Double>> jewellery, Trait trait) {
+        this(id, name, rarity, dungeons, armour, jewellery, trait, null);
     }
 
     public GearSet {
@@ -43,10 +75,15 @@ public record GearSet(String id, String name, String rarity, List<String> dungeo
 
     /** The lines an item of this set carries, with its numbers at the item's power. */
     public List<String> lore(Kind kind, double power, Map<String, Double> worth) {
+        return lore(kind, power, worth, 1);
+    }
+
+    /** With a weapon's share of the trait. */
+    public List<String> lore(Kind kind, double power, Map<String, Double> worth, double share) {
         List<String> out = new ArrayList<>();
         switch (kind) {
             case WEAPON -> {
-                out.add(name + " weapon: " + trait.text(1) + ".");
+                out.add(name + " weapon: " + trait.text(share) + ".");
                 out.add("Stronger with 2 pieces of " + name + " armour.");
             }
             case OFF_HAND -> out.add(name + " off hand: " + trait.text(Trait.OFF_HAND) + ".");

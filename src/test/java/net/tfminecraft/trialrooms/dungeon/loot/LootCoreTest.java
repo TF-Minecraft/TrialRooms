@@ -56,7 +56,10 @@ public class LootCoreTest {
     LootKit k = shipped();
     assertEquals("steel_ingot", k.standard().get("metal"));
     assertEquals(List.of("uncommon", "rare", "epic", "legendary"), k.rarities().stream().map(Rarity::id).toList());
-    assertEquals(42, k.bases().size());
+    assertEquals(49, k.bases().size());
+    assertEquals(List.of("Musketeer"), k.base("rifle").classes());
+    assertEquals(2, k.base("staff").runes());
+    assertTrue(k.sets().values().stream().allMatch(s -> s.tints() != null));
     assertEquals("Dungeon Gem", k.socket());
     assertEquals(Slot.RING, k.base("RING").slot());
     assertNull(k.base("nothing"));

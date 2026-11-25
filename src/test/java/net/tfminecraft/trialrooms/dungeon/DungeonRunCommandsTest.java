@@ -322,7 +322,7 @@ class DungeonRunCommandsTest {
   }
 
   @Test
-  void theModuleStartsAndStopsRuns() {
+  void theModuleStartsAndStopsRuns() throws Exception {
     JavaPlugin plugin = mock(JavaPlugin.class);
     Server srv = mock(Server.class);
     PluginManager pm = mock(PluginManager.class);
@@ -348,8 +348,30 @@ class DungeonRunCommandsTest {
     when(pm.isPluginEnabled("AdvancedCrafting")).thenReturn(true);
     m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
     assertNotNull(m.loot());
+    assertNull(m.loot().guns(), "no GunsAndGadgets here");
+    assertNotNull(m.gear());
+    assertNull(m.wayOut(), "nothing loaded in this module yet");
+    assertEquals(Map.of(), m.sets());
+    assertEquals(Map.of(), m.worth());
     assertNotNull(m.rewards());
+    when(pm.isPluginEnabled("Magic")).thenReturn(true);
+    when(pm.isPluginEnabled("GunsAndGadgets")).thenReturn(true);
+    m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
+    assertNotNull(m.loot().guns());
     assertNull(m.rewardRules(), "nothing loaded in this module yet");
+    Path files = temp.resolve("dungeons");
+    java.nio.file.Files.createDirectories(files);
+    try (var in = DungeonModule.class.getResourceAsStream("/dungeons/loot.yml")) {
+      java.nio.file.Files.copy(in, files.resolve("loot.yml"));
+    }
+    m.reload();
+    var api = mock(net.tfminecraft.tlibs.objects.api.ItemAPI.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+    try (var libs = mockStatic(net.tfminecraft.tlibs.TLibs.class)) {
+      libs.when(net.tfminecraft.tlibs.TLibs::getItemAPI).thenReturn(api);
+      when(api.getCreator().getItemFromPath("ia.tfmc_dungeons:way_out"))
+          .thenReturn(new org.bukkit.inventory.ItemStack(org.bukkit.Material.PAPER));
+      assertNotNull(m.wayOut());
+    }
     // the ally filter and its staff report
     DungeonCommand dc = new DungeonCommand(m);
     CommandSender staff = mock(CommandSender.class);
@@ -370,6 +392,24 @@ class DungeonRunCommandsTest {
       verify(staff).sendMessage("§aAlly filter: 1 mechanics: 1 help, 0 harm, 1 filtered");
     }
     m.disable();
+  }
+
+  @Test
+  void playersSeeTheirSetBonuses() {
+    CommandSender console = mock(CommandSender.class);
+    c.run(console, new String[] {"sets"});
+    verify(console).sendMessage("§cOnly players wear dungeon gear.");
+    Player p = mock(Player.class);
+    c.run(p, new String[] {"sets"});
+    var gear = mock(net.tfminecraft.trialrooms.dungeon.gear.GearService.class);
+    when(module.gear()).thenReturn(gear);
+    when(gear.result(p)).thenReturn(net.tfminecraft.trialrooms.dungeon.gear.GearBonuses.Result.NONE);
+    c.run(p, new String[] {"sets"});
+    verify(p, times(2)).sendMessage("§7No set bonuses: wear dungeon gear in a dungeon.");
+    when(gear.result(p)).thenReturn(new net.tfminecraft.trialrooms.dungeon.gear.GearBonuses.Result(Map.of(), List.of(),
+        List.of("Delver armour: 2 of 4")));
+    c.run(p, new String[] {"sets"});
+    verify(p).sendMessage("§7Delver armour: 2 of 4");
   }
 
   @Test

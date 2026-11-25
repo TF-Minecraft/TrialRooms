@@ -122,6 +122,66 @@ class GearTest {
   }
 
   @Test
+  void setBonusesAreMythicLibModifiers() {
+    PlayerMock p = server.addPlayer("Ann");
+    var data = org.mockito.Mockito.mock(io.lumine.mythic.lib.api.player.MMOPlayerData.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+    MythicStats stats = new MythicStats();
+    try (var players = org.mockito.Mockito.mockStatic(io.lumine.mythic.lib.api.player.MMOPlayerData.class);
+        var made = org.mockito.Mockito.mockConstruction(io.lumine.mythic.lib.api.stat.modifier.StatModifier.class)) {
+      players.when(() -> io.lumine.mythic.lib.api.player.MMOPlayerData.get(p.getUniqueId())).thenReturn(data);
+      stats.set(p, Map.of("armor", 2.0));
+      org.mockito.Mockito.verify(made.constructed().getFirst()).register(data);
+      org.mockito.Mockito.verify(data.getStatMap(), org.mockito.Mockito.never()).getInstance("ARMOR");
+      stats.set(p, Map.of());
+      org.mockito.Mockito.verify(data.getStatMap().getInstance("ARMOR")).remove("trialrooms_dungeon_sets");
+      assertEquals(1, made.constructed().size());
+      stats.set(p, Map.of());
+      org.mockito.Mockito.verify(data.getStatMap().getInstance("ARMOR"), org.mockito.Mockito.times(1)).remove("trialrooms_dungeon_sets");
+    }
+  }
+
+  @Test
+  void whatTraitsLeaveAlone() {
+    PlayerMock p = player("Ann", "rime");
+    assertEquals(1, gear.result(p).traits().size());
+    assertSame(GearBonuses.Result.NONE, gear.result(server.addPlayer("Bob")));
+    // a thing that isn't alive, and shards near one
+    var stand = world.spawn(new Location(world, 1, 5, 0), org.bukkit.entity.Arrow.class);
+    EntityDamageByEntityEvent e = new EntityDamageByEntityEvent(p, stand, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4);
+    gear.onDamage(e);
+    assertEquals(4, e.getDamage());
+    PlayerMock s = player("Sid", "shards");
+    Zombie z = zombie(1);
+    Zombie friend = zombie(2);
+    friendly.add(friend.getUniqueId());
+    double before = friend.getHealth();
+    for (int i = 0; i < 5; i++) {
+      hit(s, z, 2);
+    }
+    assertEquals(before, friend.getHealth());
+    // hurt by an enemy that is no creature: not slowed
+    Entity cloud = org.mockito.Mockito.mock(Entity.class);
+    GearService any = new GearService(server, x -> true, x -> true, x -> true, () -> sets, () -> worth, (x, st) -> {
+    }, () -> now);
+    any.tick();
+    EntityDamageByEntityEvent by = new EntityDamageByEntityEvent(cloud, p, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 4);
+    any.onDamage(by);
+    assertEquals(4, by.getDamage());
+    // the dead aren't healed
+    PlayerMock r = player("Ray", "mend");
+    Zombie prey = zombie(3);
+    prey.setHealth(0);
+    r.setHealth(0);
+    org.bukkit.event.entity.EntityDeathEvent death = org.mockito.Mockito.mock(org.bukkit.event.entity.EntityDeathEvent.class);
+    Zombie dead = org.mockito.Mockito.mock(Zombie.class);
+    org.mockito.Mockito.when(death.getEntity()).thenReturn(dead);
+    org.mockito.Mockito.when(dead.getKiller()).thenReturn(r);
+    org.mockito.Mockito.when(dead.getUniqueId()).thenReturn(UUID.randomUUID());
+    gear.onDeath(death);
+    assertEquals(0, r.getHealth());
+  }
+
+  @Test
   void itemsRememberTheirSet() {
     assertNull(GearTags.read(null));
     assertNull(GearTags.read(new ItemStack(Material.PAPER)));

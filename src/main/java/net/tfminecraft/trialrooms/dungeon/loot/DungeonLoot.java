@@ -1,5 +1,6 @@
 package net.tfminecraft.trialrooms.dungeon.loot;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,11 +41,30 @@ public final class DungeonLoot {
     private final LootForge forge;
     private final Supplier<LootKit> kit;
     private final Random rng;
+    private final List<WeaponMaker> makers = new ArrayList<>();
+    private GunLoot guns;
 
     public DungeonLoot(LootForge forge, Supplier<LootKit> kit, Random rng) {
         this.forge = forge;
         this.kit = kit;
         this.rng = rng;
+    }
+
+    /** Guns drop too (GunsAndGadgets is there). */
+    public DungeonLoot guns(GunLoot guns) {
+        this.guns = guns;
+        return maker(guns);
+    }
+
+    /** Guns, or null without them. */
+    public GunLoot guns() {
+        return guns;
+    }
+
+    /** Another plugin's weapons drop too. */
+    public DungeonLoot maker(WeaponMaker maker) {
+        makers.add(maker);
+        return this;
     }
 
     /**
@@ -75,7 +95,7 @@ public final class DungeonLoot {
         Base base;
         if (baseId != null) {
             base = k.base(baseId);
-            if (base == null || source(k, base, sources).isEmpty()) {
+            if (base == null || (base.weapon() == null ? source(k, base, sources).isEmpty() : maker(k, base) == null)) {
                 return new Rolled(null, "There is no item " + baseId + " that can be made.");
             }
         } else {
@@ -84,10 +104,14 @@ public final class DungeonLoot {
                 return new Rolled(null, "No dungeon item fits " + p.getName() + "'s class (" + cls + ").");
             }
         }
-        Source s = source(k, base, sources).orElseThrow();
-        ItemStack item = forge.make(LootRoller.plan(k, base, s.stats(), tier, rarity,
-                LootRoller.set(k, rarity, dungeon, rng), rng), s.template(), s.managed(),
-                k.socket());
+        ItemStack item;
+        if (base.weapon() != null) {
+            item = maker(k, base).make(k, base, tier, rarity, dungeon, rng);
+        } else {
+            Source s = source(k, base, sources).orElseThrow();
+            item = forge.make(LootRoller.plan(k, base, s.stats(), tier, rarity,
+                    LootRoller.set(k, rarity, dungeon, rng), rng), s.template(), s.managed(), k.socket());
+        }
         return item == null ? new Rolled(null, "The item " + base.id() + " could not be built.")
                 : new Rolled(item, null, rarity.id());
     }
@@ -149,12 +173,17 @@ public final class DungeonLoot {
         });
     }
 
+    private WeaponMaker maker(LootKit k, Base b) {
+        return makers.stream().filter(m -> m.makes(k, b)).findFirst().orElse(null);
+    }
+
     private boolean usable(LootKit k, Base b, String cls, Map<String, Optional<Source>> cache) {
-        Optional<Source> s = source(k, b, cache);
-        if (s.isEmpty()) {
-            return false;
+        List<String> classes;
+        if (b.weapon() != null) {
+            classes = maker(k, b) == null ? null : b.classes();
+        } else {
+            classes = source(k, b, cache).map(s -> forge.classes(s.template())).orElse(null);
         }
-        List<String> classes = forge.classes(s.get().template());
         return classes != null && (classes.isEmpty() || cls != null && classes.stream().anyMatch(cls::equalsIgnoreCase));
     }
 }

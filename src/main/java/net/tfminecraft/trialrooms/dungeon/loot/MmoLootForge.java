@@ -149,7 +149,12 @@ public final class MmoLootForge implements LootForge {
         mmo.setData(ItemStats.UNBREAKABLE, new BooleanData(true));
         ItemStack built = builder.apply(mmo);
         return tagged(plan, plan.look() == null ? built
-                : TLibs.getItemAPI().getArmorMerger().merge(built, Optional.empty(), plan.look()));
+                : skin(built, plan.look()));
+    }
+
+    /** An item with a look (a TLibs item path) on it. */
+    public static ItemStack skin(ItemStack item, String look) {
+        return TLibs.getItemAPI().getArmorMerger().merge(item, Optional.empty(), look);
     }
 
     /** Marks an item as the set piece it is. */

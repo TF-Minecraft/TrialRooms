@@ -19,6 +19,8 @@
         <tlibs.version>2.4.0</tlibs.version>
         <rpcharacters.version>2.45.0</rpcharacters.version>
         <advancedcrafting.version>2.10.0</advancedcrafting.version>
+        <gunsandgadgets.version>2.7.0</gunsandgadgets.version>
+        <magic.version>0.17.0</magic.version>
     </properties>
 
     <dependencies>
@@ -92,6 +94,30 @@
             <groupId>net.tfminecraft</groupId>
             <artifactId>advancedcrafting</artifactId>
             <version>${advancedcrafting.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>net.tfminecraft</groupId>
+            <artifactId>gunsandgadgets</artifactId>
+            <version>${gunsandgadgets.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>net.tfminecraft</groupId>
+            <artifactId>magic</artifactId>
+            <version>${magic.version}</version>
             <scope>provided</scope>
             <exclusions>
                 <exclusion>

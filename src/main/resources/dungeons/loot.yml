@@ -10,6 +10,9 @@
 standard:
   metal: steel_ingot
   wood: refined_maplewood
+  # GunsAndGadgets' metal and wood for guns. (Mage weapons start from Magic's steel core.)
+  gun-metal: steel
+  gun-wood: maplewood
 
 # From the most common up. weight: how often (a tier's luck favours the rarer ones); power: how much
 # stronger than the standard piece; bonus: extra stats from the item's pool; sockets: empty sockets
@@ -57,6 +60,7 @@ bonus:
   melee: [physical_damage, max_health, lifesteal, physical_damage_reduction]
   ranged: [projectile_damage, max_health, lifesteal, projectile_damage_reduction]
   bard: [magic_damage, max_health, magic_damage_reduction, physical_damage_reduction]
+  mage: [magic_damage, max_health, magic_damage_reduction, physical_damage_reduction]
   jewellery: [max_health, physical_damage, projectile_damage, magic_damage, physical_damage_reduction,
     projectile_damage_reduction, magic_damage_reduction]
 
@@ -186,6 +190,16 @@ items:
   shortbow: {recipe: shortbow, slot: weapon, pool: ranged, look: shortbow, name: "%material% Shortbow"}
   crossbow: {recipe: crossbow, slot: weapon, pool: ranged, look: crossbow, name: "%material% Crossbow"}
   longbow: {recipe: longbow, slot: weapon, pool: ranged, look: longbow, name: "%material% Longbow"}
+  # Guns (GunsAndGadgets): each part rolls its own shape and set; a gun's bonus stats and sockets are
+  # part of its power. Mage weapons (Magic) come with their runes: as many as a crafted one of the act's
+  # metal has sockets (runes), and their rarity's gem sockets are more runes (at most four).
+  rifle: {weapon: gun.rifle, classes: [Musketeer], slot: weapon, name: "%material% Rifle"}
+  pistol: {weapon: gun.pistol, classes: [Musketeer], slot: weapon, name: "%material% Pistol"}
+  shotgun: {weapon: gun.shotgun, classes: [Musketeer], slot: weapon, name: "%material% Shotgun"}
+  launcher: {weapon: gun.launcher, classes: [Musketeer], slot: weapon, name: "%material% Launcher"}
+  staff: {weapon: magic.staff, runes: 2, classes: [Invoker], slot: weapon, pool: mage, look: staff, name: "%material% Mage Staff"}
+  wand: {weapon: magic.wand, runes: 1, classes: [Conjurer], slot: weapon, pool: mage, look: wand, name: "%material% Mage Wand"}
+  mage_blade: {weapon: magic.sword, runes: 1, classes: [Battlemage], slot: weapon, pool: mage, look: mage_blade, name: "%material% Mage Blade"}
   shield: {recipe: shield, slot: off_hand, pool: armour, look: shield, name: "%material% Shield"}
   banner: {recipe: banner, slot: off_hand, pool: armour, look: standard, name: "%material% Battle Standard"}
   ring: {template: ring.fine_jeweled_ring, slot: ring, pool: jewellery, look: [ring_1, ring_2], name: "%material% Ring", stats: {max_health: [0.4, 0.8]}}
@@ -209,7 +223,8 @@ looks: "ia.tfmc_dungeons:"
 # ring, amulet and two artifacts. trait: what its weapons do (kind and how much), stronger by half
 # with 2 pieces of its armour; off-hand pieces give two fifths of it. Every set's bonuses add up to the
 # same units (damage raises physical, projectile and magic damage alike and counts once, as each class
-# deals one), and the traits are meant to be worth the same.
+# deals one), and the traits are meant to be worth the same. gun: the colours of its gun parts (metal,
+# wood, fittings).
 sets:
   delver:
     name: Delver
@@ -217,6 +232,7 @@ sets:
     dungeons: []
     armour: {2: {max_health: 3}, 4: {armor: 3, max_health: 3}}
     jewellery: {2: {max_health: 2}, 4: {lifesteal: 2, max_health: 2}}
+    gun: ["#827a70", "#896727", "#6f5134"]
     trait: {kind: opening, value: 0.15}
   sellsword:
     name: Sellsword
@@ -224,6 +240,7 @@ sets:
     dungeons: []
     armour: {2: {damage: 3}, 4: {damage: 6}}
     jewellery: {2: {lifesteal: 2}, 4: {damage: 4}}
+    gun: ["#959ea8", "#584638", "#827a70"]
     trait: {kind: execute, value: 0.12}
   warden:
     name: Warden
@@ -231,6 +248,7 @@ sets:
     dungeons: []
     armour: {2: {armor: 3}, 4: {physical_damage_reduction: 3, max_health: 3}}
     jewellery: {2: {physical_damage_reduction: 2}, 4: {max_health: 4}}
+    gun: ["#959ea8", "#896727", "#e0c36c"]
     trait: {kind: ward, value: 0.1}
   gravebound:
     name: Gravebound
@@ -238,6 +256,7 @@ sets:
     dungeons: []
     armour: {2: {lifesteal: 3}, 4: {max_health: 4, lifesteal: 2}}
     jewellery: {2: {lifesteal: 2}, 4: {magic_damage_reduction: 2, max_health: 2}}
+    gun: ["#5d6268", "#ded3b9", "#c9bb9d"]
     trait: {kind: mend, value: 0.05}
   ember:
     name: Emberforged
@@ -245,6 +264,7 @@ sets:
     dungeons: []
     armour: {2: {damage: 3}, 4: {damage: 6}}
     jewellery: {2: {damage: 2}, 4: {damage: 4}}
+    gun: ["#4c4854", "#73503f", "#4c4854"]
     trait: {kind: burn, value: 0.4}
   duskwoven:
     name: Duskwoven
@@ -252,6 +272,7 @@ sets:
     dungeons: []
     armour: {2: {damage: 3}, 4: {damage: 4, projectile_damage_reduction: 2}}
     jewellery: {2: {damage: 2}, 4: {damage: 2, max_health: 2}}
+    gun: ["#565a70", "#5f5090", "#adb2bc"]
     trait: {kind: composed, value: 0.1}
   drowned:
     name: Drowned Crown
@@ -259,6 +280,7 @@ sets:
     dungeons: []
     armour: {2: {magic_damage_reduction: 3}, 4: {max_health: 4, armor: 2}}
     jewellery: {2: {magic_damage_reduction: 2}, 4: {max_health: 2, armor: 2}}
+    gun: ["#9c8843", "#479093", "#f0c968"]
     trait: {kind: chill, value: 2}
   firstlight:
     name: Firstlight
@@ -266,6 +288,7 @@ sets:
     dungeons: []
     armour: {2: {max_health: 3}, 4: {max_health: 3, damage: 3}}
     jewellery: {2: {max_health: 2}, 4: {damage: 4}}
+    gun: ["#ddd3be", "#734543", "#f0c968"]
     trait: {kind: radiance, value: 0.02}
   garrison:
     name: Seithr Garrison
@@ -273,6 +296,7 @@ sets:
     dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
     armour: {2: {armor: 3}, 4: {armor: 3, projectile_damage_reduction: 3}}
     jewellery: {2: {armor: 2}, 4: {max_health: 4}}
+    gun: ["#4a967f", "#584638", "#b4884c"]
     trait: {kind: brace, value: 0.08}
   court:
     name: Seithr Court
@@ -280,6 +304,7 @@ sets:
     dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
     armour: {2: {damage: 3}, 4: {damage: 3, armor: 3}}
     jewellery: {2: {damage: 2}, 4: {lifesteal: 4}}
+    gun: ["#959ea8", "#7d5382", "#93775a"]
     trait: {kind: duel, value: 0.12}
   marquis:
     name: Seithr Marquis
@@ -287,6 +312,7 @@ sets:
     dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
     armour: {2: {physical_damage_reduction: 3}, 4: {magic_damage_reduction: 3, max_health: 3}}
     jewellery: {2: {projectile_damage_reduction: 2}, 4: {max_health: 2, armor: 2}}
+    gun: ["#51617b", "#584638", "#adb2bc"]
     trait: {kind: rime, value: 2}
   royal:
     name: Seithr Royal
@@ -294,4 +320,5 @@ sets:
     dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
     armour: {2: {damage: 3}, 4: {damage: 6}}
     jewellery: {2: {max_health: 2}, 4: {damage: 4}}
+    gun: ["#4a967f", "#476599", "#cfa86c"]
     trait: {kind: shards, value: 0.4}

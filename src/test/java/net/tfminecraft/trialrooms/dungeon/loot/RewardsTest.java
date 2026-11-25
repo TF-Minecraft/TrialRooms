@@ -297,6 +297,41 @@ public class RewardsTest {
     assertEquals("§cThat gem or item is gone.", r.socket(ann, "g", "i"));
   }
 
+  @Test
+  void gunsTradePartsInTheLocker() {
+    DungeonRewards r = rewards(new Random(1));
+    assertEquals(List.of(), r.parts(ann, "a", "b"), "no guns here");
+    GunLoot guns = mock(GunLoot.class);
+    when(loot.guns()).thenReturn(guns);
+    assertEquals(List.of(), r.parts(ann, "a", "b"));
+    locker.put("a", new byte[] {1});
+    assertEquals(List.of(), r.parts(ann, "a", "b"));
+    assertEquals("§cThat gun is gone.", r.trade(ann, "a", "b", "stock"));
+    locker.put("b", new byte[] {2});
+    when(lockers.show(locker, "a")).thenReturn(sword);
+    when(lockers.show(locker, "b")).thenReturn(gem);
+    when(guns.trades(sword, gem)).thenReturn(List.of(new GunLoot.Trade("stock", "x", "y")));
+    assertEquals(List.of(new LockerExtras.Part("stock", "x", "y")), r.parts(ann, "a", "b"));
+    assertEquals("§cThose parts don't work together.", r.trade(ann, "a", "b", "stock"));
+    ItemStack first = mock(ItemStack.class);
+    ItemStack second = mock(ItemStack.class);
+    when(guns.trade(sword, gem, "stock")).thenReturn(new ItemStack[] {first, second});
+    assertEquals("§aThe guns traded parts: stock.", r.trade(ann, "a", "b", "stock"));
+    verify(lockers).replace(locker, "a", first);
+    verify(lockers).replace(locker, "b", second);
+    when(lockers.saveLocker(ann, locker)).thenReturn(false);
+    assertTrue(r.trade(ann, "a", "b", "stock").contains("nothing changed"));
+    verify(lockers).replace(locker, "a", sword);
+    verify(lockers).replace(locker, "b", gem);
+    locker.assign(0, 0, "b");
+    locker.wear(0, Map.of(), 1);
+    assertEquals("§cTake the worn loadout off first.", r.trade(ann, "a", "b", "stock"));
+    when(guns.trades(gem, sword)).thenReturn(List.of(new GunLoot.Trade("stock", "y", "x")));
+    assertEquals("§cTake the worn loadout off first.", r.trade(ann, "b", "a", "stock"));
+    when(lockers.locker(ann)).thenReturn(null);
+    assertEquals(List.of(), r.parts(ann, "a", "b"));
+  }
+
   /** An item mock whose clones keep the amount they are given. */
   static ItemStack stackable(String name, int max) {
     ItemStack it = mock(ItemStack.class);
