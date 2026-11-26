@@ -43,8 +43,11 @@ public final class Attacks implements Listener {
         final MobControl.Area area;
         boolean rooted;
         int age;
-        /** Until it has stood one tick without moving, it is left aware (so its last stride isn't kept). */
-        boolean settled;
+        /**
+         * Ticks it stays aware with no speed, so its own movement ticks once at speed 0 and drops its last
+         * stride (an attack started by a MythicMobs timer comes before the mob's AI in the same tick).
+         */
+        int settling = 2;
 
         Active(LivingEntity mob, Entity target, AttackState state, MobControl.Area area) {
             this.mob = mob;
@@ -149,8 +152,7 @@ public final class Attacks implements Listener {
                 continue;
             }
             AttackSpec spec = a.state.spec();
-            if (a.rooted && !a.settled) {
-                a.settled = true;
+            if (a.rooted && a.settling > 0 && --a.settling == 0) {
                 ((Mob) a.mob).setAware(false);
             }
             if (a.state.phase() == Phase.WINDUP && breaks(a.mob, spec)) {
@@ -184,7 +186,8 @@ public final class Attacks implements Listener {
     /** Whether a status breaks this windup off: a silence a spell, a freeze or stun anything. */
     private boolean breaks(LivingEntity mob, AttackSpec spec) {
         CombatSettings s = settings.get();
-        return (spec.magic() ? s.interruptAuras() : s.staggerAuras()).stream().anyMatch(aura -> control.hasAura(mob, aura));
+        return s.staggerAuras().stream().anyMatch(aura -> control.hasAura(mob, aura))
+                || spec.magic() && s.interruptAuras().stream().anyMatch(aura -> control.hasAura(mob, aura));
     }
 
     /** How many times longer a windup takes on this enemy now. */

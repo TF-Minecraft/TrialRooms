@@ -224,8 +224,10 @@ class CombatTest {
     assertEquals(Phase.WINDUP, attacks.phase(z));
     assertTrue(control.marks.isEmpty(), "not a boss: nothing on the ground");
     ticks(1);
+    assertTrue(z.isAware(), "one AI tick at speed 0 first");
+    ticks(1);
     assertFalse(z.isAware());
-    ticks(2);
+    ticks(1);
     assertEquals(List.of("TR_Cue_Dodge", "Go@Ann", "Hit@Ann", "TR_Cue_Open"), control.cast);
     assertEquals(1 + 0.4, attacks.taken(z), 1e-9);
     control.level = 4;
