@@ -24,12 +24,13 @@ import java.util.Locale;
  * @param forceGround mark the area for any enemy, not only bosses and leaders
  * @param strike      the MythicMobs skill that lands the hit
  * @param start       the skill that starts it (animation and sound), or null
+ * @param chain       the skill cast the moment it ends unbroken (the next part of a combo), or null
  * @param interrupted the skill it falls back on when broken off, by a silence, a freeze or a stagger (its
  *                    alternative), or null
  */
 public record AttackSpec(String id, int windup, int recover, double guard, double poise, boolean magic, Shape ground,
         double radius, double angle, boolean leave, boolean root, boolean forceGround, String strike, String start,
-        String interrupted) {
+        String interrupted, String chain) {
 
     /** What is marked on the ground while it winds up. */
     public enum Shape {
@@ -64,6 +65,7 @@ public record AttackSpec(String id, int windup, int recover, double guard, doubl
         }
         start = blank(start);
         interrupted = blank(interrupted);
+        chain = blank(chain);
     }
 
     private static String blank(String s) {
@@ -85,7 +87,7 @@ public record AttackSpec(String id, int windup, int recover, double guard, doubl
                 bool(option, "magic", false), shape, number(option, "radius", 3), number(option, "angle", 90),
                 leave == null ? shape == Shape.RING || shape == Shape.TARGET : Boolean.parseBoolean(leave),
                 bool(option, "root", true), bool(option, "forceground", false), option.apply("strike"),
-                option.apply("start"), option.apply("interrupted"));
+                option.apply("start"), option.apply("interrupted"), option.apply("chain"));
     }
 
     private static String or(String a, String b) {

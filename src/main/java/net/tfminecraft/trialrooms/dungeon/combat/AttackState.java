@@ -84,9 +84,9 @@ public final class AttackState {
         return true;
     }
 
-    /** A silence or freeze; true when it breaks the attack off (only a spell's windup). */
-    public boolean interrupt() {
-        if (phase != Phase.WINDUP || !spec.magic()) {
+    /** A status that breaks it off (a silence on a spell, a freeze or stun on anything); true when it was winding up. */
+    public boolean stagger() {
+        if (phase != Phase.WINDUP) {
             return false;
         }
         breakOff();

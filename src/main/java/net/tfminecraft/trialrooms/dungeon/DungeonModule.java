@@ -282,6 +282,7 @@ public final class DungeonModule {
      */
     public org.bukkit.entity.Entity mobTest(String type, org.bukkit.Location at, int tier, boolean leader) {
         org.bukkit.entity.Entity mob = mobs == null ? null : mobs.spawn(type, at, Math.max(1, tier));
+        testLeaders.removeIf(id -> plugin.getServer().getEntity(id) == null); // (gone ones)
         if (mob != null && leader) {
             testLeaders.add(mob.getUniqueId());
         }

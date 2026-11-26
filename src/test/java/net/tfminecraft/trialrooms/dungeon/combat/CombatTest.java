@@ -88,10 +88,13 @@ class CombatTest {
     server = MockBukkit.mock();
     world = server.addSimpleWorld("d");
     attacks = new Attacks(control, () -> settings, marked::contains);
+    Attacks.stopPath = m -> {
+    };
   }
 
   @AfterEach
   void down() {
+    Attacks.stopPath = Attacks.STOP_PATH;
     MockBukkit.unmock();
   }
 
@@ -109,11 +112,11 @@ class CombatTest {
   @Test
   void specsReadTheirOptions() {
     AttackSpec s = spec("windup=13;recover=16;guard=0.25;poise=0.1;magic=true;ground=cone;radius=4;angle=60;strike=Hit;start=Go;"
-        + "interrupted=Alt;root=false;forceground=true;id=cleave");
-    assertEquals(new AttackSpec("cleave", 13, 16, 0.25, 0.1, true, Shape.CONE, 4, 60, false, false, true, "Hit", "Go", "Alt"), s);
+        + "interrupted=Alt;root=false;forceground=true;id=cleave;chain=Next");
+    assertEquals(new AttackSpec("cleave", 13, 16, 0.25, 0.1, true, Shape.CONE, 4, 60, false, false, true, "Hit", "Go", "Alt", "Next"), s);
     assertTrue(s.staggers());
     AttackSpec d = spec("strike=Hit");
-    assertEquals(new AttackSpec("Hit", 13, 16, 0.5, 0, false, Shape.NONE, 3, 90, false, true, false, "Hit", null, null), d);
+    assertEquals(new AttackSpec("Hit", 13, 16, 0.5, 0, false, Shape.NONE, 3, 90, false, true, false, "Hit", null, null, null), d);
     assertFalse(d.staggers());
     assertTrue(spec("strike=Hit;ground=ring").leave(), "a ring is to be left");
     assertTrue(spec("strike=Hit;ground=target").leave());
@@ -140,7 +143,7 @@ class CombatTest {
     assertEquals(Phase.OPEN, s.phase());
     assertEquals(1.3, s.taken(0.3), 1e-9);
     assertFalse(s.hurt(100, 10), "only a windup can be staggered");
-    assertFalse(s.interrupt());
+    assertFalse(s.stagger());
     assertEquals(Step.NOTHING, s.tick(5));
     assertEquals(Step.OVER, s.tick(1));
     assertEquals(Phase.OVER, s.phase());
@@ -166,10 +169,8 @@ class CombatTest {
     assertEquals(Step.OVER, heavy.tick(1), "its recovery and the stagger's");
     AttackState steady = new AttackState(spec("windup=10;strike=H"), 30);
     assertFalse(steady.hurt(1000, 10), "no poise: never staggers");
-    assertFalse(steady.interrupt(), "not a spell");
-    AttackState spell = new AttackState(spec("windup=10;magic=true;strike=H"), 30);
-    assertTrue(spell.interrupt());
-    assertTrue(spell.broken());
+    assertTrue(steady.stagger(), "a status breaks any windup off (which statuses: the settings)");
+    assertTrue(steady.broken());
   }
 
   @Test
@@ -179,15 +180,21 @@ class CombatTest {
     y.set("open-bonus", List.of(0.5, 0.2));
     y.set("stagger-ticks", 10);
     y.set("interrupt-auras", List.of("Stun"));
+    y.set("stagger-auras", List.of("Frozen"));
     y.set("slow-auras.Chilled", 2.0);
     y.set("slowness-step", 0.1);
+    y.set("max-slow", 3.0);
     y.set("cues.open", "My_Open");
+    y.set("cues.clear", "");
     CombatSettings s = CombatSettings.from(y);
     assertEquals(List.of(0.5, 0.2), s.openBonus());
     assertEquals(0.5, s.openBonus(0));
     assertEquals(0.2, s.openBonus(7), "past the list: the last");
     assertEquals(10, s.staggerTicks());
     assertEquals(List.of("Stun"), s.interruptAuras());
+    assertEquals(List.of("Frozen"), s.staggerAuras());
+    assertEquals(3.0, s.maxSlow());
+    assertNull(s.cues().get(Cue.CLEAR), "a blank cue: none");
     assertEquals(Map.of("Chilled", 2.0), s.slowAuras());
     assertEquals("My_Open", s.cues().get(Cue.OPEN));
     assertEquals("TR_Cue_Dodge", s.cues().get(Cue.DODGE));
@@ -196,8 +203,9 @@ class CombatTest {
     YamlConfiguration bad = new YamlConfiguration();
     bad.set("open-bonus", List.of());
     assertThrows(IllegalArgumentException.class, () -> CombatSettings.from(bad));
-    assertThrows(IllegalArgumentException.class, () -> new CombatSettings(List.of(0.1), -1, List.of(), Map.of(), 0, Map.of()));
-    assertThrows(IllegalArgumentException.class, () -> new CombatSettings(List.of(0.1), 0, List.of(), Map.of(), -1, Map.of()));
+    assertThrows(IllegalArgumentException.class, () -> new CombatSettings(List.of(0.1), -1, List.of(), List.of(), Map.of(), 0, 2, Map.of()));
+    assertThrows(IllegalArgumentException.class, () -> new CombatSettings(List.of(0.1), 0, List.of(), List.of(), Map.of(), -1, 2, Map.of()));
+    assertThrows(IllegalArgumentException.class, () -> new CombatSettings(List.of(0.1), 0, List.of(), List.of(), Map.of(), 0, 0.5, Map.of()));
   }
 
   @Test
@@ -207,13 +215,17 @@ class CombatTest {
     control.named.put(victim, "Ann");
     assertTrue(attacks.start(z, victim, spec("windup=3;recover=2;guard=0.5;strike=Hit;start=Go")));
     assertTrue(attacks.busy(z));
-    assertFalse(z.isAware(), "it stands still");
+    var speed = z.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+    assertNotNull(speed.getModifier(Attacks.ROOT), "it stops walking at once");
+    assertTrue(z.isAware(), "and stops thinking a tick later");
     assertFalse(attacks.start(z, victim, spec("strike=Hit")), "busy");
     assertEquals(List.of("TR_Cue_Dodge", "Go@Ann"), control.cast);
     assertEquals(0.5, attacks.taken(z));
     assertEquals(Phase.WINDUP, attacks.phase(z));
     assertTrue(control.marks.isEmpty(), "not a boss: nothing on the ground");
-    ticks(3);
+    ticks(1);
+    assertFalse(z.isAware());
+    ticks(2);
     assertEquals(List.of("TR_Cue_Dodge", "Go@Ann", "Hit@Ann", "TR_Cue_Open"), control.cast);
     assertEquals(1 + 0.4, attacks.taken(z), 1e-9);
     control.level = 4;
@@ -223,6 +235,7 @@ class CombatTest {
     assertFalse(attacks.busy(z));
     assertNull(attacks.phase(z));
     assertTrue(z.isAware());
+    assertNull(speed.getModifier(Attacks.ROOT));
     assertEquals("TR_Cue_Clear", control.cast.getLast());
     assertEquals(1, attacks.taken(z));
     // no recovery: over at the strike
@@ -231,9 +244,9 @@ class CombatTest {
     assertTrue(z.isAware(), "a moving attack");
     ticks(1);
     assertFalse(attacks.busy(z));
-    assertEquals(List.of("TR_Cue_Dodge", "Hit", "TR_Cue_Open", "TR_Cue_Clear"), control.cast);
+    assertEquals(List.of("TR_Cue_Dodge", "Hit", "TR_Cue_Clear"), control.cast, "no opening: no white flash");
     // a cue left out of the settings casts nothing
-    settings = new CombatSettings(List.of(0.3), 30, List.of(), Map.of(), 0.2, Map.of());
+    settings = new CombatSettings(List.of(0.3), 30, List.of(), List.of(), Map.of(), 0.2, 2, Map.of());
     control.cast.clear();
     attacks.start(z, null, spec("windup=1;recover=0;strike=Hit"));
     ticks(1);
@@ -299,14 +312,22 @@ class CombatTest {
     ticks(1);
     assertFalse(control.cast.contains("Bolt"));
     ticks(60);
-    // a swing ignores a silence
+    // a swing ignores a silence, but a freeze or stun breaks it off
     control.cast.clear();
     attacks.start(mage, null, spec("windup=2;recover=0;strike=Swing"));
     ticks(2);
     assertTrue(control.cast.contains("Swing"));
-    // slows: Slowness III (x1.6) and the Slowed aura (x1.3)
+    control.auras.put(mage, Set.of("Stun_Aura"));
+    attacks.start(mage, null, spec("windup=4;recover=0;strike=Swing2"));
+    ticks(1);
+    assertEquals(Phase.OPEN, attacks.phase(mage), "stunned out of its swing");
+    ticks(40);
+    // slows: Slowness III (x1.6) and a slow aura (x1.3), at most twice as long
+    settings = new CombatSettings(List.of(0.3), 30, List.of(), List.of(), Map.of("Slowed", 1.3), 0.2, 2, CombatSettings.DEFAULTS.cues());
     control.auras.put(mage, Set.of("Slowed"));
     mage.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 200, 2));
+    assertEquals(2, attacks.slow(mage), 1e-9, "capped: a freeze never makes it tougher for long");
+    settings = new CombatSettings(List.of(0.3), 30, List.of(), List.of(), Map.of("Slowed", 1.3), 0.2, 3, CombatSettings.DEFAULTS.cues());
     assertEquals(1.6 * 1.3, attacks.slow(mage), 1e-9);
     control.cast.clear();
     attacks.start(mage, null, spec("windup=4;recover=0;strike=Swing"));
@@ -376,7 +397,6 @@ class CombatTest {
     dying.setHealth(0);
     ticks(1);
     assertFalse(attacks.busy(dying));
-    assertFalse(dying.isAware());
     // a mob gone mid-attack is dropped on the next tick
     LivingEntity unloaded = mock(LivingEntity.class);
     when(unloaded.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
@@ -395,6 +415,58 @@ class CombatTest {
     attacks.stop();
     assertFalse(attacks.busy(a));
     assertTrue(a.isAware());
+  }
+
+  @Test
+  void combosChainAndKillingBlowsSkipTheFallback() {
+    Zombie z = zombie();
+    attacks.start(z, null, spec("windup=2;recover=0;strike=Swing1;chain=Swing2_TRY"));
+    ticks(2);
+    assertEquals(List.of("TR_Cue_Dodge", "Swing1", "TR_Cue_Clear", "Swing2_TRY"), control.cast, "the next part in the same tick");
+    // broken off: no next part
+    control.cast.clear();
+    attacks.start(z, null, spec("windup=4;recover=0;poise=0.1;strike=Swing1;chain=Swing2_TRY"));
+    attacks.onHurtDone(new EntityDamageEvent(z, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 5));
+    ticks(60);
+    assertFalse(control.cast.contains("Swing2_TRY"));
+    // a stagger by the killing blow: no fallback from the dying
+    Zombie b = zombie();
+    b.setHealth(3);
+    control.cast.clear();
+    attacks.start(b, null, spec("windup=4;poise=0.1;strike=Hit;interrupted=Alt"));
+    attacks.onHurtDone(new EntityDamageEvent(b, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 5));
+    assertFalse(control.cast.contains("Alt"));
+    // a mob with no speed to take away is still rooted
+    org.bukkit.entity.Mob odd = mock(org.bukkit.entity.Mob.class, RETURNS_DEEP_STUBS);
+    when(odd.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+    when(odd.getLocation()).thenReturn(new Location(world, 0, 5, 0));
+    when(odd.isAware()).thenReturn(true);
+    when(odd.isValid()).thenReturn(true);
+    when(odd.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED)).thenReturn(null);
+    Attacks.stopPath = Attacks.STOP_PATH;
+    attacks.start(odd, null, spec("windup=1;recover=0;strike=Hit"));
+    verify(odd.getPathfinder()).stopPathfinding();
+    Attacks.stopPath = m -> {
+    };
+    ticks(2); // (its deep-stubbed Slowness slows it a little)
+    verify(odd).setAware(false);
+    verify(odd).setAware(true);
+    // a speed already held back isn't held back twice
+    Zombie twice = zombie();
+    var speed = twice.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+    speed.addTransientModifier(new org.bukkit.attribute.AttributeModifier(Attacks.ROOT, -1,
+        org.bukkit.attribute.AttributeModifier.Operation.MULTIPLY_SCALAR_1));
+    attacks.start(twice, null, spec("windup=1;recover=0;strike=Hit"));
+    assertEquals(1, speed.getModifiers().size());
+    attacks.stop();
+    // stopped mid-combo: no next part
+    control.cast.clear();
+    attacks.start(z, null, spec("windup=4;recover=0;strike=Swing1;chain=Swing2_TRY"));
+    attacks.stop();
+    assertFalse(control.cast.contains("Swing2_TRY"));
+    // a slow aura the enemy doesn't carry changes nothing
+    settings = new CombatSettings(List.of(0.3), 30, List.of(), List.of(), Map.of("Chilled", 1.5), 0.2, 2, Map.of());
+    assertEquals(1, attacks.slow(zombie()));
   }
 
   @Test

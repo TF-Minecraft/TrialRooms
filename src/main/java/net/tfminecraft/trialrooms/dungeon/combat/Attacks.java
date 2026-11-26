@@ -43,6 +43,8 @@ public final class Attacks implements Listener {
         final MobControl.Area area;
         boolean rooted;
         int age;
+        /** Until it has stood one tick without moving, it is left aware (so its last stride isn't kept). */
+        boolean settled;
 
         Active(LivingEntity mob, Entity target, AttackState state, MobControl.Area area) {
             this.mob = mob;
@@ -85,7 +87,7 @@ public final class Attacks implements Listener {
         Active a = new Active(mob, target, new AttackState(spec, settings.get().staggerTicks()), area);
         active.put(mob.getUniqueId(), a);
         if (spec.root() && mob instanceof Mob m && m.isAware()) {
-            m.setAware(false);
+            root(m);
             a.rooted = true;
         }
         cue(mob, spec.leave() ? Cue.LEAVE : Cue.DODGE);
@@ -100,6 +102,31 @@ public final class Attacks implements Listener {
         }
         return true;
     }
+
+    /** No more walking: its speed goes to nothing at once; it stops thinking a tick later (see {@link #tick}). */
+    private static void root(Mob m) {
+        var speed = m.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+        if (speed != null && speed.getModifier(ROOT) == null) {
+            speed.addTransientModifier(new org.bukkit.attribute.AttributeModifier(ROOT, -1,
+                    org.bukkit.attribute.AttributeModifier.Operation.MULTIPLY_SCALAR_1));
+        }
+        stopPath.accept(m);
+    }
+
+    /** Drops the path a mob was following (the test server has no pathfinders). */
+    static final java.util.function.Consumer<Mob> STOP_PATH = m -> m.getPathfinder().stopPathfinding();
+    static java.util.function.Consumer<Mob> stopPath = STOP_PATH;
+
+    private static void unroot(Mob m) {
+        var speed = m.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+        if (speed != null) {
+            speed.removeModifier(ROOT);
+        }
+        m.setAware(true);
+    }
+
+    static final org.bukkit.NamespacedKey ROOT = java.util.Objects.requireNonNull(
+            org.bukkit.NamespacedKey.fromString("trialrooms:attack_root"));
 
     private static MobControl.Area area(LivingEntity mob, Entity target, AttackSpec spec) {
         Location at = spec.ground() == AttackSpec.Shape.TARGET && target != null ? target.getLocation() : mob.getLocation();
@@ -122,7 +149,12 @@ public final class Attacks implements Listener {
                 continue;
             }
             AttackSpec spec = a.state.spec();
-            if (a.state.phase() == Phase.WINDUP && interrupted(a.mob) && a.state.interrupt()) {
+            if (a.rooted && !a.settled) {
+                a.settled = true;
+                ((Mob) a.mob).setAware(false);
+            }
+            if (a.state.phase() == Phase.WINDUP && breaks(a.mob, spec)) {
+                a.state.stagger();
                 brokeOff(a);
                 if (spec.interrupted() != null) {
                     control.cast(a.mob, spec.interrupted(), a.target);
@@ -132,7 +164,9 @@ public final class Attacks implements Listener {
             Step step = a.state.tick(slow(a.mob));
             if (step == Step.STRIKE) {
                 control.cast(a.mob, spec.strike(), a.target);
-                cue(a.mob, Cue.OPEN);
+                if (a.state.phase() == Phase.OPEN) {
+                    cue(a.mob, Cue.OPEN);
+                }
             } else if (step == Step.OVER) {
                 end(a);
                 continue;
@@ -147,8 +181,10 @@ public final class Attacks implements Listener {
         }
     }
 
-    private boolean interrupted(LivingEntity mob) {
-        return settings.get().interruptAuras().stream().anyMatch(aura -> control.hasAura(mob, aura));
+    /** Whether a status breaks this windup off: a silence a spell, a freeze or stun anything. */
+    private boolean breaks(LivingEntity mob, AttackSpec spec) {
+        CombatSettings s = settings.get();
+        return (spec.magic() ? s.interruptAuras() : s.staggerAuras()).stream().anyMatch(aura -> control.hasAura(mob, aura));
     }
 
     /** How many times longer a windup takes on this enemy now. */
@@ -164,7 +200,7 @@ public final class Attacks implements Listener {
                 factor *= e.getValue();
             }
         }
-        return factor;
+        return Math.min(factor, s.maxSlow());
     }
 
     private void brokeOff(Active a) {
@@ -175,10 +211,14 @@ public final class Attacks implements Listener {
     private void end(Active a) {
         active.remove(a.mob.getUniqueId());
         if (a.rooted && !a.mob.isDead()) {
-            ((Mob) a.mob).setAware(true); // (only a Mob is rooted)
+            unroot((Mob) a.mob); // (only a Mob is rooted)
         }
         if (!a.mob.isDead()) {
             cue(a.mob, Cue.CLEAR);
+            String chain = a.state.spec().chain();
+            if (chain != null && !a.state.broken() && a.state.phase() == Phase.OVER) {
+                control.cast(a.mob, chain, a.target); // in the same tick: nothing else starts in between
+            }
         }
     }
 
@@ -216,7 +256,8 @@ public final class Attacks implements Listener {
         Active a = active.get(event.getEntity().getUniqueId());
         if (a != null && a.state.hurt(event.getFinalDamage(), maxHealth(a.mob))) {
             brokeOff(a);
-            if (a.state.spec().interrupted() != null) { // (what it does when broken off, by a stagger too)
+            boolean dies = a.mob.getHealth() - event.getFinalDamage() <= 0;
+            if (a.state.spec().interrupted() != null && !dies) { // (what it does when broken off, by a stagger too)
                 control.cast(a.mob, a.state.spec().interrupted(), a.target);
             }
         }

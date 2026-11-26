@@ -352,11 +352,16 @@ class DungeonRunCommandsTest {
     when(mobs.spawn("Dungeon_Seithr_Soldier", spot, 3)).thenReturn(z);
     assertSame(z, m.mobTest("Dungeon_Seithr_Soldier", spot, 3, true));
     assertTrue(m.marked(z), "a staff test leader");
+    when(srv.getEntity(z.getUniqueId())).thenReturn(z);
     org.bukkit.entity.Zombie plain = mock(org.bukkit.entity.Zombie.class);
     when(plain.getUniqueId()).thenReturn(UUID.randomUUID());
     when(mobs.spawn("Dungeon_Seithr_Soldier", spot, 1)).thenReturn(plain);
     assertSame(plain, m.mobTest("Dungeon_Seithr_Soldier", spot, 1, false));
     assertFalse(m.marked(plain));
+    assertTrue(m.marked(z), "still there");
+    when(srv.getEntity(z.getUniqueId())).thenReturn(null);
+    m.mobTest("Nope", spot, 1, false);
+    assertFalse(m.marked(z), "gone: forgotten");
     m.startCombat(mock(net.tfminecraft.trialrooms.dungeon.combat.MobControl.class));
     verify(pm, times(5)).registerEvents(any(), eq(plugin)); // a control that listens to nothing: only the attacks
     assertNull(m.mobTest("Nope", spot, 0, false));
