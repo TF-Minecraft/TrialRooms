@@ -17,17 +17,22 @@ import io.lumine.mythic.api.skills.SkillResult;
 import io.lumine.mythic.api.skills.ThreadSafetyLevel;
 import io.lumine.mythic.bukkit.BukkitAdapter;
 import io.lumine.mythic.bukkit.MythicBukkit;
+import io.lumine.mythic.api.skills.conditions.IEntityCondition;
+import io.lumine.mythic.bukkit.events.MythicConditionLoadEvent;
 import io.lumine.mythic.bukkit.events.MythicMechanicLoadEvent;
 import io.lumine.mythic.core.mobs.ActiveMob;
 
 /**
  * Enemy attacks on MythicMobs: skills cast, auras read, areas drawn in dust, and the
- * {@code dungeonattack} mechanic that skills use to start an attack.
+ * {@code dungeonattack} mechanic that skills use to start an attack, and the {@code dungeonbroken} condition
+ * that keeps the rest of a broken-off attack's start skill from playing.
  */
 public final class MythicControl implements MobControl, Listener {
 
     /** The mechanic's name in skill files. */
     public static final String MECHANIC = "dungeonattack";
+    /** The condition's name in skill files: true when the caster's latest attack was broken off. */
+    public static final String CONDITION = "dungeonbroken";
     static final Color RED = Color.fromRGB(0xE0, 0x30, 0x30);
     static final Color ORANGE = Color.fromRGB(0xFF, 0xA0, 0x20);
 
@@ -127,6 +132,24 @@ public final class MythicControl implements MobControl, Listener {
             event.register(new Mechanic(spec, attacks));
         } catch (IllegalArgumentException e) {
             log.warning("[dungeons] bad " + MECHANIC + " line (" + event.getConfig().getLine() + "): " + e.getMessage());
+        }
+    }
+
+    /** Registers {@code dungeonbroken} as MythicMobs loads conditions. */
+    @EventHandler
+    public void onConditionLoad(MythicConditionLoadEvent event) {
+        if (CONDITION.equalsIgnoreCase(event.getConditionName())) {
+            event.register(new Broken(attacks));
+        }
+    }
+
+    /** The condition: whether the entity's latest attack was broken off (false with no engine). */
+    record Broken(java.util.function.Supplier<Attacks> attacks) implements IEntityCondition {
+
+        @Override
+        public boolean check(io.lumine.mythic.api.adapters.AbstractEntity entity) {
+            Attacks a = attacks.get();
+            return a != null && entity != null && a.brokenOff(entity.getBukkitEntity());
         }
     }
 

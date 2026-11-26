@@ -44,10 +44,17 @@ public final class RunListener implements Listener {
 
     private final Plugin plugin;
     private final RunManager runs;
+    private final java.util.function.Predicate<Entity> enemy;
 
     public RunListener(Plugin plugin, RunManager runs) {
+        this(plugin, runs, runs::isRunMob);
+    }
+
+    /** @param enemy whether an entity is a run's enemy (a player's summon there isn't) */
+    public RunListener(Plugin plugin, RunManager runs, java.util.function.Predicate<Entity> enemy) {
         this.plugin = plugin;
         this.runs = runs;
+        this.enemy = enemy;
     }
 
     /** The player behind a hit: the attacker, or whoever shot the projectile. */
@@ -79,6 +86,9 @@ public final class RunListener implements Listener {
             return;
         }
         if (!(event.getEntity() instanceof Player victim)) {
+            if (enemy.test(event.getEntity()) && enemyProof(event)) {
+                event.setCancelled(true);
+            }
             return;
         }
         if (attacker != null && !attacker.equals(victim)) {
@@ -91,6 +101,19 @@ public final class RunListener implements Listener {
                 victim.teleport(runs.downedSpot(victim));
             }
         }
+    }
+
+    /**
+     * A hit an enemy doesn't take: from another enemy (no friendly fire on their side either), or from its
+     * own fall or the crowd it is packed in (leaps and swarms are theirs, not a way to kill them).
+     */
+    private boolean enemyProof(EntityDamageEvent event) {
+        EntityDamageEvent.DamageCause cause = event.getCause();
+        if (cause == EntityDamageEvent.DamageCause.FALL || cause == EntityDamageEvent.DamageCause.CRAMMING) {
+            return true;
+        }
+        Entity source = source(event);
+        return source != null && !source.equals(event.getEntity()) && enemy.test(source);
     }
 
     /** The entity behind a hit: whoever caused it, the attacker, or whoever shot the projectile. */

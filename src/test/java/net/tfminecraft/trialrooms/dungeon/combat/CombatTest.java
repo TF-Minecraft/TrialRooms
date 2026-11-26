@@ -304,13 +304,16 @@ class CombatTest {
     control.auras.put(mage, Set.of("Silenced"));
     control.cast.clear();
     ticks(1);
-    assertEquals(List.of("TR_Cue_Clear", "TR_Cue_Open", "Blink"), control.cast, "its alternative");
+    assertEquals(List.of("TR_Cue_Clear", "TR_Cue_Break", "TR_Cue_Open", "Blink"), control.cast, "its alternative");
     assertEquals(Phase.OPEN, attacks.phase(mage));
+    assertTrue(attacks.brokenOff(mage), "the rest of its start skill must not play");
     ticks(40);
     assertFalse(attacks.busy(mage));
+    assertTrue(attacks.brokenOff(mage), "still, until its next attack");
     // without an alternative it only stands open
     control.cast.clear();
     attacks.start(mage, null, spec("windup=10;magic=true;strike=Bolt"));
+    assertFalse(attacks.brokenOff(mage), "a new attack starts unbroken");
     ticks(1);
     assertFalse(control.cast.contains("Bolt"));
     ticks(60);
@@ -347,6 +350,25 @@ class CombatTest {
   }
 
   @Test
+  void brokenOffIsForgottenWithTheMob() {
+    Zombie a = zombie();
+    Zombie b = zombie();
+    attacks.start(a, null, spec("windup=10;strike=Hit"));
+    attacks.start(b, null, spec("windup=10;strike=Hit"));
+    control.auras.put(a, Set.of("Frozen"));
+    control.auras.put(b, Set.of("Frozen"));
+    ticks(1);
+    assertTrue(attacks.brokenOff(a));
+    assertTrue(attacks.brokenOff(b));
+    a.remove();
+    ticks(1);
+    assertFalse(attacks.brokenOff(a), "gone: forgotten");
+    assertTrue(attacks.brokenOff(b));
+    attacks.stop();
+    assertFalse(attacks.brokenOff(b), "the plugin stops: forgotten");
+  }
+
+  @Test
   void hitsFollowTheGuardOpeningAndPoise() {
     Zombie z = zombie();
     Zombie by = zombie();
@@ -375,7 +397,7 @@ class CombatTest {
     control.cast.clear();
     attacks.onHurtDone(new EntityDamageEvent(b, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 3));
     assertEquals(Phase.OPEN, attacks.phase(b), "20% of 20 health: staggered");
-    assertEquals(List.of("TR_Cue_Clear", "TR_Cue_Open", "Free"), control.cast, "its fallback, on a stagger too");
+    assertEquals(List.of("TR_Cue_Clear", "TR_Cue_Break", "TR_Cue_Open", "Free"), control.cast, "its fallback, on a stagger too");
     EntityDamageEvent open = new EntityDamageEvent(b, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 10);
     attacks.onHurt(open);
     assertEquals(14, open.getDamage(), 1e-9);

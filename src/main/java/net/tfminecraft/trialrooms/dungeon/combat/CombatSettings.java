@@ -35,6 +35,8 @@ public record CombatSettings(List<Double> openBonus, int staggerTicks, List<Stri
         INTERRUPT,
         /** White flash: it stands open, hit it now. */
         OPEN,
+        /** Broken off: the attack animation stops. */
+        BREAK,
         /** Back to normal. */
         CLEAR
     }
@@ -48,6 +50,7 @@ public record CombatSettings(List<Double> openBonus, int staggerTicks, List<Stri
         m.put(Cue.LEAVE, "TR_Cue_Leave");
         m.put(Cue.INTERRUPT, "TR_Cue_Interrupt");
         m.put(Cue.OPEN, "TR_Cue_Open");
+        m.put(Cue.BREAK, "TR_Cue_Break");
         m.put(Cue.CLEAR, "TR_Cue_Clear");
         return m;
     }

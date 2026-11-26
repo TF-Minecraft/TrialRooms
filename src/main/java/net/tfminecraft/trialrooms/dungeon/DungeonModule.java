@@ -183,7 +183,7 @@ public final class DungeonModule {
         // (after set bonuses, before the run's own judgement: both act on hits at HIGHEST)
         startCombat(new net.tfminecraft.trialrooms.dungeon.combat.MythicControl(this::attacks, plugin.getLogger()));
         runs.start();
-        plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs), plugin);
+        plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs, this::enemy), plugin);
         plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
     }
 

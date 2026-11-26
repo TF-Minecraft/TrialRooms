@@ -26,6 +26,8 @@ import io.lumine.mythic.api.skills.ThreadSafetyLevel;
 import io.lumine.mythic.bukkit.BukkitAPIHelper;
 import io.lumine.mythic.bukkit.BukkitAdapter;
 import io.lumine.mythic.bukkit.MythicBukkit;
+import io.lumine.mythic.api.skills.conditions.IEntityCondition;
+import io.lumine.mythic.bukkit.events.MythicConditionLoadEvent;
 import io.lumine.mythic.bukkit.events.MythicMechanicLoadEvent;
 import io.lumine.mythic.core.mobs.ActiveMob;
 import net.tfminecraft.trialrooms.dungeon.combat.AttackSpec.Shape;
@@ -89,6 +91,28 @@ class MythicControlTest {
         MythicControl.outline(ring).size());
     assertTrue(MythicControl.outline(new MobControl.Area(Shape.NONE, w, 0, 64, 0, 0, 2, 90)).isEmpty());
     control.mark(new MobControl.Area(Shape.NONE, w, 0, 64, 0, 0, 2, 90), false);
+  }
+
+  @Test
+  void theConditionTellsABrokenOffAttack() {
+    MythicConditionLoadEvent other = mock(MythicConditionLoadEvent.class);
+    when(other.getConditionName()).thenReturn("hasaura");
+    control.onConditionLoad(other);
+    verify(other, never()).register(any());
+    MythicConditionLoadEvent event = mock(MythicConditionLoadEvent.class);
+    when(event.getConditionName()).thenReturn("DungeonBroken");
+    control.onConditionLoad(event);
+    var captor = org.mockito.ArgumentCaptor.forClass(io.lumine.mythic.api.skills.conditions.ISkillCondition.class);
+    verify(event).register(captor.capture());
+    IEntityCondition condition = (IEntityCondition) captor.getValue();
+    Zombie mob = mock(Zombie.class);
+    AbstractEntity entity = mock(AbstractEntity.class);
+    when(entity.getBukkitEntity()).thenReturn(mob);
+    assertFalse(condition.check(entity));
+    when(attacks.brokenOff(mob)).thenReturn(true);
+    assertTrue(condition.check(entity));
+    assertFalse(condition.check(null));
+    assertFalse(new MythicControl.Broken(() -> null).check(entity), "no engine");
   }
 
   @Test

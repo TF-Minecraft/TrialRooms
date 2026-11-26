@@ -106,6 +106,35 @@ class RunListenerTest {
   }
 
   @Test
+  void enemiesNeverHurtEachOtherNorFallToTheirDeath() {
+    LivingEntity a = mock(LivingEntity.class);
+    LivingEntity b = mock(LivingEntity.class);
+    LivingEntity summon = mock(LivingEntity.class);
+    Player p = player();
+    when(runs.inDungeonWorld(any())).thenReturn(true);
+    l = new RunListener(plugin, runs, e -> e == a || e == b);
+    EntityDamageEvent friendly = damage(b, a, DamageCause.ENTITY_ATTACK, 5);
+    l.onAnyDamage(friendly);
+    assertTrue(friendly.isCancelled(), "an enemy's blow on another enemy");
+    Arrow arrow = mock(Arrow.class);
+    when(arrow.getShooter()).thenReturn(a);
+    EntityDamageEvent shot = damage(b, arrow, DamageCause.PROJECTILE, 5);
+    l.onAnyDamage(shot);
+    assertTrue(shot.isCancelled(), "or its arrow");
+    for (DamageCause own : new DamageCause[] { DamageCause.FALL, DamageCause.CRAMMING }) {
+      EntityDamageEvent e = damage(b, null, own, 5);
+      l.onAnyDamage(e);
+      assertTrue(e.isCancelled(), own + " doesn't hurt an enemy");
+    }
+    for (EntityDamageEvent e : List.of(damage(a, a, DamageCause.MAGIC, 5), damage(b, p, DamageCause.ENTITY_ATTACK, 5),
+        damage(b, summon, DamageCause.ENTITY_ATTACK, 5), damage(b, null, DamageCause.FIRE_TICK, 5),
+        damage(summon, a, DamageCause.ENTITY_ATTACK, 5))) {
+      l.onAnyDamage(e);
+      assertFalse(e.isCancelled(), "itself, players, their summons and fire still hurt; enemies still hurt summons");
+    }
+  }
+
+  @Test
   void runEnemiesHitAndTakeHitsAsTheirFightSays() {
     Player p = player();
     LivingEntity mob = mock(LivingEntity.class);

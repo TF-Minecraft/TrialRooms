@@ -61,6 +61,8 @@ public final class Attacks implements Listener {
     private final Supplier<CombatSettings> settings;
     private final Predicate<Entity> marked;
     private final Map<UUID, Active> active = new HashMap<>();
+    /** Enemies whose latest attack was broken off, until their next one starts. */
+    private final Map<UUID, LivingEntity> brokenOff = new HashMap<>();
 
     /** @param marked enemies whose attack areas are marked on the ground (bosses and leaders) */
     public Attacks(MobControl control, Supplier<CombatSettings> settings, Predicate<Entity> marked) {
@@ -80,6 +82,14 @@ public final class Attacks implements Listener {
         return a == null ? null : a.state.phase();
     }
 
+    /**
+     * Whether an enemy's latest attack was broken off (a stagger, a silence on a spell, a freeze or stun):
+     * the parts of its start skill still to come must not play (MythicMobs condition {@code dungeonbroken}).
+     */
+    public boolean brokenOff(Entity mob) {
+        return brokenOff.containsKey(mob.getUniqueId());
+    }
+
     /** Starts an attack; false when the enemy is already attacking (or dead). */
     public boolean start(LivingEntity mob, Entity target, AttackSpec spec) {
         if (mob.isDead() || busy(mob)) {
@@ -89,6 +99,7 @@ public final class Attacks implements Listener {
                 : area(mob, target, spec);
         Active a = new Active(mob, target, new AttackState(spec, settings.get().staggerTicks()), area);
         active.put(mob.getUniqueId(), a);
+        brokenOff.remove(mob.getUniqueId());
         if (spec.root() && mob instanceof Mob m && m.isAware()) {
             root(m);
             a.rooted = true;
@@ -146,6 +157,7 @@ public final class Attacks implements Listener {
 
     /** One tick for every attack under way. */
     public void tick() {
+        brokenOff.values().removeIf(m -> !m.isValid()); // (dead or gone)
         for (Active a : new ArrayList<>(active.values())) {
             if (a.mob.isDead() || !a.mob.isValid()) {
                 end(a);
@@ -207,7 +219,9 @@ public final class Attacks implements Listener {
     }
 
     private void brokeOff(Active a) {
+        brokenOff.put(a.mob.getUniqueId(), a.mob);
         cue(a.mob, Cue.CLEAR);
+        cue(a.mob, Cue.BREAK);
         cue(a.mob, Cue.OPEN);
     }
 
@@ -228,6 +242,7 @@ public final class Attacks implements Listener {
     /** Ends every attack (the plugin stops): enemies move again. */
     public void stop() {
         new ArrayList<>(active.values()).forEach(this::end);
+        brokenOff.clear();
     }
 
     /** What share of a hit an enemy takes now (1 outside its attacks). */
