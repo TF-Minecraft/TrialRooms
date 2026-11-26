@@ -457,6 +457,13 @@ public final class DungeonModule {
             supplies = net.tfminecraft.trialrooms.dungeon.supply.SupplySettings.from(
                     yml.getConfigurationSection("campfire"), yml.getConfigurationSection("supplies"),
                     yml.isList("no-regen-skills") ? yml.getStringList("no-regen-skills") : null);
+            for (var s : supplies.items().values()) {
+                for (String kit : s.kits()) {
+                    if (!kits.containsKey(kit)) {
+                        problems.add("settings.yml supply " + s.id() + ": unknown kit " + kit);
+                    }
+                }
+            }
         } catch (IllegalArgumentException e) {
             problems.add("settings.yml supplies: " + e.getMessage());
             supplies = net.tfminecraft.trialrooms.dungeon.supply.SupplySettings.DEFAULTS;

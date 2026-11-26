@@ -1580,6 +1580,9 @@ public final class RunManager {
             }
             ar.run.online(p.getUniqueId());
             respawned(p);
+            if (m.status() != Status.OUT && ar.lobbyRoom < 0 && ar.run.state() == DungeonRun.State.RUNNING) {
+                supplies.handOut(ar, List.of(p)); // (missed the doors opening: nothing if they got it)
+            }
             if (m.status() != Status.OUT) {
                 Location fight = wakePoint(ar);
                 if (ar.geo.roomAt(fight.getX(), fight.getZ()) != ar.geo.roomAt(p.getLocation().getX(), p.getLocation().getZ())

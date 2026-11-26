@@ -57,21 +57,29 @@ public final class MmoCoreRules implements Listener, Ports.Mana {
         Set<UUID> here = new HashSet<>();
         for (Player p : online) {
             here.add(p.getUniqueId());
-            boolean play = playing.test(p);
-            if (play && !held.containsKey(p.getUniqueId())) {
-                List<StatModifier> mods = new ArrayList<>();
-                StatMap map = stats.apply(p);
-                for (String stat : REGEN) {
-                    StatModifier m = new StatModifier(KEY, stat, -100, ModifierType.RELATIVE);
-                    map.getInstance(stat).registerModifier(m);
-                    mods.add(m);
-                }
-                held.put(p.getUniqueId(), mods);
-            } else if (!play && held.containsKey(p.getUniqueId())) {
-                release(p);
+            try {
+                hold(p, playing.test(p));
+            } catch (RuntimeException e) { // (one player's stats never stop everyone else's)
+                held.remove(p.getUniqueId());
             }
         }
         held.keySet().retainAll(here);
+    }
+
+    private void hold(Player p, boolean play) {
+        if (play && !held.containsKey(p.getUniqueId())) {
+            List<StatModifier> mods = new ArrayList<>();
+            StatMap map = stats.apply(p);
+            for (String stat : REGEN) {
+                // (COMPOUND multiplies, so the total is 0 whatever other modifiers add up to)
+                StatModifier m = new StatModifier(KEY, stat, -100, ModifierType.COMPOUND);
+                map.getInstance(stat).registerModifier(m);
+                mods.add(m);
+            }
+            held.put(p.getUniqueId(), mods);
+        } else if (!play && held.containsKey(p.getUniqueId())) {
+            release(p);
+        }
     }
 
     /** Gives a player their regen back (a logout must not carry the hold into their next session). */

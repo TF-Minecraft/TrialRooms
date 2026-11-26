@@ -779,6 +779,17 @@ class LockerServiceTest {
   }
 
   @Test
+  void aLockerFromItsBackupCreditsNoHeldSupplies() {
+    Locker l = lockers.locker(ann);
+    l.supplies("potion", 3);
+    lockers.giveSupply(ann, POTION, 3); // handed out by a save the backup never saw
+    l.fromBackup = true;
+    lockers.settle(ann, false);
+    assertEquals(0, supplies(ann), "taken all the same");
+    assertEquals(3, l.supplies("potion"), "not doubled");
+  }
+
+  @Test
   void aCutOffRunIsSettledBeforeTheNextAndRoomIsRespected() throws Exception {
     Locker l = lockers.locker(ann);
     l.supplies("potion", 6);

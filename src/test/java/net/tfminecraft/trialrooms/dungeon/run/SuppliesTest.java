@@ -245,6 +245,8 @@ class SuppliesTest {
     ann.setHealth(10);
     supplies.use(ann, bandage);
     assertTrue(ann.nextMessage().contains("bind your wounds"));
+    supplies.use(ann, bandage); // (a held right-click repeats the use: it must not eat the stack)
+    assertTrue(ann.nextMessage().contains("already at work"));
     supplies.step(ar, now.get()); // 2 s = 4 steps of 2 health
     assertEquals(12, ann.getHealth(), 1e-9);
     supplies.hurt(ann);
@@ -292,6 +294,8 @@ class SuppliesTest {
     ItemStack draught = item("draught", 2);
     supplies.use(ann, draught);
     assertTrue(ann.nextMessage().contains("You drink the S draught"));
+    supplies.use(ann, draught);
+    assertTrue(ann.nextMessage().contains("already warded"));
     assertFalse(supplies.wardsPotion(ann, "poison"));
     assertFalse(supplies.wardsAura(ann, null));
     assertTrue(supplies.wardsAura(ann, "DS_Ice_Prison"));

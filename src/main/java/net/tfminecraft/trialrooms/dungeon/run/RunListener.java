@@ -311,15 +311,19 @@ public final class RunListener implements Listener {
         }
     }
 
-    /** Supplies are used with a right-click; healing items from outside do nothing in a run. */
-    @EventHandler(priority = EventPriority.LOWEST)
+    /**
+     * Supplies are used with a right-click; healing items from outside do nothing in a run. (After the
+     * gate, prop and way-out clicks: a supply isn't used on a click one of those took. An outside potion
+     * may already be denied by MythicLibRules; the player is still told why.)
+     */
+    @EventHandler(priority = EventPriority.LOW)
     public void onUse(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
             return;
         }
         ItemStack item = event.getItem();
         Player p = event.getPlayer();
-        if (SupplyItems.idOf(item) != null) {
+        if (SupplyItems.idOf(item) != null && event.useItemInHand() != org.bukkit.event.Event.Result.DENY) {
             event.setCancelled(true);
             event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
             runs.useSupply(p, item);

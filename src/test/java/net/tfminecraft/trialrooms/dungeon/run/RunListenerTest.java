@@ -569,8 +569,13 @@ class RunListenerTest {
     verify(use).setCancelled(true);
     verify(use).setUseItemInHand(org.bukkit.event.Event.Result.DENY);
     verify(runs).useSupply(p, supply);
+    var taken = click(p, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, supply);
+    when(taken.useItemInHand()).thenReturn(org.bukkit.event.Event.Result.DENY); // a gate or prop took it
+    l.onUse(taken);
+    verify(runs, times(1)).useSupply(any(), any());
     ItemStack potion = new ItemStack(org.bukkit.Material.POTION);
     var drink = click(p, org.bukkit.event.block.Action.RIGHT_CLICK_AIR, potion);
+    when(drink.useItemInHand()).thenReturn(org.bukkit.event.Event.Result.DENY); // MythicLibRules got there first
     l.onUse(drink);
     verify(drink, never()).setCancelled(anyBoolean()); // outside a run
     when(runs.playingHere(p)).thenReturn(true);

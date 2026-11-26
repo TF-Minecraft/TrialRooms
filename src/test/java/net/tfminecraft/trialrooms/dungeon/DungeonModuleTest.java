@@ -202,6 +202,11 @@ class DungeonModuleTest {
     m.reload();
     assertTrue(m.problems().stream().anyMatch(p -> p.startsWith("settings.yml combat: ")), m.problems().toString());
     assertSame(net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS, m.combat());
+    Files.writeString(data.resolve("dungeons/settings.yml"),
+        "supplies:\n  items:\n    p: {use: health, kits: [nokit, greybox]}\n");
+    m.reload();
+    assertTrue(m.problems().contains("settings.yml supply p: unknown kit nokit"), m.problems().toString());
+    assertFalse(m.problems().contains("settings.yml supply p: unknown kit greybox"));
     Files.writeString(data.resolve("dungeons/settings.yml"), "supplies:\n  pouch: -1\n");
     m.reload();
     assertTrue(m.problems().stream().anyMatch(p -> p.startsWith("settings.yml supplies: ")), m.problems().toString());

@@ -80,13 +80,16 @@ final class Supplies {
             return;
         }
         for (Player p : here) {
-            if (!ar.supplied.add(p.getUniqueId())) {
+            if (ar.supplied.contains(p.getUniqueId())) {
                 continue;
             }
             int n = lockers().handOut(p, id -> {
                 Supply s = settings().supply(id);
                 return s != null && s.forKit(ar.kit.id()) ? s : null;
             });
+            if (n >= 0) {
+                ar.supplied.add(p.getUniqueId());
+            }
             if (n > 0) {
                 p.sendMessage("§6Your supply pouch: " + n + " supplies. §7Right-click one to use it.");
             } else if (n == 0) {
@@ -161,6 +164,10 @@ final class Supplies {
             }
             case BANDAGE -> {
                 int room = ar.run.member(p.getUniqueId()).room();
+                if (bandages.containsKey(p.getUniqueId())) {
+                    p.sendMessage("§7Your bandage is already at work.");
+                    return false;
+                }
                 if (room >= 0 && ar.run.room(room) == DungeonRun.Room.ACTIVE) {
                     p.sendMessage("§7There is no time to bind wounds in a fight.");
                     return false;
@@ -183,6 +190,10 @@ final class Supplies {
                 return runs.reviveNow(ar, p, down, s.name());
             }
             default -> { // WARD
+                if (wards.containsKey(p.getUniqueId())) {
+                    p.sendMessage("§7You are already warded.");
+                    return false;
+                }
                 wards.put(p.getUniqueId(), new Ward(s.name(), s.potions(), s.auras()));
                 p.sendMessage("§bYou drink the " + s.name() + ". §7It stops the next slowing or freezing effect"
                         + " until your next fight is over.");

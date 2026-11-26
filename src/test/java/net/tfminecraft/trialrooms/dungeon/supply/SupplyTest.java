@@ -57,6 +57,10 @@ class SupplyTest {
     assertTrue(supply("b", Supply.Use.HEALTH, 1, 0, List.of()).forKit("any"));
     Supply.Look look = new Supply.Look("PAPER", 0, null);
     Set<String> none = Set.of();
+    // a bandage with seconds and a ward with only auras, or only potions, are fine
+    assertNotNull(new Supply("x", "x", look, 1, 10000, Supply.Use.BANDAGE, 0.4, 1, 0, 0, none, none, List.of()));
+    assertNotNull(new Supply("x", "x", look, 1, 0, Supply.Use.WARD, 0, 0, 0, 0, none, Set.of("Frozen"), List.of()));
+    assertNotNull(new Supply("x", "x", look, 1, 0, Supply.Use.WARD, 0, 0, 0, 0, Set.of("slowness"), none, List.of()));
     for (Runnable bad : List.<Runnable>of(
         () -> new Supply(null, "x", look, 1, 0, Supply.Use.HEALTH, 0, 0, 0, 0, none, none, List.of()),
         () -> new Supply(" ", "x", look, 1, 0, Supply.Use.HEALTH, 0, 0, 0, 0, none, none, List.of()),
@@ -68,7 +72,10 @@ class SupplyTest {
         () -> new Supply("x", "x", look, 1, 0, Supply.Use.HEALTH, 0, 0, -1, 0, none, none, List.of()),
         () -> new Supply("x", "x", look, 1, 0, Supply.Use.HEALTH, 0, 0, 0, -1, none, none, List.of()),
         () -> new Supply("x", "x", look, 1, 0, Supply.Use.HEALTH, 0, 0, 0, Double.POSITIVE_INFINITY, none, none,
-            List.of()))) {
+            List.of()),
+        () -> new Supply("x", "x", look, 1, 0, Supply.Use.BANDAGE, 0.4, 0, 0, 0, none, none, List.of()),
+        () -> new Supply("x", "x", look, 1, 0, Supply.Use.WARD, 0, 0, 0, 0, none, none, List.of()),
+        () -> new Supply("x", "x", look, 1, 10001, Supply.Use.HEALTH, 0, 0, 0, 0, none, none, List.of()))) {
       assertThrows(IllegalArgumentException.class, bad::run);
     }
   }

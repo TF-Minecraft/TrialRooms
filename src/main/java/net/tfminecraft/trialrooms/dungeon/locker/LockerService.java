@@ -269,6 +269,12 @@ public final class LockerService {
         if (found.isEmpty() && l.out().isEmpty()) {
             return false;
         }
+        if (l.fromBackup) {
+            // One save behind: it may not know these went out, and crediting them could double them.
+            log.warning("[dungeons] took " + found + " supplies from " + p.getName()
+                    + " without crediting them: their locker was read from its backup");
+            found.clear();
+        }
         java.util.Set<String> ids = new java.util.LinkedHashSet<>(l.out().keySet());
         ids.addAll(found.keySet());
         for (String id : ids) {

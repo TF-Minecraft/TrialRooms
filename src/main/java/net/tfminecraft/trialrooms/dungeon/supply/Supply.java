@@ -53,6 +53,11 @@ public record Supply(String id, String name, Look look, int stack, int price, Us
             throw new IllegalArgumentException("supply " + id
                     + ": stack at least 1, price/seconds/cooldown/radius not negative, amount 0 to 1");
         }
+        if (use == Use.BANDAGE && seconds < 1 || use == Use.WARD && potions.isEmpty() && auras.isEmpty()
+                || price > 10000) {
+            throw new IllegalArgumentException("supply " + id
+                    + ": a bandage needs seconds, a ward potions or auras, and a price is at most 10000");
+        }
         potions = lower(potions);
         auras = lower(auras);
         kits = List.copyOf(kits);

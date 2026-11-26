@@ -86,6 +86,23 @@ class RunRulesTest {
   }
 
   @Test
+  void onePlayersBrokenStatsStopNobodyElse() {
+    StatMap map = mock(StatMap.class);
+    StatInstance inst = mock(StatInstance.class);
+    when(map.getInstance(anyString())).thenReturn(inst);
+    Player broken = player();
+    Player fine = player();
+    MmoCoreRules r = new MmoCoreRules(x -> true, x -> null, x -> {
+      if (x == broken) {
+        throw new IllegalStateException("no data");
+      }
+      return map;
+    });
+    r.tick(List.of(broken, fine));
+    verify(inst, times(2)).registerModifier(any());
+  }
+
+  @Test
   void manaComesFromMmoCore() {
     PlayerData data = mock(PlayerData.class);
     PlayerStats stats = mock(PlayerStats.class);
