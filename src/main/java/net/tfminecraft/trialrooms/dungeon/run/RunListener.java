@@ -14,7 +14,9 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityMountEvent;
+import org.bukkit.event.entity.EntityPotionEffectEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
+import org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryType;
@@ -22,16 +24,19 @@ import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
 import net.tfminecraft.rpcharacters.lifecycle.CharacterActivatedEvent;
 import net.tfminecraft.rpcharacters.lifecycle.CharacterSelectionRequestEvent;
+import net.tfminecraft.trialrooms.dungeon.supply.SupplyItems;
 
 /**
  * Turns server events into run decisions: no friendly fire, downed instead of dead, the dungeon
@@ -45,6 +50,8 @@ public final class RunListener implements Listener {
     private final Plugin plugin;
     private final RunManager runs;
     private final java.util.function.Predicate<Entity> enemy;
+    /** Healing items from outside the dungeons (Main's potions): they don't work in a run. */
+    private java.util.function.Predicate<ItemStack> outsideHeal = RunListener::vanillaHeal;
 
     public RunListener(Plugin plugin, RunManager runs) {
         this(plugin, runs, runs::isRunMob);
@@ -55,6 +62,28 @@ public final class RunListener implements Listener {
         this.plugin = plugin;
         this.runs = runs;
         this.enemy = enemy;
+    }
+
+    /** Also counts these items (MMOItems consumables that restore health or mana) as healing from outside. */
+    public RunListener outsideHeals(java.util.function.Predicate<ItemStack> more) {
+        outsideHeal = it -> vanillaHeal(it) || more.test(it);
+        return this;
+    }
+
+    /** Whether an item is healing from outside the dungeons (it doesn't work in a run). */
+    public boolean outsideHeal(ItemStack item) {
+        return outsideHeal.test(item);
+    }
+
+    /** Vanilla potions and golden apples (never a dungeon supply). */
+    static boolean vanillaHeal(ItemStack it) {
+        if (it == null || SupplyItems.idOf(it) != null) {
+            return false;
+        }
+        return switch (it.getType()) {
+            case POTION, SPLASH_POTION, LINGERING_POTION, GOLDEN_APPLE, ENCHANTED_GOLDEN_APPLE -> true;
+            default -> false;
+        };
     }
 
     /** The player behind a hit: the attacker, or whoever shot the projectile. */
@@ -268,10 +297,66 @@ public final class RunListener implements Listener {
         }
     }
 
-    /** Downed players don't heal on their own; only a revive or a bleed-out brings them back. */
+    /**
+     * Downed players don't heal on their own; only a revive or a bleed-out brings them back. Nobody in a
+     * run heals naturally (healers, lifesteal, supplies and the rest room's fire do; MMOCore's own regen
+     * is held back by MmoCoreRules).
+     */
     @EventHandler(ignoreCancelled = true)
     public void onRegain(EntityRegainHealthEvent event) {
-        if (event.getEntity() instanceof Player p && runs.isDowned(p)) {
+        if (event.getEntity() instanceof Player p && (runs.isDowned(p)
+                || (event.getRegainReason() == RegainReason.REGEN || event.getRegainReason() == RegainReason.SATIATED)
+                && runs.playingHere(p))) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Supplies are used with a right-click; healing items from outside do nothing in a run. (After the
+     * gate, prop and way-out clicks: a supply isn't used on a click one of those took. An outside potion
+     * may already be denied by MythicLibRules; the player is still told why.)
+     */
+    @EventHandler(priority = EventPriority.LOW)
+    public void onUse(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        ItemStack item = event.getItem();
+        Player p = event.getPlayer();
+        if (SupplyItems.idOf(item) != null && event.useItemInHand() != org.bukkit.event.Event.Result.DENY) {
+            event.setCancelled(true);
+            event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+            runs.useSupply(p, item);
+        } else if (outsideHeal.test(item) && runs.playingHere(p)) {
+            event.setCancelled(true);
+            event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+            p.sendMessage("§7Only dungeon supplies work in a run.");
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onConsume(PlayerItemConsumeEvent event) {
+        if (outsideHeal.test(event.getItem()) && runs.playingHere(event.getPlayer())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§7Only dungeon supplies work in a run.");
+        }
+    }
+
+    /** Damage that lands stops a bandage at work (hunger aside: it is no blow). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerHurt(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Player p && event.getFinalDamage() > 0
+                && event.getCause() != EntityDamageEvent.DamageCause.STARVATION && runs.inDungeonWorld(p)) {
+            runs.hurt(p);
+        }
+    }
+
+    /** A drunk ward stops the next slowing effect of its kind (never the downed state's own). */
+    @EventHandler(ignoreCancelled = true)
+    public void onPotion(EntityPotionEffectEvent event) {
+        if (event.getEntity() instanceof Player p && event.getNewEffect() != null
+                && event.getAction() != EntityPotionEffectEvent.Action.REMOVED && !runs.isDowned(p) && runs.playingHere(p)
+                && runs.wardsPotion(p, event.getNewEffect().getType().getKey().getKey())) {
             event.setCancelled(true);
         }
     }

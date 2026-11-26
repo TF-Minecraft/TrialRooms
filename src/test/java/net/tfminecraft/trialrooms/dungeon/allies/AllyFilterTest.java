@@ -186,6 +186,24 @@ class AllyFilterTest {
     when(noCaster.getTargetEntity()).thenReturn(Optional.empty());
     filter.onAura(noCaster);
     verify(noCaster, never()).setCancelled(true);
+    // a drunk ward stops the aura it is for (dungeon supplies)
+    SkillCaster mobCaster = mock(SkillCaster.class, RETURNS_DEEP_STUBS);
+    when(mobCaster.getEntity().getBukkitEntity()).thenReturn(mob);
+    MythicAuraStartEvent slowed = mock(MythicAuraStartEvent.class);
+    when(slowed.getAuraName()).thenReturn("Slowed");
+    when(slowed.getCaster()).thenReturn(mobCaster);
+    when(slowed.getTargetEntity()).thenReturn(Optional.of(allyEntity));
+    filter.onAura(slowed);
+    verify(slowed, never()).setCancelled(true);
+    filter.wards((t, aura) -> t == ally && aura.equals("Frozen"));
+    MythicAuraStartEvent frozen = mock(MythicAuraStartEvent.class);
+    when(frozen.getAuraName()).thenReturn("Frozen");
+    when(frozen.getCaster()).thenReturn(mobCaster);
+    when(frozen.getTargetEntity()).thenReturn(Optional.of(allyEntity));
+    filter.onAura(frozen);
+    verify(frozen).setCancelled(true);
+    filter.onAura(slowed);
+    verify(slowed, never()).setCancelled(true);
     MythicHealMechanicEvent healMob = mock(MythicHealMechanicEvent.class, RETURNS_DEEP_STUBS);
     when(healMob.getMetadata().getCaster().getEntity().getBukkitEntity()).thenReturn(caster);
     when(healMob.getTarget()).thenReturn(mob);

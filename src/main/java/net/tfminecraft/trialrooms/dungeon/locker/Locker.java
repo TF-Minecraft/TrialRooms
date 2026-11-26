@@ -55,6 +55,12 @@ public final class Locker {
     private boolean lastRunRewarded;
     /** The difficulties this character has won, by dungeon recipe. */
     private final Map<String, java.util.Set<String>> cleared = new LinkedHashMap<>();
+    /** Dungeon supplies owned, by supply id (none in a run: what a run took comes back after it). */
+    private final Map<String, Integer> supplies = new LinkedHashMap<>();
+    /** How many of each owned supply go into the pouch for the next run. */
+    private final Map<String, Integer> packed = new LinkedHashMap<>();
+    /** Supplies handed out for a run that is not over yet (still counted as owned until they come back). */
+    private final Map<String, Integer> out = new LinkedHashMap<>();
 
     public Locker() {
         for (int i = 0; i < LOADOUTS; i++) {
@@ -260,6 +266,67 @@ public final class Locker {
         if (set != null && set.remove(difficulty) && set.isEmpty()) {
             cleared.remove(recipe);
         }
+    }
+
+    // ---- supplies
+
+    /** Supplies owned, by id. */
+    public Map<String, Integer> supplies() {
+        return Collections.unmodifiableMap(supplies);
+    }
+
+    public int supplies(String id) {
+        return supplies.getOrDefault(id, 0);
+    }
+
+    /** Sets how many of a supply are owned (no fewer packed than that). */
+    public void supplies(String id, int count) {
+        if (count <= 0) {
+            supplies.remove(id);
+        } else {
+            supplies.put(id, count);
+        }
+        packed(id, Math.min(packed(id), Math.max(0, count)));
+    }
+
+    /** Supplies packed for the next run, by id. */
+    public Map<String, Integer> packed() {
+        return Collections.unmodifiableMap(packed);
+    }
+
+    public int packed(String id) {
+        return packed.getOrDefault(id, 0);
+    }
+
+    /** Sets how many of a supply are packed (at most as many as are owned). */
+    public void packed(String id, int count) {
+        int n = Math.min(count, supplies(id));
+        if (n <= 0) {
+            packed.remove(id);
+        } else {
+            packed.put(id, n);
+        }
+    }
+
+    /** Supplies out in a run, by id. */
+    public Map<String, Integer> out() {
+        return Collections.unmodifiableMap(out);
+    }
+
+    public int out(String id) {
+        return out.getOrDefault(id, 0);
+    }
+
+    public void out(String id, int count) {
+        if (count <= 0) {
+            out.remove(id);
+        } else {
+            out.put(id, count);
+        }
+    }
+
+    public void clearOut() {
+        out.clear();
     }
 
     // ---- revision

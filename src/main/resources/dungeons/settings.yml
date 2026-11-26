@@ -74,3 +74,70 @@ combat:
   slowness-step: 0.2
   max-slow: 2
   cues: {dodge: TR_Cue_Dodge, leave: TR_Cue_Leave, interrupt: TR_Cue_Interrupt, open: TR_Cue_Open, break: TR_Cue_Break, clear: TR_Cue_Clear}
+
+# Between fights. Inside runs nothing heals on its own (no natural or MMOCore regen) and healing items
+# from outside (Main's potions, golden apples) don't work: healers, lifesteal, supplies and the rest
+# room's campfire bring health back.
+# campfire: crouch this many seconds within radius blocks of the rest room's marker to rest once per
+# run; restore: the share of max health and mana it gives back, by difficulty tier (the highest tier
+# listed at or under the run's: Normal all, Hard and up half).
+# no-regen-skills: MythicLib class skills that don't run for players in a run (the out-of-combat regen
+# every class has).
+no-regen-skills: [TFMC_RECOVERY]
+campfire:
+  seconds: 3
+  radius: 4
+  restore: {1: 1.0, 2: 0.5}
+# Supplies: bought with dungeon marks in the locker (/tr dungeon supplies) and packed into a pouch of
+# `pouch` slots (one stack per slot); the pouch is handed out when the doors open, and what isn't used
+# comes back to the locker after the run. They work only in runs and never leave the dungeons.
+# Each: name, look {material, model-data | item-model}, stack (per pouch slot), price (marks), use
+# (health | mana | bandage | revive | ward), amount (share of max health/mana), seconds (bandage),
+# cooldown (seconds before another of the same use), radius (revive), potions/auras (ward: what it
+# stops once, until the drinker's next fight is over), kits (only these dungeons; none = all).
+# drops: the chance each player finds a random supply when a fight room (fight), an elite room or
+# event (elite) is cleared, or on first stepping into a treasure room.
+supplies:
+  pouch: 4
+  items:
+    health_potion:
+      name: Health Potion
+      look: {material: SLIME_BALL, model-data: 273}
+      stack: 3
+      price: 2
+      use: health
+      amount: 0.4
+      cooldown: 20
+    mana_potion:
+      name: Mana Potion
+      look: {material: SLIME_BALL, model-data: 281}
+      stack: 3
+      price: 2
+      use: mana
+      amount: 0.5
+      cooldown: 20
+    field_bandage:
+      name: Field Bandage
+      look: {material: SLIME_BALL, item-model: "tfmc_surgery:linen_dressing"}
+      stack: 5
+      price: 1
+      use: bandage
+      amount: 0.4
+      seconds: 8
+    smelling_salts:
+      name: Smelling Salts
+      look: {material: SLIME_BALL, item-model: "tfmc_surgery:smelling_salts"}
+      stack: 2
+      price: 3
+      use: revive
+      radius: 4
+    frost_draught:
+      name: Frost Draught
+      look: {material: SLIME_BALL, model-data: 84}
+      stack: 2
+      price: 2
+      use: ward
+      potions: [slowness]
+      auras: [DS_Ice_Prison, Frozen]
+      kits: [seithr]
+  drops: {fight: 0.15, elite: 0.35, treasure: 0.6}

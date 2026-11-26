@@ -322,6 +322,30 @@ class DungeonRunCommandsTest {
   }
 
   @Test
+  void mmoCoreAndMythicLibRulesStartWithTheirPlugins() {
+    JavaPlugin plugin = mock(JavaPlugin.class);
+    Server srv = mock(Server.class);
+    PluginManager pm = mock(PluginManager.class);
+    when(plugin.getServer()).thenReturn(srv);
+    when(srv.getPluginManager()).thenReturn(pm);
+    when(srv.getScheduler()).thenReturn(server.getScheduler());
+    when(plugin.getDataFolder()).thenReturn(temp.toFile());
+    when(plugin.getLogger()).thenReturn(Logger.getLogger("t"));
+    when(plugin.getName()).thenReturn("TrialRooms");
+    when(plugin.namespace()).thenReturn("trialrooms");
+    when(plugin.isEnabled()).thenReturn(true);
+    when(pm.isPluginEnabled("MMOCore")).thenReturn(true);
+    when(pm.isPluginEnabled("MythicLib")).thenReturn(true);
+    DungeonModule m = new DungeonModule(plugin, x -> null);
+    m.startRuns(mock(Ports.Characters.class), mock(Ports.Keys.class), mock(Ports.Mobs.class));
+    verify(pm).registerEvents(any(net.tfminecraft.trialrooms.dungeon.supply.MmoCoreRules.class), eq(plugin));
+    verify(pm).registerEvents(any(net.tfminecraft.trialrooms.dungeon.supply.MythicLibRules.class), eq(plugin));
+    server.getScheduler().performTicks(21); // the regen hold looks at who is online each second
+    verify(srv, atLeastOnce()).getOnlinePlayers();
+    m.disable(); // (gives everyone held their regen back)
+  }
+
+  @Test
   void theModuleStartsAndStopsRuns() throws Exception {
     JavaPlugin plugin = mock(JavaPlugin.class);
     Server srv = mock(Server.class);
@@ -441,7 +465,64 @@ class DungeonRunCommandsTest {
       dc.run(staff, new String[] {"allies"});
       verify(staff).sendMessage("§aAlly filter: 1 mechanics: 1 help, 0 harm, 1 filtered");
     }
+    // a drunk ward stops an aura on a player playing a run
+    RunManager real = m.runs;
+    m.runs = mock(RunManager.class);
+    Player warded = mock(Player.class);
+    assertFalse(m.wardsAura(mock(org.bukkit.entity.Zombie.class), "Frozen"));
+    assertFalse(m.wardsAura(warded, "Frozen"), "not playing here");
+    when(m.runs.playingHere(warded)).thenReturn(true);
+    assertFalse(m.wardsAura(warded, "Frozen"), "no ward");
+    when(m.runs.wardsAura(warded, "Frozen")).thenReturn(true);
+    assertTrue(m.wardsAura(warded, "Frozen"));
+    m.runs = real;
     m.disable();
+  }
+
+  @Test
+  void suppliesOpenTheirScreenAndStaffGiveThem() {
+    var potion = new net.tfminecraft.trialrooms.dungeon.supply.Supply("potion", "Health Potion",
+        new net.tfminecraft.trialrooms.dungeon.supply.Supply.Look("SLIME_BALL", 1, null), 3, 2,
+        net.tfminecraft.trialrooms.dungeon.supply.Supply.Use.HEALTH, 0.4, 0, 0, 0, java.util.Set.of(), java.util.Set.of(),
+        java.util.List.of());
+    when(module.supplies()).thenReturn(new net.tfminecraft.trialrooms.dungeon.supply.SupplySettings(3, 4,
+        new java.util.TreeMap<>(Map.of(1, 1.0)), 4, Map.of("potion", potion), 0, 0, 0));
+    CommandSender console = mock(CommandSender.class);
+    c.run(console, new String[] {"supplies"});
+    verify(console).sendMessage("§cDungeon lockers are off.");
+    var lockers = mock(net.tfminecraft.trialrooms.dungeon.locker.LockerService.class);
+    when(runs.lockers()).thenReturn(lockers);
+    c.run(console, new String[] {"supplies"});
+    verify(console).sendMessage("§cOnly a player has supplies.");
+    var ann = server.addPlayer("Ann");
+    server.addPlayer("Bob");
+    var l = new net.tfminecraft.trialrooms.dungeon.locker.Locker();
+    when(lockers.locker(ann)).thenReturn(l);
+    c.run(ann, new String[] {"supplies", "please"});
+    assertInstanceOf(net.tfminecraft.trialrooms.dungeon.supply.SupplyMenu.class,
+        ann.getOpenInventory().getTopInventory().getHolder());
+    c.run(console, new String[] {"supplies", "give", "Ann", "potion"});
+    verify(console).sendMessage("§cYou don't have permission to use this command.");
+    when(console.hasPermission(RunManager.STAFF_PERMISSION)).thenReturn(true);
+    c.run(console, new String[] {"supplies", "give", "Ann"});
+    verify(console).sendMessage("§cUsage: /tr dungeon supplies give <player> <supply> [amount]");
+    for (String[] bad : java.util.List.of(new String[] {"supplies", "give", "Nobody", "potion"},
+        new String[] {"supplies", "give", "Bob", "potion"}, new String[] {"supplies", "give", "Ann", "nothing"},
+        new String[] {"supplies", "give", "Ann", "potion", "0"})) {
+      c.run(console, bad);
+    }
+    verify(console, times(4)).sendMessage("§cNo such online player with a locker, or no such supply (potion).");
+    c.run(console, new String[] {"supplies", "give", "Ann", "potion", "lots"});
+    verify(console).sendMessage("§cThe locker could not be saved; nothing changed.");
+    assertEquals(1, l.supplies("potion"), "one when the amount is no number");
+    when(lockers.saveLocker(ann, l)).thenReturn(true);
+    c.run(console, new String[] {"supplies", "give", "Ann", "potion", "3"});
+    verify(console).sendMessage("§aGave Ann 3 Health Potion (in their locker, not packed).");
+    assertEquals(4, l.supplies("potion"));
+    assertEquals(java.util.List.of("give"), c.complete(new String[] {"supplies", "g"}));
+    assertEquals(java.util.List.of(), c.complete(new String[] {"supplies", "x"}));
+    assertEquals(java.util.List.of("potion"), c.complete(new String[] {"supplies", "give", "Ann", "po"}));
+    assertFalse(c.complete(new String[] {"rooms", "give", "Ann", "po"}).contains("potion"));
   }
 
   @Test
