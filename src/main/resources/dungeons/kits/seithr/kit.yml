@@ -32,7 +32,7 @@ roster:
   wisp: {mob: Dungeon_Seithr_Wisp, role: swarm, cost: 1, tiers: 3+}
   frost_mage: {mob: Dungeon_Seithr_Mage, role: elite, cost: 6, tiers: 3+, leader: true}
   golem_leader: {mob: Dungeon_Seithr_Ice_Golem, role: elite, cost: 6, tiers: 3+, leader: true}
-  royal_guard: {mob: Dungeon_Seithr_Royal_Guard, role: bruiser, cost: 3.5, weight: 2, tiers: 4}
+  honour_guard: {mob: Dungeon_Seithr_Honour_Guard, role: bruiser, cost: 3.5, weight: 2, tiers: 4}
   frostcaller: {mob: Dungeon_Seithr_Frostcaller, role: caster, cost: 3.5, tiers: 4}
   brood_leader: {mob: Dungeon_Seithr_Brood_Mother, role: elite, cost: 7, tiers: 4, leader: true}
   executioner_leader: {mob: Dungeon_Seithr_Executioner, role: elite, cost: 8, tiers: 4, leader: true}
