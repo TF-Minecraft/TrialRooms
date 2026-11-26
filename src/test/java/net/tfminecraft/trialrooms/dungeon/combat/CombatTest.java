@@ -324,6 +324,13 @@ class CombatTest {
     ticks(1);
     assertEquals(Phase.OPEN, attacks.phase(mage), "stunned out of its swing");
     ticks(40);
+    // a spell also breaks on an aura listed only among the stagger auras
+    settings = new CombatSettings(List.of(0.3), 30, List.of("Silenced"), List.of("Frozen"), Map.of(), 0.2, 2, CombatSettings.DEFAULTS.cues());
+    control.auras.put(mage, Set.of("Frozen"));
+    attacks.start(mage, null, spec("windup=4;recover=0;magic=true;strike=Bolt2"));
+    ticks(1);
+    assertEquals(Phase.OPEN, attacks.phase(mage), "frozen out of its spell");
+    ticks(40);
     // slows: Slowness III (x1.6) and a slow aura (x1.3), at most twice as long
     settings = new CombatSettings(List.of(0.3), 30, List.of(), List.of(), Map.of("Slowed", 1.3), 0.2, 2, CombatSettings.DEFAULTS.cues());
     control.auras.put(mage, Set.of("Slowed"));
