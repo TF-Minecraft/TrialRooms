@@ -73,6 +73,8 @@ final class Fights {
         final List<Active> telegraphs = new ArrayList<>();
         BossFight boss;
         LivingEntity bossMob;
+        /** Lower bosses leading this room's pack. */
+        final Set<Entity> leaders = new HashSet<>();
         BossBar bar;
         final Set<Entity> adds = new HashSet<>();
         /** Mobs just spawned, by spawn time: MythicMobs sets their health and name once more after a moment. */
@@ -259,14 +261,14 @@ final class Fights {
     /** The doors of a fight room just shut: plan the fight and bring the first wave (or the boss). */
     void start(ActiveRun ar, int room) {
         long now = clock.getAsLong();
-        FightKit kit = ar.kit.fights();
+        FightKit kit = ar.kit.fights().atTier(ar.rules.tier());
         RoomType type = ar.run.layout().rooms().get(room).node().type();
         // Mixed, so neighbouring rooms and seeds don't get look-alike fights.
         long seed = new java.util.SplittableRandom(ar.run.layout().seed() * 31 + room).nextLong();
         Random rng = new Random(seed);
         List<String> tags = ar.geo.markerTags(room, "spawn");
         int depth = ar.rules.depth(ar.run.roomsCleared());
-        BossDef def = type == RoomType.BOSS ? kit.boss(ar.rules.boss()) : null;
+        BossDef def = type == RoomType.BOSS ? kit.bossFor(ar.rules.boss(), ar.rules.tier(), ar.run.layout().seed()) : null;
         // the party's size and the room's own size both scale the fight
         double factor = ar.enemyFactor * ar.run.layout().rooms().get(room).template().threat();
         Director.Plan plan = def != null ? new Director.Plan(0, "boss", List.of())
@@ -336,7 +338,7 @@ final class Fights {
             tags.add("melee");
         }
         int n = 0;
-        for (Director.Spawn s : Director.adds(ar.kit.fights(), budget * ar.enemyFactor, tags, enc.rng)) {
+        for (Director.Spawn s : Director.adds(ar.kit.fights().atTier(ar.rules.tier()), budget * ar.enemyFactor, tags, enc.rng)) {
             double[] p = points.get(n % points.size());
             Location at = new Location(runs.world(), p[0], p[1], p[2]);
             Entity mob = spawn(ar, enc, s.entry().mob(), at);
@@ -374,6 +376,9 @@ final class Fights {
             n++;
             enc.alive.add(mob);
             enc.waveOf.put(mob.getUniqueId(), w);
+            if (s.entry().leader()) {
+                enc.leaders.add(mob);
+            }
             double factor = ar.healthFactor;
             if (s.elite()) {
                 factor *= ar.kit.fights().tuning().eliteHealth();
@@ -399,7 +404,8 @@ final class Fights {
 
     /** Spawns one mob of the fight and registers it with the run. */
     private Entity spawn(ActiveRun ar, Encounter enc, String type, Location at) {
-        Entity mob = mobs.spawn(type, at, ar.rules.mobLevel());
+        // its level is the difficulty's tier (on top of the recipe's), so its skills can grow with it
+        Entity mob = mobs.spawn(type, at, ar.rules.mobLevel() + ar.rules.tier() - 1);
         if (mob == null) {
             plugin.getLogger().warning("[dungeons] unknown mob " + type + " in kit " + ar.kit.id());
             return null;
@@ -476,7 +482,7 @@ final class Fights {
     private void spawnAdds(ActiveRun ar, Encounter enc, double budget) {
         List<double[]> points = ar.geo.markers(enc.room, "spawn");
         List<String> tags = ar.geo.markerTags(enc.room, "spawn");
-        for (Director.Spawn s : Director.adds(ar.kit.fights(), budget * ar.enemyFactor, tags, enc.rng)) {
+        for (Director.Spawn s : Director.adds(ar.kit.fights().atTier(ar.rules.tier()), budget * ar.enemyFactor, tags, enc.rng)) {
             Entity mob = spawn(ar, enc, s.entry().mob(), spawnPoint(ar, enc.room, points, s));
             if (mob != null) {
                 enc.adds.add(mob);
@@ -922,6 +928,11 @@ final class Fights {
             }
         }
         return 1;
+    }
+
+    /** Whether a run enemy's attack areas are marked on the ground: a boss, or a lower boss leading a room. */
+    boolean marked(ActiveRun ar, Entity mob) {
+        return ar.encounters.values().stream().anyMatch(enc -> mob.equals(enc.bossMob) || enc.leaders.contains(mob));
     }
 
     /** How much of a hit a run mob takes: none from a boss between phases, less from a shielded elite. */

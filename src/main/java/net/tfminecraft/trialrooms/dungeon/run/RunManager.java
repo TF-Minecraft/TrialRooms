@@ -438,6 +438,11 @@ public final class RunManager {
         return m != null && m.status() == Status.DOWNED;
     }
 
+    /** Whether an enemy's attack areas are marked on the ground: a run's boss or a room's leader. */
+    public boolean isMarked(Entity e) {
+        return runs.values().stream().anyMatch(ar -> fights.marked(ar, e));
+    }
+
     public boolean isRunMob(Entity e) {
         return byMob.containsKey(e.getUniqueId())
                 || e.getPersistentDataContainer().has(mobKey, PersistentDataType.STRING);

@@ -29,9 +29,10 @@ public final class DungeonCommand {
     static final String USAGE = "§eUsage: /tr dungeon <map|preview|start> <recipe> [seed] | clear | reload | runs"
             + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave | ready"
             + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>"
-            + " | finds | insure | losses <player> | restore <player> <id>";
+            + " | finds | insure | losses <player> | restore <player> <id> | mobtest <mob> [tier] [leader] | attacks";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
             "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim", "top", "finds", "insure", "sets",
+            "mobtest", "attacks",
             "losses", "restore");
     /** What players without the staff permission may use. */
     public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim", "top", "sets", "finds",
@@ -72,6 +73,13 @@ public final class DungeonCommand {
                 }
             }
             case "sets" -> sets(sender);
+            case "mobtest" -> mobTest(sender, args);
+            case "attacks" -> {
+                var a = module.attacks();
+                List<String> lines = a == null ? List.of() : a.describe();
+                sender.sendMessage("§a" + lines.size() + " enemy attacks under way.");
+                lines.forEach(l -> sender.sendMessage("§7" + l));
+            }
             case "losses" -> losses(sender, args);
             case "restore" -> restore(sender, args);
             case "clear" -> sender.sendMessage("§aCleared " + module.clearPreviews() + " dungeon previews.");
@@ -397,6 +405,26 @@ public final class DungeonCommand {
     }
 
     /** The set bonuses and traits a player's dungeon gear gives them now. */
+    /** Staff: one enemy in front of them to watch its attacks: /tr dungeon mobtest <mob> [tier] [leader]. */
+    private void mobTest(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player p) || args.length < 2) {
+            sender.sendMessage("§eUsage (in game): /tr dungeon mobtest <mob> [tier 1-4] [leader]");
+            return;
+        }
+        int tier;
+        try {
+            tier = args.length > 2 ? Integer.parseInt(args[2]) : 1;
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cThe tier must be a whole number.");
+            return;
+        }
+        boolean leader = args.length > 3 && args[3].equalsIgnoreCase("leader");
+        org.bukkit.Location at = p.getLocation().add(p.getLocation().getDirection().setY(0).normalize().multiply(5));
+        sender.sendMessage(module.mobTest(args[1], at, tier, leader) == null ? "§cThere is no mob " + args[1] + "."
+                : "§a" + args[1] + " at level " + Math.max(1, tier) + (leader ? " as a leader" : "")
+                        + ". §7Its attacks show with /tr dungeon attacks.");
+    }
+
     private void sets(CommandSender sender) {
         if (!(sender instanceof Player p)) {
             sender.sendMessage("§cOnly players wear dungeon gear.");

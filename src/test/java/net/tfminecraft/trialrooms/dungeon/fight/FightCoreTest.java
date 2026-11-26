@@ -149,6 +149,57 @@ class FightCoreTest {
   }
 
   @Test
+  void difficultiesBringTheirOwnEnemiesAndBosses() throws Exception {
+    assertEquals(Tiers.ALL, Tiers.parse(null));
+    assertEquals(new Tiers(3, 3), Tiers.parse(3));
+    assertEquals(new Tiers(2, 4), Tiers.parse("2-4"));
+    assertEquals(new Tiers(2, Integer.MAX_VALUE), Tiers.parse("2+"));
+    assertTrue(Tiers.parse("2+").contains(9));
+    assertFalse(Tiers.parse("2-3").contains(1));
+    assertFalse(Tiers.parse("2-3").contains(4));
+    for (String bad : List.of("x", "0", "3-2", "a+", "1-b")) {
+      assertThrows(IllegalArgumentException.class, () -> Tiers.parse(bad), bad);
+    }
+    List<String> problems = new ArrayList<>();
+    FightKit kit = FightKit.load(yml("""
+        roster:
+          grunt: {mob: g, role: grunt}
+          late: {mob: l, role: grunt, tiers: 3+}
+          leader: {mob: b, role: elite, cost: 6, tiers: 2-3, leader: true}
+          odd: {mob: o, tiers: nope}
+        packs:
+          early: {slots: [grunt], tiers: 1}
+          any: {slots: [grunt]}
+        bosses:
+          golem: {mob: g, health: 10, tiers: 1, phases: [{at: 100}]}
+          brood: {mob: b, health: 10, tiers: 2-3, phases: [{at: 100}]}
+          mage: {mob: m, health: 10, tiers: 2-3, phases: [{at: 100}]}
+          general: {mob: v, health: 10, tiers: 4, phases: [{at: 100}]}
+        """), "k", problems);
+    assertEquals(List.of("k: roster odd: bad tiers: nope"), problems);
+    assertTrue(kit.roster().get("leader").leader());
+    assertEquals(List.of("grunt"), List.copyOf(kit.atTier(1).roster().keySet()));
+    assertEquals(List.of("early", "any"), kit.atTier(1).packs().stream().map(PackTemplate::id).toList());
+    assertEquals(List.of("grunt", "late", "leader"), List.copyOf(kit.atTier(3).roster().keySet()));
+    assertEquals(List.of("any"), kit.atTier(3).packs().stream().map(PackTemplate::id).toList());
+    FightKit lateOnly = FightKit.load(yml("roster: {late: {mob: l, tiers: 3}}"), "k", problems);
+    assertSame(lateOnly, lateOnly.atTier(1), "a tier with no enemies of its own keeps them all");
+    assertEquals("general", kit.bossFor(null, 4, 1).id(), "Mythic: always the general");
+    assertEquals("golem", kit.bossFor("", 1, 7).id());
+    java.util.Set<String> pool = new java.util.HashSet<>();
+    for (long seed = 0; seed < 40; seed++) {
+      pool.add(kit.bossFor(null, 2, seed).id());
+      assertEquals(kit.bossFor(null, 2, seed), kit.bossFor(null, 2, seed), "the same seed, the same boss");
+    }
+    assertEquals(java.util.Set.of("brood", "mage"), pool);
+    assertEquals("brood", kit.bossFor("brood", 1, 1).id(), "a recipe may fix one");
+    assertEquals("golem", kit.bossFor(null, 9, 1).id(), "no boss of the tier: the kit's first");
+    assertNull(FightKit.load(yml("roster: {a: {mob: m}}"), "k", problems).bossFor(null, 1, 1));
+    assertEquals(Tiers.ALL, new RosterEntry("a", "m", Role.GRUNT, 1, 1).tiers());
+    assertEquals(Tiers.ALL, new PackTemplate("p", List.of(Role.GRUNT), 1, 0).tiers());
+  }
+
+  @Test
   void telegraphsKnowWhoIsInside() {
     Telegraph t = new Telegraph(Telegraph.Kind.SLAM, 10, 64, 10, 4, 1000, 4000);
     assertTrue(t.inside(12, 64, 12));

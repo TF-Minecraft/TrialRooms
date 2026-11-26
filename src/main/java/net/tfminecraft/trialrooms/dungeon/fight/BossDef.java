@@ -13,8 +13,14 @@ import java.util.List;
  * @param health        base max health, before party scaling
  * @param phases        phases from full health down; the first starts at 100
  * @param enrageSeconds after this long the boss hits harder and calls adds now and then
+ * @param tiers         the difficulties it ends a dungeon on (a pool: one of those that fit, by the run's seed)
  */
-public record BossDef(String id, String mob, String name, double health, List<Phase> phases, int enrageSeconds) {
+public record BossDef(String id, String mob, String name, double health, List<Phase> phases, int enrageSeconds,
+        Tiers tiers) {
+
+    public BossDef(String id, String mob, String name, double health, List<Phase> phases, int enrageSeconds) {
+        this(id, mob, name, health, phases, enrageSeconds, Tiers.ALL);
+    }
 
     /**
      * One phase.

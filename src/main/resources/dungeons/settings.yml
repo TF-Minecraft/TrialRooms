@@ -56,3 +56,21 @@ affixes:
 max-health: 2048
 # Commands players can't use inside the dungeon world (staff can).
 blocked-commands: [home, homes, sethome, spawn, warp, tpa, tpahere, tpaccept, back, rtp]
+
+# Enemy attacks, the same in every dungeon. An enemy's MythicMobs skill starts an attack with
+# dungeonattack{windup=..;recover=..;guard=..;poise=..;magic=..;ground=..;strike=..}: it winds up to the
+# animation's hit frame, strikes, then stands open for recover ticks. open-bonus: extra damage it takes
+# while open, by difficulty tier (Normal first). stagger-ticks: how much longer an attack broken off (by
+# enough damage in its windup, or a status) leaves it open. interrupt-auras break a spell's windup,
+# stagger-auras any windup. Each level of Slowness (slowness-step) and slow-auras stretch a windup, at most
+# max-slow times. cues: the MythicMobs skills that show the colour code (dodge orange, leave red, interrupt
+# blue, open white, break: the attack animation stops when it is broken off, clear).
+combat:
+  open-bonus: [0.4, 0.35, 0.3, 0.25]
+  stagger-ticks: 30
+  interrupt-auras: [Silenced, Frozen, Stun_Aura]
+  stagger-auras: [Frozen, Stun_Aura]
+  slow-auras: {}
+  slowness-step: 0.2
+  max-slow: 2
+  cues: {dodge: TR_Cue_Dodge, leave: TR_Cue_Leave, interrupt: TR_Cue_Interrupt, open: TR_Cue_Open, break: TR_Cue_Break, clear: TR_Cue_Clear}

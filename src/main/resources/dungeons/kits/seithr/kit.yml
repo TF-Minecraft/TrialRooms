@@ -5,40 +5,109 @@ max-rise: 16
 door-height: 4
 seal-block: minecraft:packed_ice
 door-block: minecraft:iron_bars
-# Enemies: the Seithr Fortress mobs (MythicMobs). cost = share of a room's threat budget.
-# Roles: grunt, bruiser, tank, ranged, caster, swarm, elite. Ranged and casters prefer 'ranged'
-# spawn markers, the rest 'melee' ones. A room's own 'threat' scales its budget (small rooms less).
+# Enemies: the dungeon's own Seithr mobs (MythicMobs, Dungeon_Seithr_*, apart from Main's fortress ones).
+# cost = share of a room's threat budget. Roles: grunt, bruiser, tank, ranged, caster, swarm, elite.
+# Ranged and casters prefer 'ranged' spawn markers, the rest 'melee' ones. A room's own 'threat' scales
+# its budget (small rooms less). tiers: the difficulties it appears on (1 Normal, 2 Hard, 3 Nightmare,
+# 4 Mythic; "2+" from Hard up); harder difficulties bring other enemies, not only stronger ones. Each
+# enemy's MythicMobs level is the difficulty's tier, so its skills can add moves as it rises.
+# leader: a lower difficulty's boss leading an elite room (its attack areas are marked on the ground).
 roster:
-  miner: {mob: Seithr_Miner, role: swarm, cost: 0.5, weight: 2}
-  spider: {mob: Seithr_Spider, role: swarm, cost: 0.75, weight: 2}
-  soldier: {mob: Seithr_Soldier, role: grunt, cost: 1.5, weight: 3}
-  veteran: {mob: Elite_Seithr_Soldier, role: bruiser, cost: 2}
-  archer: {mob: Seithr_Archer, role: ranged, cost: 2, weight: 2}
-  marksman: {mob: Elite_Seithr_Archer, role: ranged, cost: 2.5}
-  druid: {mob: Seithr_Druid, role: caster, cost: 3}
-  golem: {mob: Seithr_Golem, role: tank, cost: 3.5}
-  captain: {mob: Seithr_Captain, role: elite, cost: 5}
-  mage: {mob: Seithr_Mage, role: elite, cost: 6}
-# Pack shapes, one role per enemy; min-depth = fight rooms cleared before it appears.
+  miner: {mob: Dungeon_Seithr_Miner, role: swarm, cost: 0.5, weight: 2, tiers: 1-2}
+  thrall: {mob: Dungeon_Seithr_Thrall, role: swarm, cost: 0.6, weight: 2}
+  hound: {mob: Dungeon_Seithr_Hound, role: swarm, cost: 0.75, weight: 2}
+  spider: {mob: Dungeon_Seithr_Spider, role: swarm, cost: 0.75, weight: 1, tiers: 1-3}
+  soldier: {mob: Dungeon_Seithr_Soldier, role: grunt, cost: 1.5, weight: 3}
+  archer: {mob: Dungeon_Seithr_Archer, role: ranged, cost: 2, weight: 2}
+  veteran: {mob: Dungeon_Seithr_Veteran, role: elite, cost: 3.5, tiers: 1-2}
+  spearman: {mob: Dungeon_Seithr_Spearman, role: grunt, cost: 1.75, weight: 2, tiers: 2+}
+  shieldbearer: {mob: Dungeon_Seithr_Shieldbearer, role: tank, cost: 2.5, weight: 2, tiers: 2+}
+  marksman: {mob: Dungeon_Seithr_Marksman, role: ranged, cost: 2.5, tiers: 2+}
+  druid: {mob: Dungeon_Seithr_Druid, role: caster, cost: 3, tiers: 2+}
+  golem: {mob: Dungeon_Seithr_Golem, role: tank, cost: 3.5, tiers: 2+}
+  captain: {mob: Dungeon_Seithr_Captain, role: elite, cost: 5, tiers: 2+}
+  hatchling: {mob: Dungeon_Seithr_Hatchling, role: swarm, cost: 0.4, tiers: 3+}
+  berserker: {mob: Dungeon_Seithr_Berserker, role: bruiser, cost: 3, weight: 2, tiers: 3+}
+  bearer: {mob: Dungeon_Seithr_Standard_Bearer, role: caster, cost: 3, tiers: 3+}
+  wisp: {mob: Dungeon_Seithr_Wisp, role: swarm, cost: 1, tiers: 3+}
+  frost_mage: {mob: Dungeon_Seithr_Mage, role: elite, cost: 6, tiers: 3+, leader: true}
+  golem_leader: {mob: Dungeon_Seithr_Ice_Golem, role: elite, cost: 6, tiers: 3+, leader: true}
+  honour_guard: {mob: Dungeon_Seithr_Honour_Guard, role: bruiser, cost: 3.5, weight: 2, tiers: 4}
+  frostcaller: {mob: Dungeon_Seithr_Frostcaller, role: caster, cost: 3.5, tiers: 4}
+  brood_leader: {mob: Dungeon_Seithr_Brood_Mother, role: elite, cost: 7, tiers: 4, leader: true}
+  executioner_leader: {mob: Dungeon_Seithr_Executioner, role: elite, cost: 8, tiers: 4, leader: true}
+# Pack shapes, one role per enemy; min-depth = fight rooms cleared before it appears; tiers as above.
 packs:
   patrol: {slots: [grunt, grunt, ranged, swarm], weight: 3}
-  diggers: {slots: [swarm, swarm, swarm, grunt], weight: 2}
-  shieldline: {slots: [tank, grunt, swarm, swarm], weight: 2, min-depth: 1}
-  frostcall: {slots: [caster, bruiser, grunt, swarm], weight: 1, min-depth: 2}
-# Bosses. health = base max health before party scaling. Phases start at a health percent;
+  diggers: {slots: [swarm, swarm, swarm, grunt], weight: 2, tiers: 1-2}
+  hunters: {slots: [swarm, swarm, grunt, ranged], weight: 2}
+  shieldline: {slots: [tank, grunt, grunt, ranged], weight: 2, min-depth: 1, tiers: 2+}
+  frostcall: {slots: [caster, tank, grunt, swarm], weight: 1, min-depth: 2, tiers: 2+}
+  warband: {slots: [bruiser, caster, grunt, grunt], weight: 2, tiers: 3+}
+  escort: {slots: [bruiser, bruiser, caster, ranged], weight: 2, tiers: 4}
+# Bosses. Each difficulty draws its boss from those of its tiers, by the run's seed (a recipe's
+# boss: fixes one). health = base max health before party scaling. Phases start at a health percent;
 # adds = threat budget of the adds that come with it; every = seconds between mechanics.
 # Mechanics: slam (marks the ground under a player), shockwave (around the boss), rally-call (adds).
-# The Elite Ice Golem stands in until the dungeon's own boss mobs are made.
+# A boss's own attacks are its MythicMobs skills (dungeonattack); these come on top.
 bosses:
   ice_golem:
-    mob: Elite_Seithr_Golem
-    name: The Elite Ice Golem
+    mob: Dungeon_Seithr_Ice_Golem
+    name: The Ice Golem
+    tiers: 1
     health: 500
     enrage-seconds: 600
     phases:
       - {at: 100, adds: 0, mechanics: [slam], every: 12}
       - {at: 66, adds: 5, mechanics: [slam, shockwave], every: 10}
       - {at: 33, adds: 6, mechanics: [shockwave, slam, rally-call], every: 9}
+  garrison_captain:
+    mob: Dungeon_Seithr_Captain_Boss
+    name: The Garrison Captain
+    tiers: 1-2
+    health: 550
+    enrage-seconds: 600
+    phases:
+      - {at: 100, adds: 3, mechanics: [rally-call], every: 14}
+      - {at: 50, adds: 5, mechanics: [slam, rally-call], every: 11}
+  brood_mother:
+    mob: Dungeon_Seithr_Brood_Mother
+    name: The Brood Mother
+    tiers: 2-3
+    health: 700
+    enrage-seconds: 600
+    phases:
+      - {at: 100, adds: 0, mechanics: [slam], every: 12}
+      - {at: 60, adds: 4, mechanics: [slam, shockwave], every: 10}
+      - {at: 30, adds: 6, mechanics: [shockwave, rally-call], every: 9}
+  executioner:
+    mob: Dungeon_Seithr_Executioner
+    name: The Executioner
+    tiers: 3
+    health: 900
+    enrage-seconds: 540
+    phases:
+      - {at: 100, adds: 0, mechanics: [slam], every: 11}
+      - {at: 50, adds: 5, mechanics: [slam, shockwave], every: 9}
+  frost_mage:
+    mob: Dungeon_Seithr_Mage_Boss
+    name: The Frost Mage
+    tiers: 3
+    health: 800
+    enrage-seconds: 540
+    phases:
+      - {at: 100, adds: 0, mechanics: [shockwave], every: 12}
+      - {at: 55, adds: 6, mechanics: [slam, rally-call], every: 10}
+  vaaramereios:
+    mob: Dungeon_Seithr_Vaaramereios
+    name: General Vaaramereios
+    tiers: 4
+    health: 1600
+    enrage-seconds: 600
+    phases:
+      - {at: 100, adds: 0, mechanics: [slam], every: 11}
+      - {at: 70, adds: 7, mechanics: [slam, rally-call], every: 10}
+      - {at: 40, adds: 8, mechanics: [shockwave, slam, rally-call], every: 8}
 # Room events: some plain fight rooms get one (the recipe's event-chance and max-events).
 # kindle: cold braziers stand on spawn points; enemies keep coming until all are lit (a player stays
 #   beside one for light-seconds). endure: the doors stay shut for seconds while enemies keep coming.

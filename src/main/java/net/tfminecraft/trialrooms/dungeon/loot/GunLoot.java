@@ -185,7 +185,7 @@ public final class GunLoot implements WeaponMaker {
         return gun;
     }
 
-    /** "3 Seithr Royal, 2 Delver". */
+    /** "3 Seithr General's, 2 Delver". */
     private static String parts(LootKit k, Map<String, String> sets) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         sets.values().forEach(id -> counts.merge(setName(k, id), 1, Integer::sum));

@@ -315,7 +315,7 @@ sets:
     gun: ["#51617b", "#584638", "#adb2bc"]
     trait: {kind: rime, value: 2}
   royal:
-    name: Seithr Royal
+    name: Seithr General's
     rarity: legendary
     dungeons: [delve_seithr, dungeon_seithr, warband_seithr]
     armour: {2: {damage: 3}, 4: {damage: 6}}

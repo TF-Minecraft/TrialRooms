@@ -36,7 +36,8 @@ import io.lumine.mythic.core.skills.mechanics.CustomMechanic;
  * In the dungeon world this adds a {@link SideCondition} to every MythicMobs mechanic that helps
  * or harms (heals, shields, cleanses, buff and debuff potions, damage, throws, pulls, ignites,
  * and auras named in the settings), and filters auras and heals through MythicMobs' own events.
- * Nothing changes outside the dungeon world or for skills cast by mobs.
+ * Mob skills are kept to their side too: they harm no other mob and help no player ({@link AllyRules}).
+ * Nothing changes outside the dungeon world.
  */
 public final class AllyFilter implements Listener {
 

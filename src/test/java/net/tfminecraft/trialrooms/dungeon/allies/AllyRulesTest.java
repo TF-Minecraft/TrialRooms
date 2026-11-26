@@ -58,8 +58,24 @@ class AllyRulesTest {
     // a player's summon counts as the player
     assertFalse(rules.allows(EffectKind.HARM, totem, ally));
     assertFalse(rules.allows(EffectKind.SUPPORT, totem, mob));
-    // mob skills, unclassified effects and the world outside are left alone
+    // a mob's skills harm players, help mobs, and do anything to the mob itself
+    LivingEntity other = mock(LivingEntity.class);
     assertTrue(rules.allows(EffectKind.HARM, mob, ally));
+    assertTrue(rules.allows(EffectKind.HARM, mob, totem), "a player's summon is the player's side");
+    assertFalse(rules.allows(EffectKind.HARM, mob, other), "no harm to another mob");
+    assertTrue(rules.allows(EffectKind.SUPPORT, mob, other));
+    assertFalse(rules.allows(EffectKind.SUPPORT, mob, ally), "no help for a player");
+    assertTrue(rules.allows(EffectKind.HARM, mob, mob), "on itself (a rise that holds it still)");
+    // only a run's enemy is held to the enemy side: an orphaned summon or a stray is left alone
+    Entity orphan = mock(Entity.class);
+    AllyRules sided = new AllyRules(e -> true, e -> e == caster ? caster : null, e -> e == mob || e == other);
+    assertTrue(sided.allows(EffectKind.HARM, orphan, other));
+    assertTrue(sided.allows(EffectKind.SUPPORT, orphan, ally));
+    assertTrue(sided.allows(EffectKind.HARM, mob, orphan), "not an enemy, so fair game");
+    assertFalse(sided.allows(EffectKind.SUPPORT, mob, orphan));
+    assertFalse(sided.allows(EffectKind.HARM, mob, other));
+    assertTrue(sided.allows(EffectKind.SUPPORT, mob, other));
+    // unclassified effects and the world outside are left alone
     assertTrue(rules.allows(EffectKind.NONE, caster, ally));
     assertTrue(rules.allows(EffectKind.HARM, caster, outsider));
     assertTrue(rules.allows(EffectKind.HARM, null, ally));

@@ -257,8 +257,8 @@ class WeaponLootTest {
     ItemStack it = gun("royal", "royal", "royal", "delver", "delver");
     ItemStack dressed = loot.refreshed(null, it);
     assertSame(it, dressed);
-    assertEquals("Seithr Royal Rifle of Old Oaths", name(it));
-    assertTrue(lore(it).contains("Parts: 3 Seithr Royal, 2 Delver."));
+    assertEquals("Seithr General's Rifle of Old Oaths", name(it));
+    assertTrue(lore(it).contains("Parts: 3 Seithr General's, 2 Delver."));
     ItemStack other = new ItemStack(Material.STONE);
     other.editMeta(m -> m.setUnbreakable(true));
     assertSame(other, loot.refreshed(null, other));
@@ -282,7 +282,7 @@ class WeaponLootTest {
     ItemStack b = gun("ember", "ember", "delver", "delver", "royal");
     List<GunLoot.Trade> trades = loot.trades(a, b);
     assertEquals(5, trades.size());
-    assertTrue(trades.contains(new GunLoot.Trade("stock", "STOCK1 (Seithr Court)", "STOCK2 (Seithr Royal)")), trades.toString());
+    assertTrue(trades.contains(new GunLoot.Trade("stock", "STOCK1 (Seithr Court)", "STOCK2 (Seithr General's)")), trades.toString());
     ItemStack[] both = loot.trade(a, b, "stock");
     GunForge.Gun first = guns.read(both[0]);
     GunForge.Gun second = guns.read(both[1]);
@@ -290,7 +290,7 @@ class WeaponLootTest {
     assertEquals("stock1", second.parts().get("stock"));
     assertEquals("barrel1", first.parts().get("barrel"));
     assertEquals(2, first.power());
-    assertEquals("Seithr Royal Rifle of Old Oaths", name(both[0]));
+    assertEquals("Seithr General's Rifle of Old Oaths", name(both[0]));
     assertEquals(new GearTags.Piece("royal", GearSet.Kind.WEAPON, 2, 1), GearTags.read(both[0]), "8 points of 14");
     assertNull(loot.trade(a, b, "scope"));
     guns.refused.add("loader2");

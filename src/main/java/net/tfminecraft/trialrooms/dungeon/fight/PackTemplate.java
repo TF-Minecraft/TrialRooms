@@ -9,8 +9,13 @@ import java.util.List;
  * @param slots    one role per enemy
  * @param weight   how often it is picked among the packs that fit
  * @param minDepth fight rooms the party must have cleared before it appears
+ * @param tiers    the difficulties it appears on
  */
-public record PackTemplate(String id, List<Role> slots, int weight, int minDepth) {
+public record PackTemplate(String id, List<Role> slots, int weight, int minDepth, Tiers tiers) {
+
+    public PackTemplate(String id, List<Role> slots, int weight, int minDepth) {
+        this(id, slots, weight, minDepth, Tiers.ALL);
+    }
 
     public PackTemplate {
         if (slots == null || slots.isEmpty()) {
