@@ -28,15 +28,15 @@ public final class DungeonCommand {
 
     static final String USAGE = "§eUsage: /tr dungeon <map|preview|start> <recipe> [seed] | clear | reload | runs"
             + " | end <run> | rooms <run> | allies | gate <add <recipe>|remove|list> | leave | ready"
-            + " | locker [give <player>] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>"
+            + " | locker [give <player>] | supplies [give <player> <supply> [amount]] | loot <player> [tier] [rarity|any] [item|gem] | marks <player> <amount>"
             + " | finds | insure | losses <player> | restore <player> <id> | mobtest <mob> [tier] [leader] | attacks";
     static final List<String> SUBCOMMANDS = List.of("map", "preview", "start", "clear", "reload", "runs", "end",
-            "rooms", "allies", "gate", "leave", "ready", "locker", "loot", "marks", "claim", "top", "finds", "insure", "sets",
+            "rooms", "allies", "gate", "leave", "ready", "locker", "supplies", "loot", "marks", "claim", "top", "finds", "insure", "sets",
             "mobtest", "attacks",
             "losses", "restore");
     /** What players without the staff permission may use. */
-    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "claim", "top", "sets", "finds",
-            "insure");
+    public static final List<String> PLAYER_SUBCOMMANDS = List.of("leave", "ready", "locker", "supplies", "claim", "top",
+            "sets", "finds", "insure");
 
     private final DungeonModule module;
 
@@ -61,6 +61,7 @@ public final class DungeonCommand {
             case "claim" -> claim(sender);
             case "top" -> top(sender, args);
             case "locker" -> locker(sender, args);
+            case "supplies" -> supplies(sender, args);
             case "loot" -> loot(sender, args);
             case "marks" -> marks(sender, args);
             case "finds", "insure" -> {
@@ -321,6 +322,48 @@ public final class DungeonCommand {
         new LockerMenu(lockers, p, module.runs()::inLobby, module.rewards()).open();
     }
 
+    private void supplies(CommandSender sender, String[] args) {
+        LockerService lockers = module.runs().lockers();
+        if (lockers == null) {
+            sender.sendMessage("§cDungeon lockers are off.");
+            return;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("give")) {
+            giveSupplies(sender, lockers, args);
+            return;
+        }
+        if (!(sender instanceof Player p)) {
+            sender.sendMessage("§cOnly a player has supplies.");
+            return;
+        }
+        new net.tfminecraft.trialrooms.dungeon.supply.SupplyMenu(lockers, p, module::supplies).open();
+    }
+
+    /** Staff: puts supplies in a player's locker (for tests and to make up for a loss). */
+    private void giveSupplies(CommandSender sender, LockerService lockers, String[] args) {
+        if (!sender.hasPermission(RunManager.STAFF_PERMISSION)) {
+            sender.sendMessage("§cYou don't have permission to use this command.");
+            return;
+        }
+        if (args.length < 4) {
+            sender.sendMessage("§cUsage: /tr dungeon supplies give <player> <supply> [amount]");
+            return;
+        }
+        Player target = Bukkit.getPlayerExact(args[2]);
+        var supply = module.supplies().supply(args[3]);
+        int amount = args.length >= 5 && args[4].matches("\\d{1,4}") ? Integer.parseInt(args[4]) : 1;
+        var locker = target == null ? null : lockers.locker(target);
+        if (locker == null || supply == null || amount < 1) {
+            sender.sendMessage("§cNo such online player with a locker, or no such supply ("
+                    + String.join(", ", module.supplies().items().keySet()) + ").");
+            return;
+        }
+        locker.supplies(supply.id(), locker.supplies(supply.id()) + amount);
+        sender.sendMessage(lockers.saveLocker(target, locker)
+                ? "§aGave " + target.getName() + " " + amount + " " + supply.name() + " (in their locker, not packed)."
+                : "§cThe locker could not be saved; nothing changed.");
+    }
+
     /** Staff: files a copy of the item in hand in a player's locker as a dungeon item (until loot drops them). */
     private void give(CommandSender sender, LockerService lockers, String[] args) {
         if (!sender.hasPermission(RunManager.STAFF_PERMISSION)) {
@@ -497,8 +540,11 @@ public final class DungeonCommand {
         if (args.length == 1) {
             return SUBCOMMANDS.stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
         }
-        if (args.length == 2 && args[0].equalsIgnoreCase("locker")) {
+        if (args.length == 2 && (args[0].equalsIgnoreCase("locker") || args[0].equalsIgnoreCase("supplies"))) {
             return "give".startsWith(args[1]) ? List.of("give") : List.of();
+        }
+        if (args.length == 4 && args[0].equalsIgnoreCase("supplies")) {
+            return module.supplies().items().keySet().stream().filter(s -> s.startsWith(args[3])).toList();
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("gate")) {
             return List.of("add", "remove", "list").stream().filter(s -> s.startsWith(args[1])).toList();

@@ -42,6 +42,8 @@ import io.lumine.mythic.core.skills.mechanics.CustomMechanic;
 public final class AllyFilter implements Listener {
 
     private final AllyRules rules;
+    /** Whether a drunk ward on the target stops an aura (dungeon supplies); used up when it does. */
+    private java.util.function.BiPredicate<Entity, String> ward = (target, aura) -> false;
     private final Supplier<Set<String>> harmfulAuras;
     private final Supplier<Set<String>> helpfulAuras;
     private final Supplier<Collection<?>> mechanics;
@@ -240,12 +242,17 @@ public final class AllyFilter implements Listener {
         log.info("[dungeons] ally filter on " + added + " MythicMobs mechanics after a reload");
     }
 
+    /** Sets what stops auras on a target before they start (dungeon supplies' wards). */
+    public void wards(java.util.function.BiPredicate<Entity, String> ward) {
+        this.ward = ward;
+    }
+
     @EventHandler(ignoreCancelled = true)
     public void onAura(MythicAuraStartEvent event) {
         EffectKind kind = EffectKind.aura(event.getAuraName(), harmfulAuras.get(), helpfulAuras.get());
         Entity target = event.getTargetEntity().map(e -> e.getBukkitEntity()).orElse(null);
         Entity caster = event.getCaster() == null ? null : event.getCaster().getEntity().getBukkitEntity();
-        if (!rules.allows(kind, caster, target)) {
+        if (!rules.allows(kind, caster, target) || target != null && ward.test(target, event.getAuraName())) {
             event.setCancelled(true);
         }
     }

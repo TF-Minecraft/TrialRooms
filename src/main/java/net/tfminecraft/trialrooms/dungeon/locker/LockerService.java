@@ -23,6 +23,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
+import net.tfminecraft.trialrooms.dungeon.supply.Supply;
+import net.tfminecraft.trialrooms.dungeon.supply.SupplyItems;
+
 /**
  * Puts lockers to work on players: wearing a loadout, taking it off, and putting things right after
  * a crash or a quit.
@@ -186,6 +189,95 @@ public final class LockerService {
 
     public boolean isDungeonItem(ItemStack item) {
         return idOf(item) != null;
+    }
+
+    /** Whether an item is a dungeon supply. */
+    public boolean isSupply(ItemStack item) {
+        return SupplyItems.idOf(item) != null;
+    }
+
+    /** What the locker's guards keep in their owner's hands: dungeon items and supplies. */
+    public boolean guarded(ItemStack item) {
+        return isDungeonItem(item) || isSupply(item);
+    }
+
+    // ---- supplies
+
+    /**
+     * Hands a player their packed supplies for a run, as many stacks as their inventory has room
+     * for. The locker is saved first, noting what went out; after the run {@link #settle} counts what
+     * comes back, and the rest was used. Returns how many supplies went out, or -1 when the locker
+     * can't be read or saved.
+     */
+    public int handOut(Player p, Function<String, Supply> catalog) {
+        Locker l = locker(p);
+        if (l == null) {
+            return -1;
+        }
+        if (!l.out().isEmpty()) {
+            collectSupplies(p, l); // a run that was cut off: settle it first
+        }
+        int free = 0;
+        for (ItemStack it : p.getInventory().getStorageContents()) {
+            free += empty(it) ? 1 : 0;
+        }
+        Map<String, Integer> given = new LinkedHashMap<>();
+        List<ItemStack> stacks = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : l.packed().entrySet()) {
+            Supply s = catalog.apply(e.getKey());
+            for (int left = s == null ? 0 : e.getValue(); left > 0 && free > 0; free--) {
+                int n = Math.min(left, s.stack());
+                stacks.add(SupplyItems.make(s, n));
+                given.merge(s.id(), n, Integer::sum);
+                left -= n;
+            }
+        }
+        if (given.isEmpty()) {
+            return 0;
+        }
+        given.forEach(l::out);
+        if (!save(p, l)) {
+            l.clearOut();
+            return -1;
+        }
+        PlayerInventory inv = p.getInventory();
+        stacks.forEach(inv::addItem);
+        saver.accept(p);
+        return given.values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    /** A supply found in a run: into the player's hands, or the locker when there is no room. */
+    public void giveSupply(Player p, Supply s, int count) {
+        int left = p.getInventory().addItem(SupplyItems.make(s, count)).values().stream()
+                .mapToInt(ItemStack::getAmount).sum();
+        Locker l = left > 0 ? locker(p) : null;
+        if (l != null) {
+            l.supplies(s.id(), l.supplies(s.id()) + left);
+            saveLocker(p, l);
+        }
+    }
+
+    /**
+     * Takes every supply out of a player's hands: what a run took and did not use goes back, what
+     * was found in it is kept. True when anything changed.
+     */
+    private boolean collectSupplies(Player p, Locker l) {
+        Map<String, Integer> found = new LinkedHashMap<>();
+        for (ItemStack it : remove(p, this::isSupply)) {
+            found.merge(SupplyItems.idOf(it), it.getAmount(), Integer::sum);
+        }
+        if (found.isEmpty() && l.out().isEmpty()) {
+            return false;
+        }
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>(l.out().keySet());
+        ids.addAll(found.keySet());
+        for (String id : ids) {
+            l.supplies(id, l.supplies(id) - l.out(id) + found.getOrDefault(id, 0));
+        }
+        l.clearOut();
+        save(p, l);
+        saver.accept(p);
+        return true;
     }
 
     private long wornRevision(ItemStack item) {
@@ -494,6 +586,7 @@ public final class LockerService {
             }
         }
         collect(p, l, false);
+        collectSupplies(p, l);
         if (l.fromBackup && !l.owed().isEmpty()) {
             // The backup is one save behind: what it owes may have been handed over already.
             if (!store.quarantine(p.getUniqueId(), characters.apply(p), "owed items in a locker read from its backup",

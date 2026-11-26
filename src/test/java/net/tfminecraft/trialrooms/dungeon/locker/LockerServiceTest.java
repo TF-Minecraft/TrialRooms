@@ -729,4 +729,83 @@ class LockerServiceTest {
     ItemStack it = named(Material.STICK, "a stick");
     assertEquals("a stick", name(lockers.decode(lockers.encode(it))));
   }
+
+  static final net.tfminecraft.trialrooms.dungeon.supply.Supply POTION = new net.tfminecraft.trialrooms.dungeon.supply.Supply(
+      "potion", "Health Potion", new net.tfminecraft.trialrooms.dungeon.supply.Supply.Look("SLIME_BALL", 273, null), 3, 2,
+      net.tfminecraft.trialrooms.dungeon.supply.Supply.Use.HEALTH, 0.4, 0, 20, 0, java.util.Set.of(), java.util.Set.of(),
+      List.of());
+
+  int supplies(PlayerMock p) {
+    int n = 0;
+    for (ItemStack it : p.getInventory().getContents()) {
+      n += lockers.isSupply(it) ? it.getAmount() : 0;
+    }
+    return n;
+  }
+
+  @Test
+  void packedSuppliesGoIntoARunAndWhatIsLeftComesBack() throws Exception {
+    assertEquals(-1, new LockerService(plugin, store, codec, p -> null, p -> { }).handOut(ann, id -> POTION),
+        "no character, no locker");
+    assertEquals(0, lockers.handOut(ann, id -> POTION), "nothing packed");
+    Locker l = lockers.locker(ann);
+    l.supplies("potion", 5);
+    l.packed("potion", 5);
+    l.supplies("gone", 1);
+    l.packed("gone", 1);
+    assertTrue(lockers.saveLocker(ann, l));
+    int before = saves;
+    assertEquals(5, lockers.handOut(ann, id -> id.equals("potion") ? POTION : null), "the unknown one stays");
+    assertEquals(5, supplies(ann));
+    assertEquals(5, l.out("potion"));
+    assertEquals(5, l.supplies("potion"), "still owned while out");
+    assertTrue(saves > before, "the player's file is saved");
+    ItemStack potion = ann.getInventory().getItem(0);
+    assertTrue(lockers.isSupply(potion) && lockers.guarded(potion) && !lockers.isDungeonItem(potion));
+    assertFalse(lockers.guarded(new ItemStack(Material.STONE)));
+    ItemStack gear = lockers.show(lockers.locker(ann), lockers.add(ann, named(Material.DIAMOND_HELMET, "Rime Helm")));
+    assertEquals(lockers.isDungeonItem(gear), lockers.guarded(gear));
+    // two used in the run; one found there
+    potion.setAmount(1);
+    lockers.giveSupply(ann, POTION, 1);
+    lockers.settle(ann, true);
+    assertEquals(4, supplies(ann), "playing: nothing taken");
+    lockers.settle(ann, false);
+    assertEquals(0, supplies(ann));
+    assertEquals(4, l.supplies("potion"), "5 out, 4 back with the find: 2 used");
+    assertTrue(l.out().isEmpty());
+    lockers.settle(ann, false); // nothing to collect
+    assertEquals(4, l.supplies("potion"));
+  }
+
+  @Test
+  void aCutOffRunIsSettledBeforeTheNextAndRoomIsRespected() throws Exception {
+    Locker l = lockers.locker(ann);
+    l.supplies("potion", 6);
+    l.packed("potion", 6);
+    l.out("potion", 2); // a run cut off: those two were lost with it
+    assertTrue(lockers.saveLocker(ann, l));
+    for (int slot = 1; slot < 36; slot++) {
+      ann.getInventory().setItem(slot, new ItemStack(Material.STONE));
+    }
+    assertEquals(3, lockers.handOut(ann, id -> POTION), "one free slot: one stack");
+    assertEquals(4, l.supplies("potion"));
+    assertEquals(3, l.out("potion"));
+    // all three used; a find with no room goes to the locker
+    for (int slot = 0; slot < ann.getInventory().getSize(); slot++) {
+      ann.getInventory().setItem(slot, new ItemStack(Material.STONE, 64));
+    }
+    lockers.giveSupply(ann, POTION, 1);
+    assertEquals(5, l.supplies("potion"));
+    ann.getInventory().clear();
+    lockers.settle(ann, false);
+    assertEquals(2, l.supplies("potion"), "the three out were used");
+    // a save that fails hands nothing out
+    Path tmp = store.file(ann.getUniqueId(), "c1").resolveSibling("c1.locker.tmp");
+    Files.createDirectories(tmp);
+    assertEquals(-1, lockers.handOut(ann, id -> POTION));
+    assertTrue(l.out().isEmpty());
+    assertEquals(0, supplies(ann));
+    Files.delete(tmp);
+  }
 }

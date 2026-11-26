@@ -104,6 +104,9 @@ public final class RunManager {
     /** What players find in banking runs, the ways out of treasure rooms, and insurance. */
     final RunFinds finds = new RunFinds(this);
 
+    /** Supplies, the rest room's campfire and supplies found on the way. */
+    final Supplies supplies;
+
     /** A run with what it needs in the world. */
     public static final class ActiveRun {
         final DungeonRun run;
@@ -183,6 +186,12 @@ public final class RunManager {
         final Set<Integer> exitsShown = new HashSet<>();
         /** Treasure rooms that have banked (each banks once). */
         final Set<Integer> treasureBanked = new HashSet<>();
+        /** Members who got their supply pouch this run. */
+        final Set<UUID> supplied = new HashSet<>();
+        /** Members who rested by the rest room's fire this run. */
+        final Set<UUID> rested = new HashSet<>();
+        /** Treasure rooms each member searched for supplies ("room:uuid"). */
+        final Set<String> treasureSearched = new HashSet<>();
         /** Whether finds are still held (a banking run until its vault; after it, finds are paid at once). */
         boolean holding;
         /** Fight rooms cleared (save points come every so many). */
@@ -238,6 +247,8 @@ public final class RunManager {
         this.mobs = mobs;
         this.fights = new Fights(this, plugin, mobs, fx, clock);
         this.events = new Events(this, plugin, fights, clock);
+        this.supplies = new Supplies(this, bars, clock, java.util.concurrent.ThreadLocalRandom.current()::nextDouble,
+                module::supplies);
         this.files = files;
         this.gates = gates;
         this.clock = clock;
@@ -682,6 +693,8 @@ public final class RunManager {
             ar.enemyFactor = rules.enemyFactor(n);
             if (n == 0) {
                 end(ar, true, null);
+            } else if (!lobby) {
+                supplies.handOut(ar, online(ar).stream().filter(p -> isPlayingMember(ar, p)).toList());
             }
         });
     }
@@ -782,6 +795,7 @@ public final class RunManager {
                 end(ar, false, null);
             }
         }
+        supplies.prune(byPlayer::containsKey);
         bars.hideOlder(now);
     }
 
@@ -841,6 +855,7 @@ public final class RunManager {
             ar.progressMs = now; // a party getting ready is not stuck
         }
         downed(ar, now);
+        supplies.step(ar, now);
         hint(ar, now);
         if (run.state() != DungeonRun.State.RUNNING) {
             return;
@@ -859,6 +874,10 @@ public final class RunManager {
                 .append(Component.text("[Locker]", NamedTextColor.GOLD)
                         .clickEvent(ClickEvent.runCommand("/tr dungeon locker"))
                         .hoverEvent(HoverEvent.showText(Component.text("Put on a loadout of dungeon items, or stay in your own gear"))))
+                .append(Component.text(" "))
+                .append(Component.text("[Supplies]", NamedTextColor.YELLOW)
+                        .clickEvent(ClickEvent.runCommand("/tr dungeon supplies"))
+                        .hoverEvent(HoverEvent.showText(Component.text("Buy and pack what you take along: nothing heals on its own here"))))
                 .append(Component.text(" "))
                 .append(Component.text("[Ready]", NamedTextColor.GREEN)
                         .clickEvent(ClickEvent.runCommand("/tr dungeon ready"))
@@ -886,7 +905,9 @@ public final class RunManager {
     }
 
     private void openLobby(ActiveRun ar) {
-        finds.doorsOpen(ar, online(ar).stream().filter(p -> isPlayingMember(ar, p)).toList());
+        List<Player> here = online(ar).stream().filter(p -> isPlayingMember(ar, p)).toList();
+        finds.doorsOpen(ar, here);
+        supplies.handOut(ar, here);
         setDoors(ar, ar.lobbyRoom, false, false);
         ar.lobbyRoom = -1;
         ar.openedMs = clock.getAsLong();
@@ -928,6 +949,7 @@ public final class RunManager {
                 finds.bank(ar);
             }
         } else if (type == RoomType.TREASURE) {
+            supplies.treasure(ar, p, room);
             if (ar.holding && ar.banking.treasure() && ar.treasureBanked.add(room)) {
                 tell(ar, "§aA treasure room: its cache keeps what you carry safe.");
                 finds.bank(ar);
@@ -1129,6 +1151,7 @@ public final class RunManager {
             }
         }
         RunRewards.Moment moment = clearedMoment(type, ar.planned.containsKey(room));
+        supplies.cleared(ar, room, type, moment != null);
         if (moment != null) {
             reward(ar, moment);
         }
@@ -1377,6 +1400,52 @@ public final class RunManager {
     }
 
 
+
+    /** A downed member brought back up at once by another (smelling salts). False when they are not down. */
+    boolean reviveNow(ActiveRun ar, Player by, Player down, String with) {
+        long needed = settings().reviveSeconds() * 1000L;
+        if (!ar.run.addRevive(down.getUniqueId(), needed, needed)) {
+            return false;
+        }
+        clearDowned(ar, down);
+        down.setHealth(Math.max(1.0, down.getAttribute(Attribute.MAX_HEALTH).getValue() * 0.3));
+        tell(ar, "§a" + by.getName() + " brings " + down.getName() + " back up with " + with + ".");
+        event(ar, by.getName() + " revived " + down.getName() + " with " + with);
+        return true;
+    }
+
+    // ------------------------------------------------------------------ supplies (for the listener)
+
+    /** Whether a player is playing a run here now: what heals them is the dungeon's to say. */
+    public boolean playingHere(Player p) {
+        ActiveRun ar = byPlayer.get(p.getUniqueId());
+        return ar != null && inDungeonWorld(p) && isPlayingMember(ar, p);
+    }
+
+    /** A player right-clicks a supply item. */
+    public void useSupply(Player p, org.bukkit.inventory.ItemStack item) {
+        supplies.use(p, item);
+    }
+
+    /** A player in a run took damage. */
+    public void hurt(Player p) {
+        supplies.hurt(p);
+    }
+
+    /** Whether a drunk ward stops this potion effect on a player (used up when it does). */
+    public boolean wardsPotion(Player p, String type) {
+        return supplies.wardsPotion(p, type);
+    }
+
+    /** Whether a drunk ward stops this MythicMobs aura on a player (used up when it does). */
+    public boolean wardsAura(Player p, String aura) {
+        return supplies.wardsAura(p, aura);
+    }
+
+    /** Mana from MMOCore, for supplies and the campfire. */
+    public void mana(Ports.Mana mana) {
+        supplies.mana = mana;
+    }
 
     private void clearDowned(ActiveRun ar, Player p) {
         ar.downedAt.remove(p.getUniqueId());

@@ -48,6 +48,7 @@ class LockerListenerTest {
     LockerMenu.isGem = it -> it == gemItem;
     lockers = mock(LockerService.class);
     when(lockers.isDungeonItem(bound)).thenReturn(true);
+    when(lockers.guarded(bound)).thenReturn(true);
     l = new LockerListener(lockers);
     p = mock(Player.class);
     inv = mock(PlayerInventory.class);
@@ -135,6 +136,7 @@ class LockerListenerTest {
     l.onClick(scoop);
     verify(scoop).setCancelled(true);
     when(lockers.isDungeonItem(gemItem)).thenReturn(true);
+    when(lockers.guarded(gemItem)).thenReturn(true);
     InventoryClickEvent swapped = click(grid, p);
     when(swapped.getCursor()).thenReturn(bound);
     when(swapped.getCurrentItem()).thenReturn(plain);

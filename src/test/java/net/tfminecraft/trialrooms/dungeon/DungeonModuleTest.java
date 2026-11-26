@@ -140,6 +140,9 @@ class DungeonModuleTest {
     assertEquals(5, m.affixes().pool().size(), "and the weekly affixes from settings.yml");
     assertEquals(List.of(0.4, 0.35, 0.3, 0.25), m.combat().openBonus(), "and the combat section");
     assertEquals(List.of("Silenced", "Frozen", "Stun_Aura"), m.combat().interruptAuras());
+    assertEquals(5, m.supplies().items().size(), "and the supplies");
+    assertEquals(0.5, m.supplies().campfireShare(2));
+    assertEquals(4, m.supplies().pouch());
     assertEquals(20, m.recipes().get("delve_seithr").rules().minutes());
     // a second start keeps edited files
     Files.writeString(data.resolve("dungeons/recipes.yml"), "x: 1\n");
@@ -199,6 +202,10 @@ class DungeonModuleTest {
     m.reload();
     assertTrue(m.problems().stream().anyMatch(p -> p.startsWith("settings.yml combat: ")), m.problems().toString());
     assertSame(net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS, m.combat());
+    Files.writeString(data.resolve("dungeons/settings.yml"), "supplies:\n  pouch: -1\n");
+    m.reload();
+    assertTrue(m.problems().stream().anyMatch(p -> p.startsWith("settings.yml supplies: ")), m.problems().toString());
+    assertSame(net.tfminecraft.trialrooms.dungeon.supply.SupplySettings.DEFAULTS, m.supplies());
     Files.delete(data.resolve("dungeons/settings.yml"));
     m.reload();
     assertSame(net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS, m.combat(), "no settings.yml: defaults");

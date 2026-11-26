@@ -155,6 +155,36 @@ class LockerCoreTest {
   }
 
   @Test
+  void suppliesArePackedAndCountedOutAndKeptByTheStore() {
+    Locker l = new Locker();
+    assertEquals(0, l.supplies("potion"));
+    l.packed("potion", 2);
+    assertEquals(0, l.packed("potion"), "nothing owned: nothing packed");
+    l.supplies("potion", 5);
+    l.packed("potion", 9);
+    assertEquals(5, l.packed("potion"), "no more packed than owned");
+    l.supplies("potion", 3);
+    assertEquals(3, l.packed("potion"), "fewer owned: fewer packed");
+    l.supplies("salts", 2);
+    l.out("potion", 2);
+    l.out("salts", 1);
+    String body = LockerStore.body(l, 7);
+    Locker back = LockerStore.parse(LockerStore.MAGIC + " " + LockerStore.sha256(body) + "\n" + body);
+    assertEquals(Map.of("potion", 3, "salts", 2), back.supplies());
+    assertEquals(Map.of("potion", 3), back.packed());
+    assertEquals(Map.of("potion", 2, "salts", 1), back.out());
+    assertEquals(2, back.out("potion"));
+    back.out("salts", 0);
+    assertEquals(0, back.out("salts"));
+    back.clearOut();
+    assertTrue(back.out().isEmpty());
+    back.packed("potion", 0);
+    assertTrue(back.packed().isEmpty());
+    back.supplies("potion", 0);
+    assertTrue(back.supplies().containsKey("salts") && !back.supplies().containsKey("potion"));
+  }
+
+  @Test
   void theFormatIsChecked() {
     assertThrows(IllegalArgumentException.class, () -> LockerStore.parse("nonsense"));
     assertThrows(IllegalArgumentException.class, () -> LockerStore.parse("TRLOCKER1 abc def\nx"));

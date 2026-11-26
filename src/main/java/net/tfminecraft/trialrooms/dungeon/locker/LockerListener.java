@@ -50,8 +50,8 @@ public final class LockerListener implements Listener {
                 ? p.getInventory().getItemInOffHand() : null;
         ItemStack current = event.getCurrentItem();
         ItemStack cursor = event.getCursor();
-        if (!lockers.isDungeonItem(current) && !lockers.isDungeonItem(cursor) && !lockers.isDungeonItem(hotbar)
-                && !lockers.isDungeonItem(offhand)) {
+        if (!lockers.guarded(current) && !lockers.guarded(cursor) && !lockers.guarded(hotbar)
+                && !lockers.guarded(offhand)) {
             return;
         }
         // On the player's own screen dungeon items move about freely, but never into the crafting
@@ -78,7 +78,7 @@ public final class LockerListener implements Listener {
             return;
         }
         // the top's raw slots: another inventory, or the crafting grid of the player's own screen
-        if (lockers.isDungeonItem(event.getOldCursor()) && event.getRawSlots().stream().anyMatch(s -> s < top.getSize())) {
+        if (lockers.guarded(event.getOldCursor()) && event.getRawSlots().stream().anyMatch(s -> s < top.getSize())) {
             event.setCancelled(true);
         }
     }
@@ -90,7 +90,7 @@ public final class LockerListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onCraft(PrepareItemCraftEvent event) {
         for (ItemStack it : event.getInventory().getMatrix()) {
-            if (lockers.isDungeonItem(it)) {
+            if (lockers.guarded(it)) {
                 event.getInventory().setResult(null);
                 return;
             }
@@ -99,7 +99,7 @@ public final class LockerListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onDrop(PlayerDropItemEvent event) {
-        if (lockers.isDungeonItem(event.getItemDrop().getItemStack())) {
+        if (lockers.guarded(event.getItemDrop().getItemStack())) {
             event.setCancelled(true);
             event.getPlayer().sendMessage("§cDungeon items can't be dropped.");
         }
@@ -109,7 +109,7 @@ public final class LockerListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPickup(EntityPickupItemEvent event) {
         Item item = event.getItem();
-        if (lockers.isDungeonItem(item.getItemStack())) {
+        if (lockers.guarded(item.getItemStack())) {
             event.setCancelled(true);
             item.remove();
         }
@@ -118,14 +118,14 @@ public final class LockerListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onFrame(PlayerInteractEntityEvent event) {
         if (event.getRightClicked() instanceof ItemFrame
-                && lockers.isDungeonItem(event.getPlayer().getInventory().getItem(event.getHand()))) {
+                && lockers.guarded(event.getPlayer().getInventory().getItem(event.getHand()))) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onStand(PlayerArmorStandManipulateEvent event) {
-        if (lockers.isDungeonItem(event.getPlayerItem())) {
+        if (lockers.guarded(event.getPlayerItem())) {
             event.setCancelled(true);
         }
     }

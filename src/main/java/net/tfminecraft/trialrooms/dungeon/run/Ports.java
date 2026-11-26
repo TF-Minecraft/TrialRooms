@@ -26,6 +26,16 @@ public final class Ports {
         List<UUID> partyMembers(Player player);
     }
 
+    /** Mana (MMOCore). */
+    public interface Mana {
+        double mana(Player player);
+
+        double max(Player player);
+
+        /** Adds mana (never past the max). */
+        void add(Player player, double amount);
+    }
+
     /** Key items (TLibs item paths). */
     public interface Keys {
         boolean holds(Player player, String path);

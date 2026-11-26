@@ -79,11 +79,15 @@ public final class DungeonModule {
     private RunSettings settings = RunSettings.defaults();
     private net.tfminecraft.trialrooms.dungeon.combat.CombatSettings combat =
             net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS;
+    /** Regen held in runs and mana (MMOCore), or null without it. */
+    private net.tfminecraft.trialrooms.dungeon.supply.MmoCoreRules mmoCore;
+    private net.tfminecraft.trialrooms.dungeon.supply.SupplySettings supplies =
+            net.tfminecraft.trialrooms.dungeon.supply.SupplySettings.DEFAULTS;
     private net.tfminecraft.trialrooms.dungeon.combat.Attacks attacks;
     private Ports.Mobs mobs;
     /** Enemies staff spawned to watch as leaders (their areas marked on the ground). */
     private final java.util.Set<java.util.UUID> testLeaders = new java.util.HashSet<>();
-    private RunManager runs;
+    RunManager runs; // (package-private for tests)
     private AllyFilter allyFilter;
     private LootKit lootKit;
     private RewardRules rewardRules;
@@ -124,6 +128,9 @@ public final class DungeonModule {
     public void disable() {
         if (gear != null) {
             gear.stop();
+        }
+        if (mmoCore != null) {
+            mmoCore.releaseAll(plugin.getServer().getOnlinePlayers());
         }
         if (attacks != null) {
             attacks.stop();
@@ -183,8 +190,30 @@ public final class DungeonModule {
         // (after set bonuses, before the run's own judgement: both act on hits at HIGHEST)
         startCombat(new net.tfminecraft.trialrooms.dungeon.combat.MythicControl(this::attacks, plugin.getLogger()));
         runs.start();
-        plugin.getServer().getPluginManager().registerEvents(new RunListener(plugin, runs, this::enemy), plugin);
+        RunListener listener = new RunListener(plugin, runs, this::enemy);
+        if (plugins.isPluginEnabled("MMOItems")) {
+            listener.outsideHeals(net.tfminecraft.trialrooms.dungeon.supply.MmoHealing::heals);
+        }
+        plugin.getServer().getPluginManager().registerEvents(listener, plugin);
         plugin.getServer().getPluginManager().registerEvents(new LockerListener(lockers), plugin);
+        if (plugins.isPluginEnabled("MMOCore")) {
+            optional("dungeon mana and regeneration rules", this::startMmoCore);
+        }
+        if (plugins.isPluginEnabled("MythicLib")) {
+            optional("held regen skills and outside potions in runs", () -> plugin.getServer().getPluginManager()
+                    .registerEvents(new net.tfminecraft.trialrooms.dungeon.supply.MythicLibRules(runs::playingHere,
+                            this::supplies, listener::outsideHeal), plugin));
+        }
+    }
+
+    /** No natural health regen in runs, and mana for supplies and the campfire (MMOCore). */
+    void startMmoCore() {
+        var rules = new net.tfminecraft.trialrooms.dungeon.supply.MmoCoreRules(runs::playingHere);
+        plugin.getServer().getPluginManager().registerEvents(rules, plugin);
+        plugin.getServer().getScheduler().runTaskTimer(plugin, () -> rules.tick(plugin.getServer().getOnlinePlayers()),
+                20L, 20L);
+        runs.mana(rules);
+        mmoCore = rules;
     }
 
     /** Starts what another plugin's newer version is for; without it, the rest goes on. */
@@ -290,6 +319,11 @@ public final class DungeonModule {
         return combat;
     }
 
+    /** settings.yml's campfire and supplies sections. */
+    public net.tfminecraft.trialrooms.dungeon.supply.SupplySettings supplies() {
+        return supplies;
+    }
+
     /**
      * Staff: one enemy at a spot to watch its attacks, at a difficulty's level; as a leader its attack
      * areas are marked on the ground. Null when the type is unknown.
@@ -312,6 +346,11 @@ public final class DungeonModule {
         return runs;
     }
 
+    /** Whether a drunk ward on a player in a run stops a MythicMobs aura (used up when it does). */
+    boolean wardsAura(org.bukkit.entity.Entity target, String aura) {
+        return target instanceof org.bukkit.entity.Player p && runs.playingHere(p) && runs.wardsAura(p, aura);
+    }
+
     /**
      * Starts the ally filter (no friendly fire of any kind in dungeons) over MythicMobs mechanics:
      * once shortly after start, then every minute to catch mechanics parsed later, and after each
@@ -321,6 +360,7 @@ public final class DungeonModule {
         AllyRules rules = new AllyRules(runs::inDungeonWorld, AllyFilter::ownerOf, this::enemy);
         AllyFilter filter = new AllyFilter(rules, () -> settings.harmfulAuras(), () -> settings.helpfulAuras(),
                 mechanics, plugin.getLogger());
+        filter.wards(this::wardsAura);
         plugin.getServer().getPluginManager().registerEvents(filter, plugin);
         allyFilter = filter;
         plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
@@ -411,6 +451,15 @@ public final class DungeonModule {
         } catch (IllegalArgumentException e) {
             problems.add("settings.yml combat: " + e.getMessage());
             combat = net.tfminecraft.trialrooms.dungeon.combat.CombatSettings.DEFAULTS;
+        }
+        try {
+            var yml = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(settingsFile);
+            supplies = net.tfminecraft.trialrooms.dungeon.supply.SupplySettings.from(
+                    yml.getConfigurationSection("campfire"), yml.getConfigurationSection("supplies"),
+                    yml.isList("no-regen-skills") ? yml.getStringList("no-regen-skills") : null);
+        } catch (IllegalArgumentException e) {
+            problems.add("settings.yml supplies: " + e.getMessage());
+            supplies = net.tfminecraft.trialrooms.dungeon.supply.SupplySettings.DEFAULTS;
         }
         recipes.values().removeIf(e -> {
             DungeonKit kit = kits.get(e.kit());

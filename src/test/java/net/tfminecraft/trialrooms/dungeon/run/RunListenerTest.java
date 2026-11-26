@@ -521,4 +521,169 @@ class RunListenerTest {
     l.onOpen(npc);
     assertFalse(npc.isCancelled());
   }
+
+  static ItemStack supplyItem() {
+    return net.tfminecraft.trialrooms.dungeon.supply.SupplyItems.make(new net.tfminecraft.trialrooms.dungeon.supply.Supply(
+        "potion", "Health Potion", new net.tfminecraft.trialrooms.dungeon.supply.Supply.Look("SLIME_BALL", 1, null), 3, 2,
+        net.tfminecraft.trialrooms.dungeon.supply.Supply.Use.HEALTH, 0.4, 0, 0, 0, java.util.Set.of(), java.util.Set.of(),
+        List.of()), 1);
+  }
+
+  @Test
+  void nobodyInARunHealsNaturally() {
+    Player p = player();
+    var regen = new org.bukkit.event.entity.EntityRegainHealthEvent(p, 1,
+        org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.REGEN);
+    var magic = new org.bukkit.event.entity.EntityRegainHealthEvent(p, 1,
+        org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.MAGIC);
+    l.onRegain(regen);
+    assertFalse(regen.isCancelled(), "not in a run");
+    when(runs.playingHere(p)).thenReturn(true);
+    l.onRegain(magic);
+    assertFalse(magic.isCancelled(), "a healer's heal");
+    l.onRegain(regen);
+    assertTrue(regen.isCancelled());
+    var fed = new org.bukkit.event.entity.EntityRegainHealthEvent(p, 1,
+        org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.SATIATED);
+    l.onRegain(fed);
+    assertTrue(fed.isCancelled());
+  }
+
+  org.bukkit.event.player.PlayerInteractEvent click(Player p, org.bukkit.event.block.Action action, ItemStack item) {
+    var e = mock(org.bukkit.event.player.PlayerInteractEvent.class);
+    when(e.getPlayer()).thenReturn(p);
+    when(e.getAction()).thenReturn(action);
+    when(e.getItem()).thenReturn(item);
+    return e;
+  }
+
+  @Test
+  void suppliesAreUsedAndOutsidePotionsRefusedInARun() {
+    Player p = player();
+    ItemStack supply = supplyItem();
+    var left = click(p, org.bukkit.event.block.Action.LEFT_CLICK_AIR, supply);
+    l.onUse(left);
+    verify(runs, never()).useSupply(any(), any());
+    var use = click(p, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, supply);
+    l.onUse(use);
+    verify(use).setCancelled(true);
+    verify(use).setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+    verify(runs).useSupply(p, supply);
+    ItemStack potion = new ItemStack(org.bukkit.Material.POTION);
+    var drink = click(p, org.bukkit.event.block.Action.RIGHT_CLICK_AIR, potion);
+    l.onUse(drink);
+    verify(drink, never()).setCancelled(anyBoolean()); // outside a run
+    when(runs.playingHere(p)).thenReturn(true);
+    l.onUse(drink);
+    verify(drink).setCancelled(true);
+    verify(p).sendMessage("§7Only dungeon supplies work in a run.");
+    var bread = click(p, org.bukkit.event.block.Action.RIGHT_CLICK_AIR, new ItemStack(org.bukkit.Material.BREAD));
+    l.onUse(bread);
+    verify(bread, never()).setCancelled(anyBoolean());
+    var empty = click(p, org.bukkit.event.block.Action.RIGHT_CLICK_AIR, null);
+    l.onUse(empty);
+    verify(empty, never()).setCancelled(anyBoolean());
+    // eating: golden apples refused, bread fine; MMOItems potions when told about them
+    var apple = new org.bukkit.event.player.PlayerItemConsumeEvent(p, new ItemStack(org.bukkit.Material.GOLDEN_APPLE),
+        org.bukkit.inventory.EquipmentSlot.HAND);
+    l.onConsume(apple);
+    assertTrue(apple.isCancelled());
+    var loaf = new org.bukkit.event.player.PlayerItemConsumeEvent(p, new ItemStack(org.bukkit.Material.BREAD),
+        org.bukkit.inventory.EquipmentSlot.HAND);
+    l.onConsume(loaf);
+    assertFalse(loaf.isCancelled());
+    ItemStack mmo = new ItemStack(org.bukkit.Material.SLIME_BALL);
+    assertSame(l, l.outsideHeals(it -> it.getType() == org.bukkit.Material.SLIME_BALL));
+    assertTrue(l.outsideHeal(new ItemStack(org.bukkit.Material.SLIME_BALL)));
+    assertFalse(l.outsideHeal(new ItemStack(org.bukkit.Material.APPLE)));
+    var mmoUse = new org.bukkit.event.player.PlayerItemConsumeEvent(p, mmo, org.bukkit.inventory.EquipmentSlot.HAND);
+    l.onConsume(mmoUse);
+    assertTrue(mmoUse.isCancelled());
+    var stillBread = new org.bukkit.event.player.PlayerItemConsumeEvent(p, new ItemStack(org.bukkit.Material.BREAD),
+        org.bukkit.inventory.EquipmentSlot.HAND);
+    l.onConsume(stillBread);
+    assertFalse(stillBread.isCancelled());
+    var stillApple = new org.bukkit.event.player.PlayerItemConsumeEvent(p, new ItemStack(org.bukkit.Material.GOLDEN_APPLE),
+        org.bukkit.inventory.EquipmentSlot.HAND);
+    l.onConsume(stillApple);
+    assertTrue(stillApple.isCancelled());
+    when(runs.playingHere(p)).thenReturn(false);
+    var outside = new org.bukkit.event.player.PlayerItemConsumeEvent(p, new ItemStack(org.bukkit.Material.GOLDEN_APPLE),
+        org.bukkit.inventory.EquipmentSlot.HAND);
+    l.onConsume(outside);
+    assertFalse(outside.isCancelled());
+    for (var m : List.of(org.bukkit.Material.POTION, org.bukkit.Material.SPLASH_POTION, org.bukkit.Material.LINGERING_POTION,
+        org.bukkit.Material.GOLDEN_APPLE, org.bukkit.Material.ENCHANTED_GOLDEN_APPLE)) {
+      assertTrue(RunListener.vanillaHeal(new ItemStack(m)), m.name());
+    }
+    assertFalse(RunListener.vanillaHeal(null));
+    assertFalse(RunListener.vanillaHeal(supply));
+    assertFalse(RunListener.vanillaHeal(new ItemStack(org.bukkit.Material.APPLE)));
+  }
+
+  @Test
+  void aLandedBlowReachesTheRun() {
+    Player p = player();
+    EntityDamageEvent zero = mock(EntityDamageEvent.class);
+    when(zero.getEntity()).thenReturn(p);
+    l.onPlayerHurt(zero);
+    EntityDamageEvent hit = mock(EntityDamageEvent.class);
+    when(hit.getEntity()).thenReturn(p);
+    when(hit.getFinalDamage()).thenReturn(3.0);
+    l.onPlayerHurt(hit);
+    verify(runs, never()).hurt(any());
+    when(runs.inDungeonWorld(p)).thenReturn(true);
+    l.onPlayerHurt(hit);
+    verify(runs).hurt(p);
+    EntityDamageEvent hunger = mock(EntityDamageEvent.class);
+    when(hunger.getEntity()).thenReturn(p);
+    when(hunger.getFinalDamage()).thenReturn(1.0);
+    when(hunger.getCause()).thenReturn(EntityDamageEvent.DamageCause.STARVATION);
+    l.onPlayerHurt(hunger);
+    verify(runs, times(1)).hurt(p); // hunger tears no bandage loose
+    EntityDamageEvent mobHit = mock(EntityDamageEvent.class);
+    when(mobHit.getEntity()).thenReturn(mock(LivingEntity.class));
+    l.onPlayerHurt(mobHit);
+    verify(runs, times(1)).hurt(any());
+  }
+
+  org.bukkit.event.entity.EntityPotionEffectEvent effect(Entity who, org.bukkit.potion.PotionEffect neu,
+      org.bukkit.event.entity.EntityPotionEffectEvent.Action action) {
+    var e = mock(org.bukkit.event.entity.EntityPotionEffectEvent.class);
+    when(e.getEntity()).thenReturn(who);
+    when(e.getNewEffect()).thenReturn(neu);
+    when(e.getAction()).thenReturn(action);
+    return e;
+  }
+
+  @Test
+  void aWardStopsTheSlowItIsFor() {
+    Player p = player();
+    var slow = new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS, 40, 1);
+    var added = org.bukkit.event.entity.EntityPotionEffectEvent.Action.ADDED;
+    when(runs.playingHere(p)).thenReturn(true);
+    when(runs.wardsPotion(p, "slowness")).thenReturn(true);
+    var stopped = effect(p, slow, added);
+    l.onPotion(stopped);
+    verify(stopped).setCancelled(true);
+    for (var e : List.of(effect(mock(LivingEntity.class), slow, added), effect(p, null, added),
+        effect(p, slow, org.bukkit.event.entity.EntityPotionEffectEvent.Action.REMOVED))) {
+      l.onPotion(e);
+      verify(e, never()).setCancelled(anyBoolean());
+    }
+    when(runs.isDowned(p)).thenReturn(true);
+    var downed = effect(p, slow, added);
+    l.onPotion(downed);
+    verify(downed, never()).setCancelled(anyBoolean());
+    when(runs.isDowned(p)).thenReturn(false);
+    when(runs.playingHere(p)).thenReturn(false);
+    var away = effect(p, slow, added);
+    l.onPotion(away);
+    verify(away, never()).setCancelled(anyBoolean());
+    when(runs.playingHere(p)).thenReturn(true);
+    when(runs.wardsPotion(p, "slowness")).thenReturn(false);
+    var unwarded = effect(p, slow, org.bukkit.event.entity.EntityPotionEffectEvent.Action.CHANGED);
+    l.onPotion(unwarded);
+    verify(unwarded, never()).setCancelled(anyBoolean());
+  }
 }

@@ -939,6 +939,37 @@ class RunManagerTest {
   }
 
   @Test
+  void suppliesReachTheRunThroughItsHooks() {
+    PlayerMock a = player("Ann");
+    PlayerMock b = player("Bo");
+    assertFalse(runs.playingHere(a), "not in a run");
+    when(chars.partyLeader(a)).thenReturn(a.getUniqueId());
+    when(chars.partyMembers(a)).thenReturn(List.of(a.getUniqueId(), b.getUniqueId()));
+    runs.useGate(a, gates.add(main.getBlockAt(10, 69, 10), "delve"));
+    RunManager.ActiveRun ar = only();
+    assertTrue(runs.playingHere(a));
+    Location there = a.getLocation();
+    a.teleport(new Location(main, 10, 70, 10));
+    assertFalse(runs.playingHere(a), "not in the dungeon world");
+    a.teleport(there);
+    characterOf.put("Ann", "someone-else");
+    assertFalse(runs.playingHere(a), "on another character");
+    characterOf.put("Ann", "char-Ann");
+    assertFalse(runs.reviveNow(ar, a, b, "Smelling Salts"), "Bo is not down");
+    assertTrue(runs.down(b));
+    assertTrue(runs.reviveNow(ar, a, b, "Smelling Salts"));
+    assertFalse(runs.isDowned(b));
+    assertEquals(6.0, b.getHealth(), 1e-9);
+    assertTrue(nextMatching(b, "Ann brings Bo back up with Smelling Salts."));
+    runs.useSupply(a, new org.bukkit.inventory.ItemStack(org.bukkit.Material.STONE));
+    assertTrue(nextMatching(a, "no longer used"));
+    runs.hurt(a);
+    assertFalse(runs.wardsPotion(a, "slowness"));
+    assertFalse(runs.wardsAura(a, "Frozen"));
+    runs.mana(mock(Ports.Mana.class));
+  }
+
+  @Test
   void aLobbyHoldsThePartyUntilEveryoneIsReady() {
     settings = withLobby(60);
     PlayerMock a = player("Ann");
