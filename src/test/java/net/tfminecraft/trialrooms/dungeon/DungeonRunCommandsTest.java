@@ -382,11 +382,16 @@ class DungeonRunCommandsTest {
     assertEquals(Map.of(), m.worth());
     assertFalse(m.enemy(mock(org.bukkit.entity.Entity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS)), "no run's");
     var tagged = mock(org.bukkit.entity.Entity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
-    when(tagged.getPersistentDataContainer().has(any(), any())).thenReturn(true);
+    var data = tagged.getPersistentDataContainer();
+    when(data.has(any(), any())).thenAnswer(i -> !DungeonModule.ALLY.equals(i.getArgument(0)));
     m.owner = e -> null;
     assertTrue(m.enemy(tagged));
     m.owner = e -> mock(Player.class);
     assertFalse(m.enemy(tagged), "a player's summon");
+    verify(data).set(DungeonModule.ALLY, org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+    when(data.has(any(), any())).thenReturn(true);
+    m.owner = e -> null;
+    assertFalse(m.enemy(tagged), "still the players' once its owner logged off");
     boolean[] ran = {false};
     m.later(() -> ran[0] = true);
     server.getScheduler().performTicks(1);

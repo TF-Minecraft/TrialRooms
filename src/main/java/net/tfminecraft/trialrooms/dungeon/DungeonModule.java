@@ -229,9 +229,23 @@ public final class DungeonModule {
         }
     }
 
-    /** Whether an entity is a run's enemy (a player's summon there isn't). */
+    /** Marks a player's summon in a run, so it stays on the players' side after its owner logs off. */
+    static final org.bukkit.NamespacedKey ALLY = org.bukkit.NamespacedKey.fromString("trialrooms:dungeon_ally");
+
+    /** Whether an entity is a run's enemy (a player's summon there isn't, even once its owner is gone). */
     boolean enemy(org.bukkit.entity.Entity e) {
-        return runs.isRunMob(e) && owner.apply(e) == null;
+        if (!runs.isRunMob(e)) {
+            return false;
+        }
+        var data = e.getPersistentDataContainer();
+        if (data.has(ALLY, org.bukkit.persistence.PersistentDataType.BYTE)) {
+            return false;
+        }
+        if (owner.apply(e) != null) {
+            data.set(ALLY, org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+            return false;
+        }
+        return true;
     }
 
     /** The player behind a summon (needs MythicMobs running). */
@@ -304,7 +318,7 @@ public final class DungeonModule {
      * MythicMobs reload.
      */
     public AllyFilter startAllyFilter(Supplier<Collection<?>> mechanics) {
-        AllyRules rules = new AllyRules(runs::inDungeonWorld, AllyFilter::ownerOf);
+        AllyRules rules = new AllyRules(runs::inDungeonWorld, AllyFilter::ownerOf, this::enemy);
         AllyFilter filter = new AllyFilter(rules, () -> settings.harmfulAuras(), () -> settings.helpfulAuras(),
                 mechanics, plugin.getLogger());
         plugin.getServer().getPluginManager().registerEvents(filter, plugin);
